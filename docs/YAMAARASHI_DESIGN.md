@@ -105,7 +105,8 @@ Consequences:
   under both effect systems, by construction.
 - `yamaarashi-flow` gets uniform teardown for free: an ArrowChoice branch skipped at the DAG
   level still finalizes inner streams, because both layers share `Eff es`.
-- DB cursors (`sarutahiko-db-core`'s existential `DBCursor` steppers) unfold into `Stream`
+- DB cursors (`hashigakari-core`'s existential `DBCursor` steppers, `HASHIGAKARI_DESIGN.md`
+  §3.4) unfold into `Stream`
   and are covered by the same guarantee — the §3.5 gate-1 concern is designed out rather
   than benchmarked away.
 

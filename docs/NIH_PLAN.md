@@ -109,12 +109,19 @@ cabal.project as it grows):
 
 ### Tier 5 — Data
 
+The database access library is designed in `HASHIGAKARI_DESIGN.md` and named for the
+hashigakari (橋掛かり), the bridge passageway onto the Noh stage (hashira 柱 held in
+reserve as fallback):
+
 | Package | Contents | NIH-of |
 |---|---|---|
-| `sarutahiko-db-core` | Row-typed query AST (SELECT = row projection, JOIN = row concat), dialect-indexed compilation, existential cursor steppers, linear-resource guarantee. | greenfield DSL from the records doc |
-| `sarutahiko-db-hasql` | hasql-backed execution + binary streaming of anonymous records. | — |
-| `sarutahiko-db-sqlite` | SQLite-backed execution (`sqlite3_step` stepper). | — |
-| `sarutahiko-db-beam` | `beam-large-anon` bridge: `AnonTable (r :: Row Type) (f :: Type -> Type)` with hand-written `Beamable` bypassing GHC.Generics. | beam retrofit idea |
+| `hashigakari-core` | Row-typed query AST (SELECT = row projection, JOIN = row concat with compile-time name-conflict rejection), column descriptors, HKD intents (`Record (Column f) r` / `Identity` / `TriState`), row combinators. | greenfield DSL from the records doc |
+| `hashigakari-syntax` | Dialect-indexed SQL compilation with type-level portability ceilings. | — |
+| `hashigakari-hasql` | hasql-backed execution + binary streaming of anonymous records, cursor declaration/FETCH. | — |
+| `hashigakari-sqlite` | Direct SQLite execution (`sqlite3_step` stepper). | — |
+| `hashigakari-beam` | The `beam-large-anon` bridge: `AnonTable (r :: Row Type) (f :: Type -> Type)` with hand-written `Beamable` bypassing GHC.Generics; standalone Hackage package. | beam retrofit idea |
+| `hashigakari-patch` | TriState HKD rows (RFC 7396/6902), generic diff engine → minimal UPDATEs. | — |
+| `hashigakari-schema` | Introspection → row types; migrations as row diffs. | — |
 | `sarutahiko-format-*` | Format readers/writers on the row basis: Parquet/Arrow projection pushdown, CBOR/MessagePack open envelopes, TOML/YAML/HCL overlays, Dhall marshalling bridge (evaluator untouched), RFC 6902/7396. | file-format program from the doc |
 | `sarutahiko-proto-*` | Remaining row-shaped protocols in demand order: GraphQL (selection sets as record projections; fragments = row concat), CloudEvents (envelope + extension-attribute rows), OTLP spans, system IPC (D-Bus, Wayland, 9P) as open rows of signals/methods. | protocol program from the doc |
 
@@ -196,7 +203,8 @@ Tier-2 milestone with the benchmark data in hand.
 DB cursors are decoupled from this choice by design: the existential `DBCursor` stepper
 (GADT holding backend state + step + close) unfolds into whichever stream kernel wins, and
 linear/bracketed consumption guarantees cleanup regardless of backend (Postgres
-`DECLARE/FETCH` vs SQLite `sqlite3_step`).
+`DECLARE/FETCH` vs SQLite `sqlite3_step`). The database library itself is designed in
+`HASHIGAKARI_DESIGN.md`.
 
 **Addendum (kernel + backends option).** The candidates above need not be mutually
 exclusive. A church-encoded (CPS) free-monad kernel — `Stream (Of a) (Eff es) a`, polymorphic
@@ -298,9 +306,9 @@ Neither replaces the other; the contract is:
   matches universal-ctags on a corpus.
 
 ### Phase 4 — Data tier (weeks 24–40)
-- `sarutahiko-db-core` AST + dialect compilation; `-hasql` streaming execution of anonymous
-  records; `-sqlite`.
-- `sarutahiko-db-beam` (`beam-large-anon`) published as a standalone Hackage bridge.
+- `hashigakari-core` AST + dialect compilation; `-hasql` streaming execution of anonymous
+  records; `-sqlite`; `-patch`; `-schema` (see `HASHIGAKARI_DESIGN.md`).
+- `hashigakari-beam` (`beam-large-anon`) published as a standalone Hackage bridge.
 - `yamaarashi-flow`: porcupine re-homed over `Eff es` with row-typed chunks (§3.6),
   including the cache-invalidation policy for non-deterministic (LLM-backed) tasks;
   `yamaarashi` kernel + backends per `YAMAARASHI_DESIGN.md`.
@@ -310,7 +318,9 @@ Neither replaces the other; the contract is:
 - Protocol packages by demand order: GraphQL → CloudEvents → OTLP enrichment of
   `sarutahiko-log` → system IPC (D-Bus/Wayland/9P).
 - Exit: zero-DTO pipeline demonstrated — SQL query → anonymous record stream → `rcast`
-  → MCP tool response, with sensitive fields dropped by projection.
+  → MCP tool response, with sensitive fields dropped by projection. Conformance shapes also
+  serve as `yamaarashi` acceptance targets (`YAMAARASHI_DESIGN.md` §5); DB cursor streaming
+  is designed in `HASHIGAKARI_DESIGN.md` §3.4.
 
 ### Ongoing streams
 - Benchmark ledger (streaming, record width/compile-time, parser incremental latency) — the
@@ -349,7 +359,10 @@ Projects and packages are named after Noh theatre vocabulary, honouring the conc
 to Nadeem Bitar's extensive work (whose projects appear as dependencies in
 `~/src/typed-language-model-arena/`); `sarutahiko` doubles as the Hermes analogue (guiding
 kami at the threshold). One deliberate exception: `yamaarashi` (山嵐, "porcupine") names the
-streaming-stack family as a nod to porcupine itself, kept in Roman letters for packaging. Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
+streaming-stack family as a nod to porcupine itself, kept in Roman letters for packaging.
+The database access library is `hashigakari` (橋掛かり), the bridge onto the stage — apt
+for the library that carries rows between the database and the application (and beams are
+involved); the four hashira 柱 are held in reserve as a fallback name. Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
 the unseen handlers that move props on and off the stage (maps naturally to process
 supervision/harness/runner roles). Reserve Noh terms deliberately and check for collisions
 with existing repos before naming new packages; candidate future mappings (to be confirmed
