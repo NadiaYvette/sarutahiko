@@ -163,7 +163,7 @@ different language feature, and the mapping is deliberate design surface:
 | HKD functor-mapped records | patch/partial/expression type families per entity | hashigakari TriState, config overlays, provider config patches |
 | Effect signatures (GADTs) + handler stacks | MTL class towers, mocking frameworks, policy/audit code forks | every layer; biggest single win in the agent turn loop |
 | Type families as row-type rules | runtime validators and their error paths | hashigakari AST, config row-union merge, capability intersection |
-| Type-level state machines (small, fixed spaces only) | illegal-state error handling | MCP/LSP handshake phases, transaction scopes, plugin load phases |
+| Type-level state machines (small, fixed spaces only) | illegal-state error handling | MCP/LSP handshake phases, transaction scopes, plugin load phases — internal invariants use phantom-indexed GADTs directly; the wire layer's session machines follow the typed-protocols pattern (agency-indexed states + peer GADT, `~/src/typed-protocols/` as reference), distilled dependency-light with a typed-protocols-compatible shape (§0 decision: distill first, swap in the full framework as a backend if pipelining or its proof layer earns their weight) |
 | LogicT / nondeterminism monads | manual GLR stack fork/join management | `sarutahiko-parse` |
 | Monoidal annotations (finger trees / 2-3 trees) | offset/length/line bookkeeping | `sarutahiko-parse`, streaming framing |
 | Church/CPS encoding | RULES-pragma noise and specialized pipeline variants | `yamaarashi` |
