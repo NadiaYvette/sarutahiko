@@ -502,9 +502,14 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
 6. **MCP session GADT design note** — the deciding artifact for the typed-protocols (a) vs
    (c) choice: symmetric-peer handling, unknown-method escape state, whether the distilled
    pattern suffices or the 1.2.x framework (with lookahead) earns its weight.
-7. **Memory/context engine design note**: event-log schema with envelope versioning (the one
-   least-reversible decision above the substrate — logs are append-only, so get row-evolution
-   right first), reducer library, policy effects (salience, compression, retrieval).
+7. **Memory/context engine design note**: now written — see `MEMORY_ENGINE_DESIGN.md`
+   (three-part decomposition: event log with envelope versioning as the one irreversible
+   decision, pure reducers as the easy glue, and policy as the real design space — cache-
+   safety contract with type-declared `PolicyEffect`, salience, compression, retrieval,
+   single-writer concurrency, store-level forgetting). Original summary: event-log schema
+   with envelope versioning (the one least-reversible decision above the substrate — logs
+   are append-only, so get row-evolution right first), reducer library, policy effects
+   (salience, compression, retrieval).
 8. **LLM substrate design note**: provider effect with row-typed SSE events, function-calling
    schemas as row descriptors (shared with MCP `inputSchema`), secrets/profile scope,
    token/context accounting feeding the cache rules.

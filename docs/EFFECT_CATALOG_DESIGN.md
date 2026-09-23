@@ -271,7 +271,7 @@ transposed from hook payloads (rows — data) to signatures (variants — syntax
 halves of the duality have the same evolution problem with opposite costs, and both get an
 explicit answer.
 
-**Status:** proposed; adopts on the maintainer's blessing.
+**Status:** blessed by the maintainer (2026-09-24).
 
 ### 6.6 The law testkit
 
@@ -306,6 +306,6 @@ suite for §6.1.
 
 1. Handlers-as-records spike against both systems (§6.2) — gates the bridge packages.
 2. Capability-row soundness proof obligations worked into the testkit's escape suite (§6.1).
-3. Final blessing of the PVP-for-signatures policy (§6.5).
+3. ~~Final blessing of the PVP-for-signatures policy (§6.5).~~ Blessed 2026-09-24.
 4. Exact `Database` signature refinement with hasql/sqlite interpreter sketches
    (`HASHIGAKARI_DESIGN.md` §3.4 normalization to this note's rules).
