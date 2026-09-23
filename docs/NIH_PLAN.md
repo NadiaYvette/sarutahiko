@@ -128,6 +128,54 @@ reserve as fallback):
 Everything above Tier 0 depends on `sarutahiko-effect-signatures`, never on a concrete effect
 system; only executables depend on `sarutahiko-effects-effectful`.
 
+### From substrate to ecosystem — the remaining climb
+
+The five substrate bags — (1) extensible-record network protocol codecs, (2) extensible-record
+file format codecs, (3) `yamaarashi`, (4) `hashigakari`, (5) the large-*/vinyl record
+foundation — move and store rows but have no behavior. Note (1) and (2) are really *one* bag
+with two spouts: both are field dictionaries + generic codecs + envelope preservation over the
+same `sarutahiko-fields` vocabulary, so the marginal cost of the Nth codec is a field list and
+a decoder recipe, not a new serializer. The climb to the Nadeem Bitar / Hermes ecosystems adds
+behavior layers, each standing on the row substrate:
+
+| Layer | Contents (NIH-of) | Principal code-volume lever |
+|---|---|---|
+| **Effect runtime** (Tier 0.5, planned) | Signature GADTs; `Resource`/`Scoped`; effectful + polysemy interpreters; concurrency strategies | GADT signatures + handler stacks replace MTL class towers; test interpreters replace mocking frameworks |
+| **Runtime services** (new) | Process spawn/supervision over yamaarashi stdio (MCP servers, shell hooks, terminal backends local/docker/ssh/modal) with deadline-kill and child-env hygiene; cron/heartbeat/timers (scheduled jobs, kanban swarm); namespaced row-typed event bus (`ctx.emit`). Noh mapping candidate: the kuroko-family idea already noted in §6.1 — decide whether the in-tree family reuses the name or leaves it to `~/src/kuroko/` | every service is one effect signature + interpreters; supervision is Resource-bracketed; no if/elif dispatch ladders |
+| **LLM substrate** (expands Tier 2's `sarutahiko-model`) | Provider effect: streaming completions as row-typed SSE events; function-calling schemas = row descriptors via `sarutahiko-schema` (same machinery MCP `inputSchema` needs); provider profiles; secrets/credentials effect with explicit profile scope; token/context accounting feeding the prompt-cache rules | one signature covers all providers; capability *rows* not per-provider ADTs; TriState applies to provider config patches |
+| **Agent core** (Tier 2, sharpened) | One row-typed registry for tools/commands/skills/hooks with every surface view *derived*; the turn loop as an interpreted program: hooks, approval gates, session persistence; context engine (memory providers, compression as the sole sanctioned mutation); plugins via registration-as-row-extension, capability grants, kill lists | **the turn is a value in `Eff es`** — policy, dry-run, replay, and audit are alternative handler stacks on the *same program*, not code forks; additive payload evolution = row extension |
+| **Workspace & code intelligence** (Tier 4 + additions) | Incremental GLR + tags (as planned); FS watch, git integration, editor surfaces via `sarutahiko-lsp` | LogicT nondeterminism replaces stack fork/join plumbing; monoidal finger-tree annotations replace offset bookkeeping; generic traversals replace per-language walkers |
+| **Surfaces** (Tier 3) | CLI, TUI (JSON-RPC), gateway, ACP, dashboard | every surface is a projection of the registry + a transport; surface-specific business logic has no place to exist |
+| **Distribution** | Plugin catalog (YAML + pinned hashes), portable packages, versioned row vocabularies | manifests validate against the same row-descriptor machinery |
+
+What we deliberately do **not** build: models themselves, an OS sandbox, terminal multiplexers,
+editors — the ecosystem consumes upstream for those.
+
+#### The code-volume ledger
+
+The strategy for keeping this manageable is that every layer's boilerplate is deleted by a
+different language feature, and the mapping is deliberate design surface:
+
+| Feature | Deletes | Pays off in |
+|---|---|---|
+| Extensible records + `rcast` | DTO types, per-message ADTs, conversion functions | codec bags, agent rows, DB projections |
+| Generic derivation over rows (large-generics / sop-core) + `DerivingVia` | per-type FromJSON/ToJSON/CBOR/SQL instances | both codec bags: one generic decoder each, not one per message |
+| HKD functor-mapped records | patch/partial/expression type families per entity | hashigakari TriState, config overlays, provider config patches |
+| Effect signatures (GADTs) + handler stacks | MTL class towers, mocking frameworks, policy/audit code forks | every layer; biggest single win in the agent turn loop |
+| Type families as row-type rules | runtime validators and their error paths | hashigakari AST, config row-union merge, capability intersection |
+| Type-level state machines (small, fixed spaces only) | illegal-state error handling | MCP/LSP handshake phases, transaction scopes, plugin load phases |
+| LogicT / nondeterminism monads | manual GLR stack fork/join management | `sarutahiko-parse` |
+| Monoidal annotations (finger trees / 2-3 trees) | offset/length/line bookkeeping | `sarutahiko-parse`, streaming framing |
+| Church/CPS encoding | RULES-pragma noise and specialized pipeline variants | `yamaarashi` |
+| Custom type errors + row-diff debugging utilities | debugging/support burden (indirect volume) | all row-heavy code |
+| `QualifiedDo` / `OverloadedRecordDot` sugar | visual volume only (aesthetics mandate) | row-heavy call sites |
+| Offline codegen, sparingly (never runtime TH) | hand-transcription of external metamodels (LSP metamodel, MCP schema → row definitions) | protocol codec bag |
+| Linear types (stretch goal) | finalizer/cleanup code and the GC-timing bug class | cursors, process handles |
+
+Disciplines that make the ledger hold: no user-facing signature mentions a backend; registries
+are derived, never synchronized by hand; every field lands exactly once in
+`sarutahiko-fields`; interpreters, not `if` ladders.
+
 ## 3. Architectural contracts
 
 ### 3.1 Row discipline
