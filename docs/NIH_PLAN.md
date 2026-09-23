@@ -176,6 +176,30 @@ Disciplines that make the ledger hold: no user-facing signature mentions a backe
 are derived, never synchronized by hand; every field lands exactly once in
 `sarutahiko-fields`; interpreters, not `if` ladders.
 
+#### Contact points with the Nadeem Bitar (keiro) ecosystem
+
+Documented in `~/src/typed-language-model-arena/cabal.project` — the keiro stack, staged by
+layer: `keiki` (pure transducer core), `kiroku-store` (Postgres event store + OTel
+trace-context), `shibuya-core` (supervised queue workers) + `shibuya-kiroku-adapter`,
+`keiro`/`keiro-core` (workflow runtime over one Postgres log), `kioku-api`/`kioku-core`
+(event-sourced agent memory), alongside `baikai`/`baikai-openai` (LLM client) and the
+`shikumi` family (eval harness). Notable compat signals: the stack builds on **GHC 9.12.4 /
+GHC2024** and `shikumi-coder` depends on **effectful ≥2.5** — our effect-system and
+toolchain choices align with the ecosystem we are patterned on.
+
+Mapping to our layers (theirs → ours): `keiki` → `sarutahiko-fields`/`yamaarashi`
+transformations; `baikai` → LLM substrate (`sarutahiko-model`); `kioku` → session/memory
+context engine (agent core); `shibuya` → runtime-services supervision effect; `keiro` →
+`yamaarashi-flow` durable orchestration; `kiroku` → hashigakari + row-typed event envelopes
+(the CloudEvents vocabulary already in the protocol bag).
+
+**Interop-first contact strategy.** Because the keiro stack is Postgres-log-centric and ours
+is row-centric, the *first* contact point is data, not agents: `hashigakari` reading/writing
+kiroku-style event stores with row-typed envelopes can interoperate long before any agent
+core exists. Wire-level contact with Hermes itself arrives with the Phase-1 MCP flagship.
+Full replacement of the top layers (memory, workflow, supervision) is the last contact, not
+the first — the plan's layer order already matches this gradient.
+
 ## 3. Architectural contracts
 
 ### 3.1 Row discipline
