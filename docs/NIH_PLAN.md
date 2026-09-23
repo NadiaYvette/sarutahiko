@@ -68,7 +68,7 @@ cabal.project as it grows):
 | `sarutahiko-effect-signatures` | Neutral effect-signature GADTs (no system dependency) + typed operation senders. Both effectful and polysemy interpreters compile against these. | effect signature pattern |
 | `sarutahiko-effects-effectful` | effectful interpreters for all core signatures. | — |
 | `sarutahiko-effects-polysemy` | polysemy interpreters for the same signatures (maintained, not load-bearing for our executables). | — |
-| `sarutahiko-stream` | The streaming abstraction + §3.5 decision outcome; existential cursor steppers (`DBCursor`-style), linear/bracketed finalization. | porcupine ArrowFlow semantics; conduit/streamly candidates |
+| `yamaarashi` family | The hybrid streaming stack — kernel (`yamaarashi`), conduit and streamly backends (`yamaarashi-conduit`, `yamaarashi-streamly`), and DAG orchestration (`yamaarashi-flow`, porcupine re-homed). Designed in `YAMAARASHI_DESIGN.md`; Tier 0 depends only on the abstract kernel. | porcupine ArrowFlow semantics + conduit/streamly strengths unified |
 | `sarutahiko-log` | Row-typed structured log/telemetry events (OTLP-shaped attributes as record fields, not `HashMap Text Value`). | OpenTelemetry concepts |
 
 ### Tier 1 — Wire (first flagship)
@@ -142,7 +142,7 @@ system; only executables depend on `sarutahiko-effects-effectful`.
 
 ### 3.3 Wire contracts
 - `sarutahiko-jsonrpc` is dialect-agnostic; MCP and LSP are thin row-vocabularies over it.
-- Transports (stdio framing, SSE, Streamable HTTP) are byte→row pipelines in `sarutahiko-stream`
+- Transports (stdio framing, SSE, Streamable HTTP) are byte→row pipelines in `yamaarashi`
   terms — the wire flagship does not need the §3.5 decision to land.
 - Wire-compat test suites are built from spec examples (MCP pinned version, JSON-RPC 2.0
   errata) and run against upstream implementations for interop confidence.
@@ -171,12 +171,12 @@ Candidates evaluated:
 | Option | Strengths | Flaws / risks | Verdict |
 |---|---|---|---|
 | **conduit** | Battle-tested; deterministic prompt finalization (its core selling point); mature ecosystem (`conduit-extra`, network, process); SSE/JSON-RPC examples abound in the docs. | Historical design turbulence ("core flaw of pipes and conduit" debates); leftovers concept adds incidental complexity; per-element allocation overhead vs fused designs. | Strong fallback; safest interop. |
-| **streamly** | Best-in-class fused performance (order-of-magnitude benchmarks vs conduit/pipes); folds+parsers model fits byte→row framing well; native concurrency combinators. | Large surface ("hard to evaluate; it's big"); significant API churn across major versions (0.8→0.9→0.10→0.11 breaks); upstream-coupled dependencies have caused ecosystem friction. | Performance favorite; pin exact version; isolate behind `sarutahiko-stream`. |
+| **streamly** | Best-in-class fused performance (order-of-magnitude benchmarks vs conduit/pipes); folds+parsers model fits byte→row framing well; native concurrency combinators. | Large surface ("hard to evaluate; it's big"); significant API churn across major versions (0.8→0.9→0.10→0.11 breaks); upstream-coupled dependencies have caused ecosystem friction. | Performance favorite; pin exact version; isolate behind the `yamaarashi` kernel. |
 | **streaming / pipes** | Minimal, composable cores. | Lower adoption momentum today; pipes' elegance vs usability tension documented; performance below fused designs. | Not selected. |
 | **porcupine (forward port)** | ArrowFlow task-DAG semantics: declarative pipeline graphs, task-level parallelism, docrecords/record-soup lineage matches the record basis. | Oriented to task graphs and `$_` location trees, not element-level byte streams; unwieldy as the *transport* layer; better as a layer *above* element streams for DAG orchestration. | Use for orchestration/DAG layer, not the element-stream kernel. |
 | **NIH kernel** | Exact control: effect-integrated `Stream (es :: [Effect]) a`, linear finalization, zero dependency churn; existential steppers unify DB cursors and transports. | Must reimplement framing, parsers, concurrency; ongoing maintenance; risk of subtle resource bugs. | Only if gates below trip. |
 
-**Decision gates (NIH trigger conditions).** Commit to the NIH `sarutahiko-stream` kernel only
+**Decision gates (NIH trigger conditions).** Commit to coding the NIH `yamaarashi` kernel only
 if, during Tier-1 bring-up on an *interim* basis (conduit, pinned):
 1. Early-exit finalization of effectful streams proves unsafe or unergonomic under conduit's
    bracket model when combined with effect rows (i.e., we cannot guarantee cursor/socket
@@ -188,9 +188,9 @@ if, during Tier-1 bring-up on an *interim* basis (conduit, pinned):
 4. Version churn forces repeated breakage (two or more forced major migrations within a
    release cycle).
 
-Otherwise: **streamly pinned behind `sarutahiko-stream`** as the element-stream kernel, with
+Otherwise: **streamly pinned behind the `yamaarashi` kernel** as the element-stream basis, with
 **conduit adapters** where ecosystem interop demands it, and **porcupine's ArrowFlow semantics**
-re-homed as the DAG/orchestration layer (`sarutahiko-flow`) atop the kernel. Re-decide at the
+re-homed as the DAG/orchestration layer (`yamaarashi-flow`) atop the kernel. Re-decide at the
 Tier-2 milestone with the benchmark data in hand.
 
 DB cursors are decoupled from this choice by design: the existential `DBCursor` stepper
@@ -219,10 +219,16 @@ continuation-based, so this is its own kernel path; evaluate alongside the §3.5
 Tier-1 exit. Net effect on this plan: "pick one winner" becomes "kernel + backends"; the
 NIH trigger gates are unchanged, and the wire flagship remains independent of the outcome.
 
+The hybrid stack is now designed as the **yamaarashi (山嵐, "porcupine") family** —
+`yamaarashi` kernel, `yamaarashi-conduit` / `yamaarashi-streamly` backends,
+`yamaarashi-flow` DAG orchestration — see `YAMAARASHI_DESIGN.md`; the §3.5 gates govern
+*when kernel work is coded*, not whether the design exists.
+
 ### 3.6 Layering contract — DAG orchestration over element streams
 
-`sarutahiko-flow` (porcupine re-homed, base monad `Eff es`) orchestrates *tasks*;
-`sarutahiko-stream` (kernel + streamly/conduit backends) moves *elements* inside task bodies.
+Detailed in `YAMAARASHI_DESIGN.md`; the contract in brief:
+`yamaarashi-flow` (porcupine re-homed, base monad `Eff es`) orchestrates *tasks*;
+`yamaarashi` (kernel + streamly/conduit backends) moves *elements* inside task bodies.
 Neither replaces the other; the contract is:
 
 - **Granularity.** Task/chunk caching at porcupine boundaries (`$_` locations); element
@@ -236,7 +242,7 @@ Neither replaces the other; the contract is:
 - **Kernel locality.** The element kernel choice is per-task-body and invisible to the DAG:
   church-encoded kernel by default, `SerialT (Eff es)` for hot loops, conduit adapters at
   byte boundaries. The conduit/streamly mixture is an implementation detail, not an
-  architecture-wide commitment.
+  architecture-wide commitment (backend policy in `YAMAARASHI_DESIGN.md` §3).
 - **Backpressure is layered.** Porcupine's pull-based (FRP-flavored) demand drives tasks;
   the element kernel manages per-element demand within a body. Each layer owns its own
   discipline; no global backpressure policy.
@@ -247,7 +253,7 @@ Neither replaces the other; the contract is:
   deterministic tasks; LLM-backed tasks carry a purity/determinism tag with invalidation keys
   (model, sampling params, prompt hash) supplied by `sarutahiko-model`. This is the one
   place porcupine's build-system heritage needs extending for agent workloads; policy lives
-  in `sarutahiko-flow`.
+  in `yamaarashi-flow`.
 - **Concurrency is two-level.** Task-level scheduling belongs to the DAG (a task runs when
   its inputs are ready); element-level strategies (streamly async/parallel wrappers) live
   inside bodies. Document per level who owns cancellation.
@@ -262,7 +268,8 @@ Neither replaces the other; the contract is:
 - `sarutahiko-fields`, `sarutahiko-records` (row JSON + TriState + envelope preservation).
 - `sarutahiko-effect-signatures` + both interpreter packages; CI matrix runs every library
   test against *both* effect systems.
-- `sarutahiko-stream` interim = conduit pinned; benchmark harness stood up early
+- Streaming interim = conduit pinned while the `yamaarashi` kernel is designed (its design
+  already lives in `YAMAARASHI_DESIGN.md`); benchmark harness stood up early
   (streaming-benchmarks methodology) so §3.5 gates are decided on data.
 - Exit: rows round-trip JSON; a demo effectful+polysemy program shares one signature package.
 
@@ -294,8 +301,9 @@ Neither replaces the other; the contract is:
 - `sarutahiko-db-core` AST + dialect compilation; `-hasql` streaming execution of anonymous
   records; `-sqlite`.
 - `sarutahiko-db-beam` (`beam-large-anon`) published as a standalone Hackage bridge.
-- `sarutahiko-flow`: porcupine re-homed over `Eff es` with row-typed chunks (§3.6),
-  including the cache-invalidation policy for non-deterministic (LLM-backed) tasks.
+- `yamaarashi-flow`: porcupine re-homed over `Eff es` with row-typed chunks (§3.6),
+  including the cache-invalidation policy for non-deterministic (LLM-backed) tasks;
+  `yamaarashi` kernel + backends per `YAMAARASHI_DESIGN.md`.
 - Format packages by demand order: CBOR/MessagePack envelopes → TOML/YAML overlays →
   Parquet/Arrow projection pushdown → Dhall bridge → RFC 6902/7396 diff engine wired into
   `db-core` UPDATE synthesis.
@@ -340,7 +348,8 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
 Projects and packages are named after Noh theatre vocabulary, honouring the conceptual debt
 to Nadeem Bitar's extensive work (whose projects appear as dependencies in
 `~/src/typed-language-model-arena/`); `sarutahiko` doubles as the Hermes analogue (guiding
-kami at the threshold). Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
+kami at the threshold). One deliberate exception: `yamaarashi` (山嵐, "porcupine") names the
+streaming-stack family as a nod to porcupine itself, kept in Roman letters for packaging. Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
 the unseen handlers that move props on and off the stage (maps naturally to process
 supervision/harness/runner roles). Reserve Noh terms deliberately and check for collisions
 with existing repos before naming new packages; candidate future mappings (to be confirmed
