@@ -98,7 +98,7 @@ cabal.project as it grows):
 | `sarutahiko-cli` | Table-driven command registry (single source for help/autocomplete/dispatch), REPL, one-shot mode. | `cli.py` + mixins, `commands.py` |
 | `sarutahiko-tui` | TUI backend speaking JSON-RPC to the core (same wire layer as everything else). | `tui_gateway/` |
 | `sarutahiko-gateway` | Long-lived service runner, platform adapters as effect interpreters. | `gateway/` |
-| `sarutahiko-acp` | ACP/stdio adapter. | `acp_adapter/` |
+| `sarutahiko-acp` | ACP (Agent Client Protocol — Zed's editor↔agent protocol, JSON-RPC over stdio; Hermes' `acp_adapter/` surface) | `acp_adapter/` |
 
 ### Tier 4 — Code intelligence
 
@@ -199,6 +199,45 @@ kiroku-style event stores with row-typed envelopes can interoperate long before 
 core exists. Wire-level contact with Hermes itself arrives with the Phase-1 MCP flagship.
 Full replacement of the top layers (memory, workflow, supervision) is the last contact, not
 the first — the plan's layer order already matches this gradient.
+
+#### The maintenance-burden thesis and the kuroko precedent
+
+The program is, explicitly, an answer to Nadeem Bitar's stack: the claim is that the same
+capabilities fall out of a dramatically smaller core maintenance burden when the substrate is
+rows + effects + streams. The working evidence is `~/src/kuroko/` — an effectful autonomous
+agent sidecar, complete agent capability in ≈1k core LOC (<1.5k claimed; 1.9k incl. tests):
+Dhall-typed policies, ReAct workflow as a porcupine DAG with a CAS-store step cache, and
+three effect groups (`LLM` with OpenAI/Claude/Mock handlers; `Tool` with vinyl/docrec rows,
+auto-JSON-Schema and an MCP server bridge; `Store` on persistent-effectful/SQLite WAL). This
+plan industrializes the kuroko thesis — same move, with our own record foundation, dual
+effect interfaces, wire conformance, and the full surface spectrum. Two consequences:
+
+- **Memory/context engine = log + reducers + policy.** Event-sourcing is native here: one
+  row-typed event log (hashigakari over SQLite/Postgres, CloudEvents-shaped envelopes from
+  the protocol bag) + pure reducers (sessions, kanban, checkpoints, retrieval indexes are all
+  different `fold`s over the same log) + policy (salience, compression — Hermes' only
+  sanctioned context mutation — and embedding-based retrieval as an LLM effect). The
+  sophisticated part is policy, not plumbing; kuroko's Store pillar and kioku's
+  "event-sourced agent memory" both validate the shape. hashigakari replaces kuroko's
+  persistent/TH dependency with row-native access.
+- **Mixins die into rows + effects.** Hermes' `HermesCLI` + 17 mixins (§HERMES_DESIGN Layer 1)
+  is the god-object pattern; the row-typed equivalent is: each mixin becomes a record of UI
+  state fields + an effect signature + handlers, and the facade becomes a polymorphic row.
+  Module cycles (their lazy-import dance) become effect-row membership.
+
+#### TUI approaches (Tier 3 survey)
+
+| Route | Mechanism | Assessment |
+|---|---|---|
+| ANSI + haskeline | line-oriented REPL, SGR escapes, streaming frames | the MVP surface; kuroko-style; near-zero code |
+| **brick / vty** | declarative pure `Widget n` trees, TEA-ish event loop, viewports/focus; vty-crossplatform is the maintained base | mainline full-screen choice; mature; state rows + open-variant events slot straight into our machinery |
+| reflex-vty | FRP over vty: `Dynamic (Record r)` time-varying state as the UI | highest-level fit (the reactive graph *is* the render), thinner ecosystem, keep as experiment |
+| Ink child (Hermes parity) | Node/Ink TUI child speaking JSON-RPC to the core — literally Hermes' `--tui` architecture | zero Haskell UI code; a compat surface, not a cop-out; rides our wire layer |
+| (none) — embed in editors | ACP surface | Footprint Ladder logic applies to UI too: the editor is a surface we can borrow |
+
+Whatever the route, the TUI is a projection of the registries over the wire layer — state as
+rows, events as extensible variants, modal overlays (clarify/approval/palette) as
+mode-indexed GADT states, render loop as a yamaarashi stream of frames.
 
 ## 3. Architectural contracts
 
