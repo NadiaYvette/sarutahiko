@@ -219,6 +219,43 @@ continuation-based, so this is its own kernel path; evaluate alongside the §3.5
 Tier-1 exit. Net effect on this plan: "pick one winner" becomes "kernel + backends"; the
 NIH trigger gates are unchanged, and the wire flagship remains independent of the outcome.
 
+### 3.6 Layering contract — DAG orchestration over element streams
+
+`sarutahiko-flow` (porcupine re-homed, base monad `Eff es`) orchestrates *tasks*;
+`sarutahiko-stream` (kernel + streamly/conduit backends) moves *elements* inside task bodies.
+Neither replaces the other; the contract is:
+
+- **Granularity.** Task/chunk caching at porcupine boundaries (`$_` locations); element
+  streaming within bodies. Element-level fusion intentionally does not cross a task edge —
+  that is the throughput-for-aesthetics trade (§0), repaid in resume-after-crash, per-task
+  debugging, and porcupine-viz visualization.
+- **Records.** Task inputs/outputs are anonymous records; `rcast` at boundaries implements
+  row-polymorphic routing. ArrowFlow's ArrowChoice decides *which branch* on values; row
+  types decide *which fields* statically. The two answer orthogonal questions and compose
+  cleanly (porcupine's docrecords/record-soup lineage is why).
+- **Kernel locality.** The element kernel choice is per-task-body and invisible to the DAG:
+  church-encoded kernel by default, `SerialT (Eff es)` for hot loops, conduit adapters at
+  byte boundaries. The conduit/streamly mixture is an implementation detail, not an
+  architecture-wide commitment.
+- **Backpressure is layered.** Porcupine's pull-based (FRP-flavored) demand drives tasks;
+  the element kernel manages per-element demand within a body. Each layer owns its own
+  discipline; no global backpressure policy.
+- **Resource safety is global.** The `Resource` effect row (shared `Eff es` substrate)
+  finalizes inner element streams even when an ArrowChoice branch is skipped or the pipeline
+  aborts mid-task — one uniform finalization story, no separate bracketP bookkeeping.
+- **Caching vs non-determinism.** Porcupine's Make-like location caching assumes
+  deterministic tasks; LLM-backed tasks carry a purity/determinism tag with invalidation keys
+  (model, sampling params, prompt hash) supplied by `sarutahiko-model`. This is the one
+  place porcupine's build-system heritage needs extending for agent workloads; policy lives
+  in `sarutahiko-flow`.
+- **Concurrency is two-level.** Task-level scheduling belongs to the DAG (a task runs when
+  its inputs are ready); element-level strategies (streamly async/parallel wrappers) live
+  inside bodies. Document per level who owns cancellation.
+- **Placement.** Gateway multiplexing uses per-connection linear pipelines (no DAG);
+  cross-connection fan-out, DB→transform→SSE exports, and scheduled/kanban jobs are true
+  DAGs (caching/resume shine); the agent turn loop stays imperative. Not everything is a
+  DAG — the layering makes that a choice, not an accident.
+
 ## 4. Roadmap
 
 ### Phase 0 — Foundation (weeks 1–6)
@@ -257,6 +294,8 @@ NIH trigger gates are unchanged, and the wire flagship remains independent of th
 - `sarutahiko-db-core` AST + dialect compilation; `-hasql` streaming execution of anonymous
   records; `-sqlite`.
 - `sarutahiko-db-beam` (`beam-large-anon`) published as a standalone Hackage bridge.
+- `sarutahiko-flow`: porcupine re-homed over `Eff es` with row-typed chunks (§3.6),
+  including the cache-invalidation policy for non-deterministic (LLM-backed) tasks.
 - Format packages by demand order: CBOR/MessagePack envelopes → TOML/YAML overlays →
   Parquet/Arrow projection pushdown → Dhall bridge → RFC 6902/7396 diff engine wired into
   `db-core` UPDATE synthesis.
