@@ -482,7 +482,20 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    full GADT catalog — `Resource`/`Scoped`, `Spawn` (minimal subset), `Log`, `SessionStore`,
    `ModelAPI`, `HookDispatch`, `StreamingDB` — their laws, handler discipline, and the
    dual-interpreter package layout rules. The load-bearing abstraction; errors here
-   propagate to every layer.
+   propagate to every layer. Catalog-wide rules it must fix: signatures expose existential
+   steppers/cursors parameterized by `m`, never stream types or concrete `Eff` rows
+   (normalizes HASHIGAKARI_DESIGN §3.4); row-carrying effects (`Log`, `EventBus`,
+   `HookDispatch`) receive existentially packaged `SomeRow`s so call sites stay
+   constraint-clean; scoped regions (transaction/bracket/cursor/hook-handler) unify under
+   one `Scoped` pattern; the package ships a reference free-monad runtime for law tests
+   while production senders/interpreters live in the bridges, held honest by a parity
+   testkit. Open design questions to adjudicate: (i) effect row as capability set — plugins
+   receive `forall es. Granted :<: es => Eff es ()`, making grants parametric/compile-time
+   instead of Hermes-style runtime allowlists (escape/continuation soundness needs care);
+   (ii) handlers as extensible records (interpreters built by record merge — duality made
+   executable; needs a spike against both systems' native handler shapes); (iii) PVP-for-
+   signatures policy (GADT constructors are breaking; additive evolution via new signatures
+   + reinterpretation + deprecation windows, mirroring Hermes' additive-payload discipline);
 6. **MCP session GADT design note** — the deciding artifact for the typed-protocols (a) vs
    (c) choice: symmetric-peer handling, unknown-method escape state, whether the distilled
    pattern suffices or the 1.2.x framework (with lookahead) earns its weight.
