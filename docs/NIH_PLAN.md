@@ -1,0 +1,310 @@
+# Sarutahiko — NIH Replacement Plan for the Nadeem Bitar AI Coding Ecosystem, Hermes, and Supporting Software
+
+Status: DRAFT v0.1 · 2026-09-23
+Scope: a ground-up Haskell reimplementation ("NIH") of the substantial components of the
+Nadeem Bitar AI coding ecosystem and of Hermes (per `HERMES_DESIGN.md`), plus the network
+protocols, file formats, and supporting libraries they lean on, built on extensible records
+(large-anon / large-records / vinyl interop), row-typed algebraic effects, and row-polymorphic
+streaming pipelines. The greenfield database library concept from
+`docs/Haskell Algebraic Effects Pattern Names-2.md` is folded in as its own workstream.
+
+Sources consolidated by this plan:
+
+- `docs/Haskell Algebraic Effects Pattern Names.md` and `-2.md` — the records × effects ×
+  protocols × file formats × databases program (Gemini conversation, forward-ported
+  porcupine/docrecords/record-soup, large-generics/large-records/large-anon ecosystem,
+  vinyl interop).
+- `docs/HERMES_DESIGN.md` — the component inventory being replaced: plugin system, execution
+  surfaces, CLI structure, MCP/JSON-RPC embedding, TUI/gateway/ACP surfaces.
+- `docs/hermes_components.dot` — the dependency graph to be re-homed package by package.
+- `docs/Reimplementing Tree-sitter and Ctags in Haskell.md` — the code-intelligence workstream
+  (incremental GLR parsing, tags indexing, RTS-friendly pure core).
+
+---
+
+## 0. Decisions already taken
+
+| Decision | Choice | Consequence |
+|---|---|---|
+| Effect system for our executables | **effectful** | Executables use effectful; primop-backed Reader/State, fast, dynamic effect rows. |
+| Effect interface packages | **Dual: effectful + polysemy** | Every support library ships an effects-interface package (effect-signature GADTs + per-system interpreters) so downstream users on either system can adopt. Signatures live in neutral core packages; interpreters live in per-system bridge packages. |
+| First flagship | **Wire layer (JSON-RPC 2.0 + MCP)** | Proves records + effects on a real protocol, unblocks tool/MCP ecosystem work. |
+| Streaming basis | **Deferred pending research gates** | See §3.5: evaluation matrix, candidate flaws, explicit NIH trigger conditions. The wire layer (first flagship) is independent of this decision — it needs only byte-chunk parsing over an abstract stream. |
+
+## 1. Thesis
+
+Every component in scope shares one structural pathology: closed nominal types (ADTs from
+GHC.Generics or Template Haskell) modeling what are actually *open, row-shaped* things —
+JSON-RPC envelopes, capability objects, plugin payloads, telemetry attributes, SQL rows,
+config overlays. The replacement program is:
+
+1. **Rows for data.** All wire shapes, config, telemetry, and query results are anonymous /
+   extensible records (large-anon for linear-time wide records; vinyl interop at the edges;
+   `rcast` projections instead of DTO conversions).
+2. **Rows for effects.** Effect signatures are GADTs (per
+   `Haskell Algebraic Effects Pattern Names.md`: effect signature / operational /
+   defunctionalization patterns), composed in extensible-variant rows, dispatched by
+   records-as-products × variants-as-sums duality.
+3. **Streams between them.** Byte transport → row-parsing → routing → sinks as memory-constant
+   pipelines whose elements are anonymous records, with the streaming basis chosen per §3.5.
+4. **Capabilities at the edges, narrow-waist core** — the one Hermes design rule worth keeping
+   verbatim (HERMES_DESIGN §2: prompt-cache safety, Footprint Ladder for core tools).
+
+Non-goals: OS-level sandboxing parity (Hermes ships none; policy-over-sandbox carries over),
+bitwise mimicry of upstream file layouts, and rewriting Dhall's internal evaluator (per the
+doc's verdict — bridge package instead).
+
+## 2. Target package map
+
+Repo layout (cabal project `sarutahiko`, packages under `sarutahiko/` or a multi-package
+cabal.project as it grows):
+
+### Tier 0 — Foundation (records + effects kernels)
+
+| Package | Contents | NIH-of / inspired-by |
+|---|---|---|
+| `sarutahiko-fields` | Named field definitions shared across rows (`Method`, `Id`, `Params`, tool/hook/session fields); row combinators: concat, project, rename, diff, merge. | the "define a field exactly once" idea from the records doc |
+| `sarutahiko-records` | large-anon frontage + vinyl interop + record-soup/docrecords-derived serialization glue: FromJSON/ToJSON for rows, TriState HKD (RFC 7396 patch semantics), unknown-field preservation. | record-soup, docrecords, vinyl |
+| `sarutahiko-effect-signatures` | Neutral effect-signature GADTs (no system dependency) + typed operation senders. Both effectful and polysemy interpreters compile against these. | effect signature pattern |
+| `sarutahiko-effects-effectful` | effectful interpreters for all core signatures. | — |
+| `sarutahiko-effects-polysemy` | polysemy interpreters for the same signatures (maintained, not load-bearing for our executables). | — |
+| `sarutahiko-stream` | The streaming abstraction + §3.5 decision outcome; existential cursor steppers (`DBCursor`-style), linear/bracketed finalization. | porcupine ArrowFlow semantics; conduit/streamly candidates |
+| `sarutahiko-log` | Row-typed structured log/telemetry events (OTLP-shaped attributes as record fields, not `HashMap Text Value`). | OpenTelemetry concepts |
+
+### Tier 1 — Wire (first flagship)
+
+| Package | Contents | NIH-of |
+|---|---|---|
+| `sarutahiko-jsonrpc` | JSON-RPC 2.0 core: requests/notifications/responses as rows over `sarutahiko-fields`; open-variant method dispatch; batch; error taxonomy. | jsonrpc libs, haskell-lsp's substrate |
+| `sarutahiko-mcp` | MCP over `sarutahiko-jsonrpc`: initialize handshake → capability rows (union/intersection instead of `Maybe`- forests), tools/list, tools/call, stdio + SSE/Streamable-HTTP transports. | Hermes `tools/mcp_tool_*`, pinned `2025-03-26` wire compat |
+| `sarutahiko-lsp` | LSP on the same core; capabilities rows, `$/`-extension pass-through via row extension. | haskell-lsp / lsp |
+| `sarutahiko-schema` | JSON Schema subset reader/writer (MCP `inputSchema` ⇄ internal row descriptors; no remote fetch at load, per Hermes behavior). | Hermes schema layer |
+
+### Tier 2 — Agent core (Hermes replacement)
+
+| Package | Contents | NIH-of |
+|---|---|---|
+| `sarutahiko-agent` | The turn loop, tool registry (one registry, many surfaces), toolsets, hooks with bounded/fail-closed `pre_tool_call` semantics, sessions. | `run_agent.py`, `agent/turn_*`, `tools/registry.py` |
+| `sarutahiko-plugins` | Plugin system: manifest reading, discovery order, load deadlines, registration context as a *record effect* (register tools/hooks/commands by extending a row), capability grants, kill-list enforcement at install AND load. | `plugins_loader.py`, `plugins_dispatch.py`, PluginContext |
+| `sarutahiko-hooks` | Shell-hook surface: stdin-JSON → stdout-JSON subprocess convention, consent allowlists, safe mode. | `agent/shell_hooks.py` |
+| `sarutahiko-session` | Conversation/session persistence; prompt-cache-safe evolution rules; compression as the only sanctioned mid-conversation mutation. | `hermes_state*.py` |
+| `sarutahiko-config` | Config as layered records: defaults ⊕ file ⊕ profile ⊕ env overlay with row-union merge; resolved-field tracking in the type. | `config*.py` siblings |
+| `sarutahiko-model` | Model-provider profiles, streaming completion interface as an effect signature (SSE row events). | provider plugins, `model_*` |
+
+### Tier 3 — Surfaces
+
+| Package | Contents | NIH-of |
+|---|---|---|
+| `sarutahiko-cli` | Table-driven command registry (single source for help/autocomplete/dispatch), REPL, one-shot mode. | `cli.py` + mixins, `commands.py` |
+| `sarutahiko-tui` | TUI backend speaking JSON-RPC to the core (same wire layer as everything else). | `tui_gateway/` |
+| `sarutahiko-gateway` | Long-lived service runner, platform adapters as effect interpreters. | `gateway/` |
+| `sarutahiko-acp` | ACP/stdio adapter. | `acp_adapter/` |
+
+### Tier 4 — Code intelligence
+
+| Package | Contents | NIH-of |
+|---|---|---|
+| `sarutahiko-parse` | Incremental GLR per Wagner–Graham: CST nodes as anonymous records of monoidal annotations; damage tracking via finger-tree/2-3 refold; subtree reuse; re-synchronization; error recovery. | tree-sitter |
+| `sarutahiko-tags` | Shallow index extraction: FSM/regex opt-in per language, scope stack, then query-based extraction over `sarutahiko-parse` trees. | ctags / universal-ctags |
+
+### Tier 5 — Data
+
+| Package | Contents | NIH-of |
+|---|---|---|
+| `sarutahiko-db-core` | Row-typed query AST (SELECT = row projection, JOIN = row concat), dialect-indexed compilation, existential cursor steppers, linear-resource guarantee. | greenfield DSL from the records doc |
+| `sarutahiko-db-hasql` | hasql-backed execution + binary streaming of anonymous records. | — |
+| `sarutahiko-db-sqlite` | SQLite-backed execution (`sqlite3_step` stepper). | — |
+| `sarutahiko-db-beam` | `beam-large-anon` bridge: `AnonTable (r :: Row Type) (f :: Type -> Type)` with hand-written `Beamable` bypassing GHC.Generics. | beam retrofit idea |
+| `sarutahiko-format-*` | Format readers/writers on the row basis: Parquet/Arrow projection pushdown, CBOR/MessagePack open envelopes, TOML/YAML/HCL overlays, Dhall marshalling bridge (evaluator untouched), RFC 6902/7396. | file-format program from the doc |
+| `sarutahiko-proto-*` | Remaining row-shaped protocols in demand order: GraphQL (selection sets as record projections; fragments = row concat), CloudEvents (envelope + extension-attribute rows), OTLP spans, system IPC (D-Bus, Wayland, 9P) as open rows of signals/methods. | protocol program from the doc |
+
+Everything above Tier 0 depends on `sarutahiko-effect-signatures`, never on a concrete effect
+system; only executables depend on `sarutahiko-effects-effectful`.
+
+## 3. Architectural contracts
+
+### 3.1 Row discipline
+- One field definition, many rows. No per-message ADTs for wire types; rows plus open-variant
+  dispatch. Unknown fields are *preserved* (open envelopes), never dropped.
+- Projections are `rcast`-style and zero-cost; DTO types are banned at module boundaries.
+- TriState HKD (`Record (TriState) r`) is the single patch representation (RFC 7396/6902),
+  with a generic diff engine computing minimal SQL UPDATEs for the db tier.
+
+### 3.2 Effect contracts
+- Each capability = one signature GADT in `sarutahiko-effect-signatures` (e.g. `Tools`,
+  `FileSystem`, `SessionStore`, `ModelAPI`, `HookDispatch`, `StreamingDB`).
+- `handleRPC`-style dispatch: parsed request row → `case getField @Method` → effect senders →
+  response row constructed by field extension. This is the records-duality seam from the doc.
+- Session state grows rows, not monoliths: post-handshake capability records live inside
+  Reader/State; handlers constrain with `HasField`, not concrete env types.
+- Bounded hooks: hot-path hook handlers run with deadlines, abandoned on hang; `pre_tool_call`
+  fails closed (verbatim Hermes semantics).
+
+### 3.3 Wire contracts
+- `sarutahiko-jsonrpc` is dialect-agnostic; MCP and LSP are thin row-vocabularies over it.
+- Transports (stdio framing, SSE, Streamable HTTP) are byte→row pipelines in `sarutahiko-stream`
+  terms — the wire flagship does not need the §3.5 decision to land.
+- Wire-compat test suites are built from spec examples (MCP pinned version, JSON-RPC 2.0
+  errata) and run against upstream implementations for interop confidence.
+
+### 3.4 Hermes invariants carried over
+1. Prompt-cache safety: additive hook payloads only; no mid-conversation toolset swaps;
+   compression is the sole sanctioned context mutation.
+2. Narrow-waist core: new capability = CLI command + skill, service-gated tool, plugin, or MCP
+   server; core tools last (Footprint Ladder).
+3. One registry, many surfaces: the tool registry and command registry derive every consumer
+   view (CLI help, TUI, gateway, ACP).
+4. Policy over sandbox: allowlists, consent files, capability grants, fail-closed gates,
+   load deadlines, kill lists at install and load.
+5. Explicit profile scope: never freeze home/config at import time; scope travels with the
+   turn (Hermes `hermes_home_key()` analog).
+
+### 3.5 Streaming basis — research findings and decision gates
+
+Requirements: memory-constant pipelines; effects mid-stream (each element may touch
+`Eff es`); early-exit resource safety (cursor/sockets closed on short-circuit); SSE and
+stdio framing; DB cursor unfolding; row elements without per-element boxing penalties;
+concurrency (fan-out to gateway platforms).
+
+Candidates evaluated:
+
+| Option | Strengths | Flaws / risks | Verdict |
+|---|---|---|---|
+| **conduit** | Battle-tested; deterministic prompt finalization (its core selling point); mature ecosystem (`conduit-extra`, network, process); SSE/JSON-RPC examples abound in the docs. | Historical design turbulence ("core flaw of pipes and conduit" debates); leftovers concept adds incidental complexity; per-element allocation overhead vs fused designs. | Strong fallback; safest interop. |
+| **streamly** | Best-in-class fused performance (order-of-magnitude benchmarks vs conduit/pipes); folds+parsers model fits byte→row framing well; native concurrency combinators. | Large surface ("hard to evaluate; it's big"); significant API churn across major versions (0.8→0.9→0.10→0.11 breaks); upstream-coupled dependencies have caused ecosystem friction. | Performance favorite; pin exact version; isolate behind `sarutahiko-stream`. |
+| **streaming / pipes** | Minimal, composable cores. | Lower adoption momentum today; pipes' elegance vs usability tension documented; performance below fused designs. | Not selected. |
+| **porcupine (forward port)** | ArrowFlow task-DAG semantics: declarative pipeline graphs, task-level parallelism, docrecords/record-soup lineage matches the record basis. | Oriented to task graphs and `$_` location trees, not element-level byte streams; unwieldy as the *transport* layer; better as a layer *above* element streams for DAG orchestration. | Use for orchestration/DAG layer, not the element-stream kernel. |
+| **NIH kernel** | Exact control: effect-integrated `Stream (es :: [Effect]) a`, linear finalization, zero dependency churn; existential steppers unify DB cursors and transports. | Must reimplement framing, parsers, concurrency; ongoing maintenance; risk of subtle resource bugs. | Only if gates below trip. |
+
+**Decision gates (NIH trigger conditions).** Commit to the NIH `sarutahiko-stream` kernel only
+if, during Tier-1 bring-up on an *interim* basis (conduit, pinned):
+1. Early-exit finalization of effectful streams proves unsafe or unergonomic under conduit's
+   bracket model when combined with effect rows (i.e., we cannot guarantee cursor/socket
+   closure without contortions);
+2. Per-element overhead measurably harms the SSE/stdio transport budget (established by
+   benchmark against streamly, using `composewell/streaming-benchmarks` methodology);
+3. The dual effect-interface contract (§0) cannot be expressed cleanly because the stream type
+   hardcodes a monad stack rather than an effect row;
+4. Version churn forces repeated breakage (two or more forced major migrations within a
+   release cycle).
+
+Otherwise: **streamly pinned behind `sarutahiko-stream`** as the element-stream kernel, with
+**conduit adapters** where ecosystem interop demands it, and **porcupine's ArrowFlow semantics**
+re-homed as the DAG/orchestration layer (`sarutahiko-flow`) atop the kernel. Re-decide at the
+Tier-2 milestone with the benchmark data in hand.
+
+DB cursors are decoupled from this choice by design: the existential `DBCursor` stepper
+(GADT holding backend state + step + close) unfolds into whichever stream kernel wins, and
+linear/bracketed consumption guarantees cleanup regardless of backend (Postgres
+`DECLARE/FETCH` vs SQLite `sqlite3_step`).
+
+**Addendum (kernel + backends option).** The candidates above need not be mutually
+exclusive. A church-encoded (CPS) free-monad kernel — `Stream (Of a) (Eff es) a`, polymorphic
+in the base monad — fuses sequential binds by construction (Codensity-style, O(1)
+left-associated `>>=`), capturing much of streamly's sequential-throughput advantage without
+RULES-pragma fragility, while remaining an ordinary transformer-stack-shaped type that
+conduit/streamly/pipes adapters can embed or be embedded by. Two observations sharpen the
+question:
+1. Resource safety is separable from the stream monad: expressed as a `Resource`/`Scoped`
+   *effect row* (bracket semantics with guaranteed finalization on short-circuit), it subsumes
+   conduit's `bracketP` without bespoke stream plumbing — and works under both effect systems
+   via the dual-interface packages.
+2. streamly's non-sequential strengths (rewrite-rule-fused pure loops; concurrent
+   alternation/applicative streams) are best kept as *backends/strategies* behind the kernel
+   (`SerialT (Eff es)` embeds directly) rather than reimplemented.
+A third, deeper unification exists: streaming-as-effect via delimited continuations
+(`eff`-style `Yield`-effect handlers unify the effect runtime and the stream driver — the
+stream *is* a handled coroutine). Effectful itself is primop-based, not
+continuation-based, so this is its own kernel path; evaluate alongside the §3.5 gates at the
+Tier-1 exit. Net effect on this plan: "pick one winner" becomes "kernel + backends"; the
+NIH trigger gates are unchanged, and the wire flagship remains independent of the outcome.
+
+## 4. Roadmap
+
+### Phase 0 — Foundation (weeks 1–6)
+- `sarutahiko-fields`, `sarutahiko-records` (row JSON + TriState + envelope preservation).
+- `sarutahiko-effect-signatures` + both interpreter packages; CI matrix runs every library
+  test against *both* effect systems.
+- `sarutahiko-stream` interim = conduit pinned; benchmark harness stood up early
+  (streaming-benchmarks methodology) so §3.5 gates are decided on data.
+- Exit: rows round-trip JSON; a demo effectful+polysemy program shares one signature package.
+
+### Phase 1 — Wire flagship (weeks 5–12, overlaps Phase 0 tail)
+- `sarutahiko-jsonrpc` with spec-example conformance suite.
+- `sarutahiko-mcp`: initialize/tools/capability rows; stdio + SSE transports; interop tests
+  against an upstream MCP client and server.
+- `sarutahiko-schema` (JSON Schema subset ⇄ row descriptors).
+- Exit: a `sarutahiko` executable speaks MCP stdio against Hermes or Claude Code as client;
+  conformance suite green under both effect-system interpreters.
+
+### Phase 2 — Agent core (weeks 10–20)
+- `sarutahiko-agent`, `-session`, `-config`, `-hooks`, `-plugins`, `-model`.
+- Hermes invariants (§3.4) enforced by construction where possible: additive payloads via row
+  extension; fail-closed hook deadlines in the effect runtime.
+- CLI with table-driven registry; one-shot mode.
+- Exit: `sarutahiko chat` replays a real Hermes session; a ported plugin loads under the
+  deadline + kill-list rules.
+
+### Phase 3 — Surfaces + code intelligence (weeks 18–30)
+- `sarutahiko-tui` (JSON-RPC to core), `-gateway`, `-acp`.
+- `sarutahiko-parse` incremental GLR core (annotations as monoidal record fields; damage
+  tracking; reuse; resync), then `sarutahiko-tags` scope-stack extraction; golden tests
+  against tree-sitter/ctags outputs.
+- Exit: TUI and gateway drive the same agent through the same registries; tags output
+  matches universal-ctags on a corpus.
+
+### Phase 4 — Data tier (weeks 24–40)
+- `sarutahiko-db-core` AST + dialect compilation; `-hasql` streaming execution of anonymous
+  records; `-sqlite`.
+- `sarutahiko-db-beam` (`beam-large-anon`) published as a standalone Hackage bridge.
+- Format packages by demand order: CBOR/MessagePack envelopes → TOML/YAML overlays →
+  Parquet/Arrow projection pushdown → Dhall bridge → RFC 6902/7396 diff engine wired into
+  `db-core` UPDATE synthesis.
+- Protocol packages by demand order: GraphQL → CloudEvents → OTLP enrichment of
+  `sarutahiko-log` → system IPC (D-Bus/Wayland/9P).
+- Exit: zero-DTO pipeline demonstrated — SQL query → anonymous record stream → `rcast`
+  → MCP tool response, with sensitive fields dropped by projection.
+
+### Ongoing streams
+- Benchmark ledger (streaming, record width/compile-time, parser incremental latency) — the
+  compile-time regression suite must include a ≥40-column table to keep the large-* advantage
+  honest.
+- Effect-interface parity: every new signature lands in both interpreter packages in the same
+  PR, or the PR does not land.
+- Docs: each package ships a design note under `docs/` mirroring the source-doc style.
+
+## 5. Risks
+
+| Risk | Mitigation |
+|---|---|
+| Type-level error-message pain (rows misaligned) | Investment in custom type errors (`TypeError`), row-diff debugging utilities in `sarutahiko-records`, and a style rule preferring small rows + named fields. |
+| Dual effect-interface maintenance burden | Signatures kept tiny and neutral; interpreters are thin; CI parity gate; polysemy package allowed to lag marked with `@since` notes if needed. |
+| Streaming NIH scope creep | Gates in §3.5 are explicit and benchmark-driven; kernel work may not begin until at least two gates trip. |
+| Protocol drift (MCP spec versions) | Wire version pinned per release (Hermes pins `2025-03-26`); row vocabulary versioned; conformance suite updated on spec bumps. |
+| Ecosystem availability of large-* ports | Tier-0 work validates the forward-ported stack first; vinyl fallback path defined (records doc shows vinyl interop is maintained). |
+| Incremental parser complexity (GLR forks, error recovery) | Phase 3 only after wire+agent prove the records/effects seam; start with LR-then-fork subset; Wagner–Graham paper as test oracle. |
+
+## 6. Backlog — parked directions
+
+Recorded 2026-09-23 so they survive context switches; pick up after the design-mulling pause.
+
+1. Sketch the `sarutahiko-fields` + `sarutahiko-records` API surface (field definitions, row
+   combinators, JSON glue) as a design note.
+2. Start Phase 0: multi-package `cabal.project` plus Tier-0 package stubs.
+3. Draft the MCP conformance test plan (spec examples → row-typed fixtures) to nail Phase-1
+   exit criteria.
+4. Streaming deep-dive: prototype the church-encoded kernel + `Resource`-effect sketch and
+   run the §3.5 gates/benchmarks (see §3.5 addendum).
+
+### 6.1 Naming convention
+
+Projects and packages are named after Noh theatre vocabulary, honouring the conceptual debt
+to Nadeem Bitar's extensive work (whose projects appear as dependencies in
+`~/src/typed-language-model-arena/`); `sarutahiko` doubles as the Hermes analogue (guiding
+kami at the threshold). Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
+the unseen handlers that move props on and off the stage (maps naturally to process
+supervision/harness/runner roles). Reserve Noh terms deliberately and check for collisions
+with existing repos before naming new packages; candidate future mappings (to be confirmed
+by the maintainer, not assumed): kuroko-family = supervisors/schedulers, waki =
+interlocutor surfaces (adapters that talk to the world), kyōgen interludes = fast auxiliary
+pathways, mugen/kami-mono = the overarching agentic core.

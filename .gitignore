@@ -1,0 +1,9 @@
+# cabal build artifacts
+dist/
+dist-newstyle/
+
+# GHC artifacts
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
