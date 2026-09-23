@@ -1,0 +1,322 @@
+// Hermes agent — gross component graph and interactions.
+// Render: dot -Tsvg hermes_components.dot -o hermes_components.svg
+//         dot -Tpng hermes_components.dot -o hermes_components.png
+// Layout notes: rank=same groups pins layers; constraint=false edges may cross ranks.
+
+digraph hermes {
+    rankdir=TB;
+    compound=true;
+    fontname="Helvetica";
+    labelloc="t";
+    label=<<b>Hermes Agent — Component Graph</b><br/>solid = in-process · dashed = child process · dotted = network/pipe protocol · bold = hot path>;
+
+    node [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#f5f5f5"];
+    edge [fontname="Helvetica", fontsize=9, color="#555555"];
+
+    // ──────────────────────────── Entry & boot ────────────────────────────
+    subgraph cluster_entry {
+        label="Entry & boot";
+        style="rounded,filled";
+        fillcolor="#fff8e1";
+        color="#f0c040";
+
+        pyproject [label="pyproject [project.scripts]\nhermes → hermes_cli.main:main\nhermes-agent → run_agent:main\nhermes-acp → acp_adapter.entry:main",
+                   shape=note, fillcolor="#fffde7"];
+        main [label="hermes_cli/main.py::main()\nargparse tree · bootstrap · watchdog\n_prepare_agent_startup → args.func",
+              fillcolor="#ffecb3"];
+        bootstrap [label="hermes_bootstrap\n_startup_fast · _early_recovery\n(venv/UTF-8/HERMES_HOME)",
+                   shape=note, fillcolor="#fffde7"];
+        subparsers [label="hermes_cli/subcommands/*.py\n~60 cmd_* handlers\n(set_defaults func=cmd_X)",
+                    fillcolor="#ffecb3"];
+    }
+
+    // ──────────────────────────── Interactive core ────────────────────────
+    subgraph cluster_cli {
+        label="Interactive core (classic REPL)";
+        style="rounded,filled";
+        fillcolor="#e3f2fd";
+        color="#1976d2";
+
+        cli_facade [label="cli.py::HermesCLI\n(facade: _SLASH_DISPATCH · process_command)",
+                    fillcolor="#bbdefb", penwidth=2];
+        mixins [label="17 mixins (hermes_cli/cli_*_mixin.py)\ninit · tui_runtime · chat_turn · agent_setup\ncommands · session · stream · status_bar\nmodal · model_switch · terminal · voice\ninfo · billing · loops · tui · process_notify",
+                fillcolor="#e3f2fd"];
+        cli_siblings [label="cli_* non-mixin siblings\nrender · config_load · shutdown\nsingle_query · terminal_input · auto_maintenance",
+                      fillcolor="#e3f2fd"];
+        registry [label="hermes_cli/commands.py\nCOMMAND_REGISTRY (single source)",
+                  fillcolor="#bbdefb"];
+        slash_exec [label="hermes_cli/slash_exec.py\nEXECUTORS (pure formatters)",
+                    fillcolor="#e3f2fd"];
+    }
+
+    // ──────────────────────────── Agent core ──────────────────────────────
+    subgraph cluster_agent {
+        label="Agent core (in-process)";
+        style="rounded,filled";
+        fillcolor="#e8f5e9";
+        color="#388e3c";
+
+        run_agent [label="run_agent.py::AIAgent\n(agent/turn_*.py · conversation_loop)",
+                   fillcolor="#c8e6c9", penwidth=2];
+        turn_phases [label="agent/turn_*.py phases\npreflight · api_request · api_call\nresponse_intake · tool_round · overflow\ncompaction · stop_gates · finalizer",
+                     fillcolor="#e8f5e9"];
+        prompt_builder [label="agent/prompt_builder.py\nsystem prompt (byte-stable)\ncontext files · skills injection",
+                        fillcolor="#e8f5e9"];
+        compression [label="agent/compression_*.py\n(sanctioned cache break)", fillcolor="#e8f5e9"];
+        memory_mgr [label="agent/memory_manager.py\n+ memory_provider.py ABC", fillcolor="#e8f5e9"];
+        aux_client [label="agent/auxiliary_client.py\nside-LLM (title/compress/vision)",
+                    fillcolor="#e8f5e9"];
+    }
+
+    // ──────────────────────────── Tools ───────────────────────────────────
+    subgraph cluster_tools {
+        label="Tools";
+        style="rounded,filled";
+        fillcolor="#fce4ec";
+        color="#c2185b";
+
+        model_tools [label="model_tools.py\nget_tool_definitions()\nhandle_function_call()",
+                     fillcolor="#f8bbd0", penwidth=2];
+        tool_registry [label="tools/registry.py\nschemas · dispatch · check_fn TTL",
+                       fillcolor="#fce4ec"];
+        toolsets [label="toolsets.py\nTOOLSETS · _HERMES_CORE_TOOLS",
+                  fillcolor="#fce4ec"];
+        builtin_tools [label="tools/*.py (auto-discover)\nterminal · browser · web_search\ndelegate · kanban · approval · mcp façade",
+                       fillcolor="#fce4ec"];
+        environments [label="tools/environments/\nlocal · docker · ssh · modal\ndaytona · singularity",
+                      fillcolor="#fce4ec"];
+    }
+
+    // ──────────────────────────── MCP ─────────────────────────────────────
+    subgraph cluster_mcp {
+        label="MCP client runtime (in-process, own thread)";
+        style="rounded,filled";
+        fillcolor="#f3e5f5";
+        color="#7b1fa2";
+
+        mcp_tool [label="tools/mcp_tool*.py\nconfig · discovery · transport\nregistration · handlers",
+                  fillcolor="#e1bee7", penwidth=2];
+        mcp_loop [label="mcp-event-loop (daemon thread)\nasyncio loop · run_coroutine_threadsafe",
+                  fillcolor="#f3e5f5"];
+        mcp_stdio [label="MCP servers (stdio children)\nJSON-RPC 2.0 over pipes\nproto 2025-03-26", shape=box,
+                   fillcolor="#f3e5f5", style="rounded,filled,dashed"];
+        mcp_http [label="MCP servers (remote)\nStreamable HTTP / SSE", shape=box,
+                  fillcolor="#f3e5f5", style="rounded,filled,dotted"];
+    }
+
+    // ──────────────────────────── Plugins ─────────────────────────────────
+    subgraph cluster_plugins {
+        label="Plugin system";
+        style="rounded,filled";
+        fillcolor="#fff3e0";
+        color="#e64a19";
+
+        plugin_mgr [label="hermes_cli/plugins.py\nPluginManager · PluginContext\n(facade: plugins_*.py siblings)",
+                   fillcolor="#ffe0b2", penwidth=2];
+        plugins_loader [label="plugins_loader.py\ndiscovery · import · register(ctx)\nload deadline 10s",
+                        fillcolor="#fff3e0"];
+        plugins_dispatch [label="plugins_dispatch.py\ninvoke_hook · signature inspect\nbounded/fail-closed timeouts",
+                          fillcolor="#fff3e0"];
+        py_plugins [label="Python plugins (in-process)\nplugin.yaml + register(ctx)\ntools · hooks · CLI cmds · skills",
+                    fillcolor="#ffe0b2"];
+        provider_abc [label="Provider ABCs\nMemoryProvider · ContextEngine\nImageGen · ProviderProfile",
+                      fillcolor="#fff3e0"];
+        portable [label="Portable Agent Plugins v1\nplugin.json · mcp.json\n(no Python import)", fillcolor="#fff3e0"];
+        catalog [label="plugin-catalog/\nSHA-pinned YAML · removed.yaml", shape=note, fillcolor="#fff3e0"];
+        shell_hooks [label="Shell hooks (config.yaml hooks:)\nPopen child · stdin/stdout JSON\nexit-2 = block", shape=box,
+                     fillcolor="#fff3e0", style="rounded,filled,dashed"];
+        gw_hooks [label="Gateway hooks\n~/.hermes/hooks/<n>/HOOK.yaml\nhandler.py (importlib, in-process)",
+                  fillcolor="#fff3e0"];
+    }
+
+    // ──────────────────────────── State & config ──────────────────────────
+    subgraph cluster_state {
+        label="State & config";
+        style="rounded,filled";
+        fillcolor="#eceff1";
+        color="#546e7a";
+
+        hermes_state [label="hermes_state.py (facade)\nSessionDB · 21 hermes_state_* siblings",
+                      fillcolor="#cfd8dc", penwidth=2];
+        config [label="hermes_cli/config.py (facade)\nconfig_defaults · config_effective\natomic_config_write · loaders",
+                fillcolor="#eceff1"];
+        hermes_constants [label="hermes_constants.py\nget_hermes_home() · profile paths",
+                          fillcolor="#eceff1"];
+        secrets [label="agent/secret_scope\nget_secret · scoped .env", fillcolor="#eceff1"];
+        profiles [label="hermes_cli/profiles.py\nmultiplex · profile scope", fillcolor="#eceff1"];
+    }
+
+    // ──────────────────────────── Surfaces ────────────────────────────────
+    subgraph cluster_surfaces {
+        label="Alternate surfaces";
+        style="rounded,filled";
+        fillcolor="#e0f7fa";
+        color="#00838f";
+
+        ink_tui [label="ui-tui/ (Ink/React)\nhermes --tui · Node child", shape=box,
+                 fillcolor="#b2ebf2", style="rounded,filled,dashed"];
+        tui_gw [label="tui_gateway/server.py\nJSON-RPC backend (in-process host)\nmethods_*.py · session_*.py",
+                fillcolor="#b2ebf2", penwidth=2];
+        dashboard [label="hermes_cli/web_server.py\nFastAPI · web_routers/*\nserve / dashboard",
+                   fillcolor="#b2ebf2"];
+        desktop [label="apps/desktop/ (Electron)\napps/shared JSON-RPC client", shape=box,
+                 fillcolor="#b2ebf2", style="rounded,filled,dashed"];
+        acp [label="acp_adapter/\nhermes-acp · stdio JSON-RPC", shape=box,
+             fillcolor="#b2ebf2", style="rounded,filled,dashed"];
+        oneshot [label="cli_single_query / oneshot\nhermes -q", fillcolor="#e0f7fa"];
+    }
+
+    // ──────────────────────────── Gateway ─────────────────────────────────
+    subgraph cluster_gateway {
+        label="Messaging gateway (separate long-lived process)";
+        style="rounded,filled";
+        fillcolor="#ede7f6";
+        color="#5e35b1";
+
+        gw_runner [label="gateway/run.py (facade)\nGatewayRunner · 15 run_* phases",
+                   fillcolor="#d1c4e9", penwidth=2];
+        adapters [label="gateway/platforms/*\nTelegram · Discord · Slack · IRC\n~20 asyncio adapters",
+                  fillcolor="#ede7f6"];
+        cron [label="cron/ scheduler · jobs\nticker · profile scope", fillcolor="#ede7f6"];
+        kanban [label="hermes_cli/kanban*.py\nboard · dispatcher · workers", fillcolor="#ede7f6"];
+        service [label="gateway service managers\nsystemd · launchd · Windows", shape=note,
+                 fillcolor="#ede7f6"];
+    }
+
+    // ──────────────────────────── External ────────────────────────────────
+    subgraph cluster_external {
+        label="External / children";
+        style="rounded,filled";
+        fillcolor="#fbe9e7";
+        color="#d84315";
+
+        llm_api [label="LLM providers (HTTPS)\nOpenAI-compatible · Anthropic · …", shape=octagon,
+                 fillcolor="#ffccbc"];
+        chat_net [label="Chat platforms (net)\nTelegram API · Discord GW · …", shape=octagon,
+                  fillcolor="#ffccbc"];
+        exec_env [label="Execution environments\nterminal children · browser · kernels", shape=octagon,
+                  fillcolor="#ffccbc"];
+        webhooks [label="Outbound webhooks\nHMAC-SHA256 HTTP POST (thread)", shape=octagon,
+                  fillcolor="#ffccbc"];
+    }
+
+    // ════════════════════════ EDGES ════════════════════════
+
+    // Entry chain
+    pyproject -> main [label="console script"];
+    bootstrap -> main [label="import-time", style=dotted];
+    main -> subparsers [label="build_X_parser +\nset_defaults(func)"];
+    main -> cli_facade [label="cmd_chat → cli.main\n(classic REPL)", penwidth=2];
+    main -> tui_gw [label="--tui / serve fast path\n(launch / in-process host)", style=dashed];
+    main -> plugin_mgr [label="_prepare_agent_startup\ndiscover_plugins()"];
+    main -> oneshot [label="-q / --query", style=dotted];
+
+    // REPL composition
+    cli_facade -> mixins [label="MRO composition", penwidth=2];
+    mixins -> cli_siblings [label="from cli import … (late,\nre-exported helpers)", style=dotted];
+    cli_facade -> registry [label="resolve_command\naliases → canonical"];
+    registry -> slash_exec [label="execute key\n(surface-independent)"];
+    mixins -> registry [label="/help · autocomplete\ngateway · Telegram menus", style=dotted];
+
+    // Slash dispatch internals
+    cli_facade -> plugins_dispatch [label="fire_pre_command_hook\n(observer)", style=dotted];
+
+    // Chat turn hot path (bold)
+    mixins -> run_agent [label="chat(): agent thread\nrun_conversation()", penwidth=2, color="#c62828"];
+    run_agent -> turn_phases [label="conversation_loop\n→ turn_* phases", penwidth=2, color="#c62828"];
+    turn_phases -> model_tools [label="get_tool_definitions()\nhandle_function_call()", penwidth=2, color="#c62828"];
+    model_tools -> tool_registry [label="schemas + dispatch", penwidth=2, color="#c62828"];
+    toolsets -> model_tools [label="enabled toolset filter"];
+    tool_registry -> builtin_tools [label="registry.register (import)"];
+    builtin_tools -> environments [label="terminal backend"];
+    turn_phases -> hermes_state [label="persist turns\nSessionDB"];
+    turn_phases -> prompt_builder [label="assemble (startup only)"];
+    turn_phases -> compression [label="overflow → compact\n(only cache break)"];
+    turn_phases -> aux_client [label="title · vision · embed", style=dotted];
+    run_agent -> llm_api [label="chat.completions\nHTTPS", style=dotted, penwidth=2, color="#c62828"];
+
+    // Hooks (effect-like dispatch)
+    turn_phases -> plugins_dispatch [label="pre/post_api_request\nsession lifecycle", style=dotted];
+    model_tools -> plugins_dispatch [label="pre/post_tool_call\ntransform_tool_result", style=dotted];
+    plugins_dispatch -> py_plugins [label="callback(kwargs | signature\ninspect · bounded/fail-closed)", style=dotted];
+    plugins_dispatch -> shell_hooks [label="same dispatch table\n→ Popen stdin/stdout JSON", style=dashed];
+    plugins_dispatch -> webhooks [label="lifecycle notify", style=dotted];
+
+    // Plugin load path
+    plugin_mgr -> plugins_loader [label="gate_manifest → import"];
+    plugins_loader -> py_plugins [label="register(ctx)\n(PluginContext)"];
+    plugins_loader -> portable [label="portable short-circuit\n(no Python import)"];
+    catalog -> plugin_mgr [label="install pin · kill-list\ngate_manifest", style=dotted];
+    py_plugins -> tool_registry [label="ctx.register_tool", style=dotted];
+    py_plugins -> provider_abc [label="ABC registration"];
+    portable -> mcp_tool [label="mcp.json servers\n→ stdio/HTTP spawn", style=dashed];
+    provider_abc -> memory_mgr [label="orchestrated calls"];
+    memory_mgr -> hermes_state [label="sync_turn / flush"];
+    py_plugins -> mixins [label="ctx.register_cli_command\n(slash/CLI at startup)", style=dotted, constraint=false];
+    gw_hooks -> gw_runner [label="handle(event, ctx)\nimportlib, in-process", style=dotted];
+
+    // MCP path
+    tool_registry -> mcp_tool [label="mcp__<server>__<tool>\nsync handler", style=dotted];
+    mcp_tool -> mcp_loop [label="run_coroutine_threadsafe", style=dotted];
+    mcp_loop -> mcp_stdio [label="JSON-RPC over\nchild stdin/stdout", style=dashed];
+    mcp_loop -> mcp_http [label="JSON-RPC over\nHTTP/SSE", style=dotted];
+    mcp_tool -> py_plugins [label="ctx.call_mcp\n(default-deny allowlist)", style=dotted, constraint=false];
+
+    // Agent ↔ state / config
+    mixins -> hermes_state [label="new / resume / save"];
+    mixins -> config [label="load_cli_config\nsave_config_value"];
+    main -> config [label="load_config / effective"];
+    config -> hermes_constants [label="HERMES_HOME resolution"];
+    config -> profiles [label="per-profile homes"];
+    secrets -> config [label=".env secrets only", style=dotted];
+    hermes_state -> profiles [label="key by hermes_home_key()"];
+    run_agent -> secrets [label="get_secret (scoped)", style=dotted];
+
+    // Surfaces → core
+    ink_tui -> tui_gw [label="JSON-RPC over\nstdio/socket", style=dashed];
+    desktop -> tui_gw [label="JSON-RPC (apps/shared)", style=dotted];
+    tui_gw -> run_agent [label="drives agents\nin-process", penwidth=2];
+    tui_gw -> mixins [label="reuses slash/session\nlogic via RPC", style=dotted, constraint=false];
+    dashboard -> tui_gw [label="PTY embeds real TUI\n+ REST routers", style=dotted];
+    dashboard -> cli_facade [label="serve backend /\nconfig routes", style=dotted, constraint=false];
+    acp -> run_agent [label="ACP sessions", style=dashed];
+    oneshot -> run_agent [label="single run, no REPL"];
+    cli_facade -> ink_tui [label="--tui spawn\n(main_tui_launch)", style=dashed];
+
+    // Gateway
+    main -> gw_runner [label="cmd_gateway · service\ninstall/restart/status", style=dashed];
+    gw_runner -> adapters [label="platform event loop"];
+    adapters -> chat_net [label="wss / long-poll\nscoped tokens", style=dotted];
+    gw_runner -> run_agent [label="same agent core\nper-session turns", penwidth=2];
+    gw_runner -> registry [label="COMMAND_REGISTRY\ngateway dispatch"];
+    gw_runner -> hermes_state [label="sessions · relay"];
+    service -> gw_runner [label="systemd/launchd\nrespawn", style=dotted];
+    cron -> run_agent [label="scheduled turns\n(profile scope)"];
+    kanban -> run_agent [label="dispatch tasks", style=dotted];
+    cron -> registry [label="/cron handlers", style=dotted, constraint=false];
+
+    // Execution / external
+    builtin_tools -> exec_env [label="spawn (build_subprocess_env)", style=dashed];
+    builtin_tools -> chat_net [label="send_message tools", style=dotted, constraint=false];
+    mcp_stdio -> exec_env [label="child process", style=dashed, constraint=false];
+    shell_hooks -> exec_env [label="child process", style=dashed, constraint=false];
+
+    // Legend (as a small cluster)
+    subgraph cluster_legend {
+        label="Legend";
+        style="rounded,filled";
+        fillcolor="#fafafa";
+        color="#999999";
+        node [shape=plaintext, fillcolor="white", fontsize=9];
+        leg_solid [label="── solid: in-process function call"];
+        leg_dash [label="- - - dashed: child process (spawn/Popen)"];
+        leg_dot [label="· · · dotted: network or pipe protocol (JSON/JSON-RPC/HTTPS)"];
+        leg_bold [label="═══ bold red: turn hot path (prompt-cache sensitive)"];
+        leg_solid -> leg_dash [style=solid, arrowhead=none, color="#555555"];
+        leg_dash -> leg_dot [style=dashed, arrowhead=none, color="#555555"];
+        leg_dot -> leg_bold [style=dotted, arrowhead=none, color="#555555"];
+    }
+
+// Layer order emerges from edge directions (entry at top, externals at bottom);
+// explicit rank=same groups conflict with subgraph clusters in dot's rankset code.
+}
