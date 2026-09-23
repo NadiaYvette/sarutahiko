@@ -399,6 +399,21 @@ Neither replaces the other; the contract is:
 - `sarutahiko-schema` (JSON Schema subset ⇄ row descriptors).
 - Exit: a `sarutahiko` executable speaks MCP stdio against Hermes or Claude Code as client;
   conformance suite green under both effect-system interpreters.
+- Scope note: Phase 1 also pulls in the *minimal* `Spawn`/`Process` signature subset (stdio
+  children only, Resource-bracketed) — MCP servers must be spawned; the full supervision
+  layer (shibuya-class) stays deferred to the runtime-services layer.
+
+### Phase 1.5 — the hokora (祠) — vertical validation slice
+
+A small shrine on the peak, built early to prove the mountain holds: a kuroko-scale tracer
+bullet through *every* layer in one executable — one-shot CLI → interpreted ReAct turn (one
+model call, one MCP tool over yamaarashi stdio transport) → session events appended to a
+hashigakari-sqlite row log → one pure reducer → printed summary. Excluding substrate
+packages, budget ≤2k LOC, measured. This is the first quantitative datum for the
+answer-to-Nadeem thesis (kuroko ≈1k LOC on vinyl/persistent; the hokora is the same claim on
+our substrate, with wire conformance and a real store). It validates the effect-signature
+catalog against a real consumer before Phase 2 hardens it — the walking-skeleton argument:
+substrate APIs are only trustworthy once something on the peak stands on them.
 
 ### Phase 2 — Agent core (weeks 10–20)
 - `sarutahiko-agent`, `-session`, `-config`, `-hooks`, `-plugins`, `-model`.
@@ -463,6 +478,29 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    exit criteria.
 4. Streaming deep-dive: prototype the church-encoded kernel + `Resource`-effect sketch and
    run the §3.5 gates/benchmarks (see §3.5 addendum).
+5. **Effect-signature catalog design note** (highest design-need; precedes Tier-0 code): the
+   full GADT catalog — `Resource`/`Scoped`, `Spawn` (minimal subset), `Log`, `SessionStore`,
+   `ModelAPI`, `HookDispatch`, `StreamingDB` — their laws, handler discipline, and the
+   dual-interpreter package layout rules. The load-bearing abstraction; errors here
+   propagate to every layer.
+6. **MCP session GADT design note** — the deciding artifact for the typed-protocols (a) vs
+   (c) choice: symmetric-peer handling, unknown-method escape state, whether the distilled
+   pattern suffices or the 1.2.x framework (with lookahead) earns its weight.
+7. **Memory/context engine design note**: event-log schema with envelope versioning (the one
+   least-reversible decision above the substrate — logs are append-only, so get row-evolution
+   right first), reducer library, policy effects (salience, compression, retrieval).
+8. **LLM substrate design note**: provider effect with row-typed SSE events, function-calling
+   schemas as row descriptors (shared with MCP `inputSchema`), secrets/profile scope,
+   token/context accounting feeding the cache rules.
+9. **Hokora slice spec** (the Phase-1.5 tracer bullet): exact event rows, turn program, and
+   the LOC measurement protocol.
+
+Suggested design order: **5 → 6/3 → 7 → 8 → 9**, with 1–2 as the first code and 4
+bench-gated. Rationale: the effect catalog is the temple's true foundation — every later
+signature must compile against its discipline; the memory log's envelope versioning is the
+only top-layer decision that is expensive to reverse; the TUI/surface designs are
+intentionally last (they are projections, and §TUI survey shows they are thin once the
+registries exist).
 
 ### 6.1 Naming convention
 
