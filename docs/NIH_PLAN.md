@@ -478,7 +478,10 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    exit criteria.
 4. Streaming deep-dive: prototype the church-encoded kernel + `Resource`-effect sketch and
    run the §3.5 gates/benchmarks (see §3.5 addendum).
-5. **Effect-signature catalog design note** (highest design-need; precedes Tier-0 code): the
+5. **Effect-signature catalog design note** (highest design-need; precedes Tier-0 code):
+   now written — see `EFFECT_CATALOG_DESIGN.md` (catalog rules, the fourteen signatures,
+   and the blessed improvements: capability rows, handlers-as-records, `Scoped` unification,
+   `SomeRow` packaging, PVP-for-signatures policy, law testkit). Original summary: the
    full GADT catalog — `Resource`/`Scoped`, `Spawn` (minimal subset), `Log`, `SessionStore`,
    `ModelAPI`, `HookDispatch`, `StreamingDB` — their laws, handler discipline, and the
    dual-interpreter package layout rules. The load-bearing abstraction; errors here
