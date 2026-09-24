@@ -234,8 +234,40 @@ runtime, the note must be corrected regardless** (a behavior change without a no
 correction is an incomplete change; advisory status is not granted to blessed notes).
 AGENTS.md carries this to AI assistants as advisory rule 2.
 
-**Open:** mechanics of the stamp (bot vs agent vs maintainer commit convention) and
-whether `implemented` needs sub-stamps per package for multi-package designs.
+**Stamp mechanics — DECIDED 2026-09-24:** the implementing change stamps — the commit
+(or change set) that realizes the design's final open piece edits the Status header in
+the same change; no separate bot, no maintainer-only stamping (the maintainer reviews
+the change anyway, so review is the trust point). **Sub-stamps for multi-package
+designs:** designs spanning several packages carry an implemented-map in the header
+(`implemented: hashigakari-sqlite (date), -hasql (pending)`) — a blanket stamp would
+hide partial realization, which the drift judge would then flag; the map makes
+granularity explicit. Judge cross-check in both directions: stamps without realizing
+code, and realizing code without stamps.
+
+**Pre-birth documentation — DECIDED 2026-09-24 (the frontier).** The mirror of the
+attic problem, and thornier: no git history holds ground truth for what does not
+exist yet. Two kinds: (a) documentation for as-of-yet unwritten code (most of this
+corpus today), (b) references to planned-but-unwritten documentation and artifacts.
+These are **not invalidity** — a reference to planned work is healthy — so they do
+not ride §3's flag overlay (marking the whole corpus `dead-links` would be absurd).
+Mechanism instead:
+
+- **Prospective references:** references to planned artifacts carry an inline
+  prospective marker (`[planned: …]`); the anchor graph (§2) gains a *planned* node
+  type; the judge's programmatic net treats prospective anchors as **dormant** —
+  existence check deferred, not failed.
+- **Birth events:** the implementing change that brings the artifact into existence
+  also activates its references (removes the prospective markers); if the design dies
+  before birth, the references die with it via §3's superseded/dead path — no orphaned
+  prospects.
+- **Planned-documents inventory:** unwritten-but-planned documents are enumerable,
+  not folk knowledge — NIH_PLAN §6 (the backlog) is that inventory; the judge
+  cross-checks both directions: born anchors with stale prospective markers, and
+  `implemented` stamps without realizing code.
+
+Net effect: the frontier is *typed* (planned, dormant, born) rather than confused
+with error states, and the judge's scope now covers the full document life: pre-birth
+(dormant anchors), bloom (blessed claims vs code), and death (attic tombstones).
 
 ## 5. Structure and discoverability
 
@@ -310,3 +342,4 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §2 partially decided (assessment half): the doc-drift judge blessed as a component — corpus-wide LLM assessment with programmatic pre-filtering (ID/symbol/link nets bound the invocation burden), fallible-oracle consensus (≥2 providers; any veto triggers intensive review), findings to the row store, advisory authority. SaaS PR-reviewers dismissed as the mechanism (PR-diff-scoped vs our as-yet-unidentified-drift sweeps) with rationale and survey recorded. Repair procedure still open. |
 | 2026-09-24 | §2 amended: the judge must understand the code — consistency is bidirectional; behavioral claims verified against implementing source, examples against compilable code, exit criteria against artifacts; oracle bar raised (code-reading competence), harness bar raised (anchor-graph context assembly), test suites/fixtures citable as execution evidence. |
 | 2026-09-24 | §3 decided: seven lifecycle stages (seed/draft/review/blessed/implemented/superseded/dead); invalidity as orthogonal flag overlay (erroneous/inconsistent/stale/dead-links/needs-work) carried in Status headers, flagged documents lose citability for affected fact classes until cleared; blessing mechanics formalized (dated status edit + decision-log row); revision-in-place vs new-document rule with the LLM-substrate precedent; dead documents tombstoned in docs/ATTIC.md with git history as content store; version-qualified haddock linking (Hackage for released versions, tag-pinned rebuilds otherwise). |
+| 2026-09-24 | §4 decided (with the pre-birth amendment): rot folds into the doc-drift judge; precedence = code wins at runtime, the note must be corrected regardless; implementing change stamps `implemented`, sub-stamp implemented-maps for multi-package designs; **prospective references** type the pre-birth frontier (planned/dormant/born) — dormant anchors deferred not failed, birth events activate references, NIH_PLAN §6 as the planned-documents inventory; judge covers the full document life. |
