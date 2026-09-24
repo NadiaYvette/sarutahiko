@@ -234,15 +234,46 @@ runtime, the note must be corrected regardless** (a behavior change without a no
 correction is an incomplete change; advisory status is not granted to blessed notes).
 AGENTS.md carries this to AI assistants as advisory rule 2.
 
-**Stamp mechanics — DECIDED 2026-09-24:** the implementing change stamps — the commit
-(or change set) that realizes the design's final open piece edits the Status header in
-the same change; no separate bot, no maintainer-only stamping (the maintainer reviews
-the change anyway, so review is the trust point). **Sub-stamps for multi-package
-designs:** designs spanning several packages carry an implemented-map in the header
-(`implemented: hashigakari-sqlite (date), -hasql (pending)`) — a blanket stamp would
-hide partial realization, which the drift judge would then flag; the map makes
-granularity explicit. Judge cross-check in both directions: stamps without realizing
-code, and realizing code without stamps.
+**Stamp mechanics — DECIDED 2026-09-24, protocol form (amended after maintainer
+review):** multiple mechanisms coexist as *proposals*; acceptance is human-gated and
+variegated by scope. The protocol:
+
+1. **Proposal** — the implementing change self-stamps `proposed-implemented`
+   (self-service: the human behind the arriving code proposes the realization);
+   automated mechanisms nominate too (judge cross-checks both directions; test suites
+   and io-sim evidence are machine witnesses).
+2. **Disciplines** — CI gates must pass (unit/macro suites, dual-effect parity,
+   e2e smoke; execution evidence citable by the judge).
+3. **Gate** — acceptance by the maintainer, or by the package's **subsystem
+   maintainer** (the maintainer's delegate for that scope — the Radicle delegate
+   model applied to review authority; "vassal" was the maintainer's term, *delegate*
+   reserved for key-signing). Gate = branch-merge/PR acceptance point; changes that
+   alter decisions additionally require the maintainer's blessing (§8).
+4. **Stamp** — `implemented (package, date)`; multi-package designs carry an
+   implemented-map so partial realization is explicit (`-hasql (pending)`).
+
+Judge cross-checks both directions: stamps without realizing code; realizing code
+without stamps. Dispute default: **maintainer is final**, disagreements recorded in
+the corpus (the challenge-and-amend pattern) — pending maintainer confirmation.
+
+**The partial-realization shield — DECIDED 2026-09-24 (declarative, auditable,
+expiring).** The problem: consistency checks (dead-code, coverage, judge verdicts)
+misfire on deliberately-unrealized pieces. The blessed design is itself the shield
+grant: a blessed note carries an **unrealized-surface inventory** — its implemented-
+map's `pending` entries plus explicitly deferred scope (e.g. "embeddings land v1.5").
+Checks (layer lint, dead-code, judge) suppress-or-annotate findings inside the granted
+surface; **every suppressed finding must cite its shield** ("inconsistent — but
+shielded by MEMORY §3.4 pending:hasql"), so suppression is auditable; and shields
+**expire** — a pending entry with no birth event across a phase boundary converts
+from shield to finding (`stale`). Suppression without dishonesty.
+
+**Gates for collaboration — DECIDED 2026-09-24 (structure; staffing deferred).**
+CI gates (existing) + review gate (maintainer or subsystem maintainer; blessing-
+required changes need the maintainer) + judge checks of shields/stamps as part of
+review. On Radicle this maps onto patches and delegate thresholds. Until contributors
+exist, the maintainer occupies all gates (the hokora exception — stated so the policy
+implies no multi-party fiction). Subsystem-maintainer assignments await the first
+collaborators; the mechanism is defined, the staffing is not.
 
 **Pre-birth documentation — DECIDED 2026-09-24 (the frontier).** The mirror of the
 attic problem, and thornier: no git history holds ground truth for what does not
@@ -343,3 +374,4 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §2 amended: the judge must understand the code — consistency is bidirectional; behavioral claims verified against implementing source, examples against compilable code, exit criteria against artifacts; oracle bar raised (code-reading competence), harness bar raised (anchor-graph context assembly), test suites/fixtures citable as execution evidence. |
 | 2026-09-24 | §3 decided: seven lifecycle stages (seed/draft/review/blessed/implemented/superseded/dead); invalidity as orthogonal flag overlay (erroneous/inconsistent/stale/dead-links/needs-work) carried in Status headers, flagged documents lose citability for affected fact classes until cleared; blessing mechanics formalized (dated status edit + decision-log row); revision-in-place vs new-document rule with the LLM-substrate precedent; dead documents tombstoned in docs/ATTIC.md with git history as content store; version-qualified haddock linking (Hackage for released versions, tag-pinned rebuilds otherwise). |
 | 2026-09-24 | §4 decided (with the pre-birth amendment): rot folds into the doc-drift judge; precedence = code wins at runtime, the note must be corrected regardless; implementing change stamps `implemented`, sub-stamp implemented-maps for multi-package designs; **prospective references** type the pre-birth frontier (planned/dormant/born) — dormant anchors deferred not failed, birth events activate references, NIH_PLAN §6 as the planned-documents inventory; judge covers the full document life. |
+| 2026-09-24 | §4 amended: stamping is a protocol (propose → disciplines → gate → stamp); acceptance human-gated and scope-variegated (maintainer or subsystem maintainer — delegate model applied to review authority); partial-realization shield declarative (unrealized-surface inventory in blessed notes, suppression must cite its shield, shields expire across phase boundaries); merge/PR gates structured (CI + review gate + judge checks); maintainer-final dispute default recorded pending confirmation; hokora exception stated; subsystem-maintainer staffing deferred to first collaborators. §3/§4 remainders parked: repair procedure (§2's other half), dispute path confirmation, seed formalities. |
