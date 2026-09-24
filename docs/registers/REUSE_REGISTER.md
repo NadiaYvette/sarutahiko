@@ -263,6 +263,20 @@ space; count-min or similar judged per the register when demand arrives.
   polysemy-log effect shape ≈ the catalog's `Log`). Recorded as nearest-neighbor
   reference designs so "why not just use katip?" stays answered. Trigger: any adoption
   pressure lands here first.
+- **yesod / shakespeare `RenderMessage`** (typed i18n messages): pattern adopted,
+  implementation declined — messages-as-data with total per-language dictionaries and
+  edge rendering is exactly DOC_STRATEGY §6's typed-message rule, and yesod's handler
+  helpers (`addMessageI`, `languages`) prove the shape at scale. The *implementation*
+  stays unadopted on four counts, each replaced by row machinery: Template-Haskell
+  `.msg`-file codegen (ours: message types as plain GADTs/rows, translation dictionaries
+  as extensible records — totality by type inference, no TH; file formats remain a
+  projection if wanted); `RenderMessage site msg` site-coupling (ours: a rendering
+  capability in the effect row, serving TUI/log/HTTP surfaces alike); languages as
+  bare `[Text]` (ours: typed language tags, BCP-47 via text-icu at the edge); and
+  `Text`-only rendering with no plural/ICU support (ours: per-(locale, sink) rendering,
+  text-icu MessageFormat when real locale work demands it). Reference: `~/src/yesod`
+  (publication-pending), `Text.Shakespeare.I18N`.
+  Trigger: first real surface ships user-facing strings (Phase 3).
 - **kiroku / shibuya / keiro / kioku** (keiro stack): interop-first contact strategy
   (NIH_PLAN); reuse-or-reimplement is not currently posed — hashigakari reads/writes
   their formats; deeper integration decisions wait for the contact spike.
