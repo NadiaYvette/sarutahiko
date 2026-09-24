@@ -510,9 +510,15 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    with envelope versioning (the one least-reversible decision above the substrate — logs
    are append-only, so get row-evolution right first), reducer library, policy effects
    (salience, compression, retrieval).
-8. **LLM substrate design note**: provider effect with row-typed SSE events, function-calling
-   schemas as row descriptors (shared with MCP `inputSchema`), secrets/profile scope,
-   token/context accounting feeding the cache rules.
+8. **LLM substrate design note** — now written: see `LLM_SUBSTRATE_DESIGN.md`
+   (decision: baikai stays the provider engine, we own the signature/rows/renderer/
+   interpreters; the `ModelAPI` signature with laws L1–L4 including transport-level
+   prefix stability; the canonical renderer with per-family×version golden tests;
+   profiles/secrets/usage-as-events; open items — embeddings route, transcripts,
+   hokora preferring a local-CLI provider for the live run). Original summary:
+   provider effect with row-typed SSE events, function-calling schemas as row
+   descriptors (shared with MCP `inputSchema`), secrets/profile scope, token/context
+   accounting feeding the cache rules.
 9. **Hokora slice spec** (the Phase-1.5 tracer bullet): exact event rows, turn program, and
    the LOC measurement protocol.
 10. **Policy experiment instruments** — now spec'd: see `INSTRUMENTS_SPEC.md` (cache
@@ -531,7 +537,11 @@ bench-gated. Rationale: the effect catalog is the temple's true foundation — e
 signature must compile against its discipline; the memory log's envelope versioning is the
 only top-layer decision that is expensive to reverse; the TUI/surface designs are
 intentionally last (they are projections, and §TUI survey shows they are thin once the
-registries exist).
+registries exist). **Status (2026-09-24): items 5, 6, 7, 8, and the instruments spec
+(item 10) are written — EFFECT_CATALOG_DESIGN, the MCP session-GADT decision is recorded
+in NIH_PLAN §ledger row (distill-first, typed-protocols-compatible), MEMORY_ENGINE,
+LLM_SUBSTRATE, HOKORA_SPEC, INSTRUMENTS_SPEC — and items 1–2 (Tier-0 code) are the next
+action.**
 
 ### 6.1 Naming convention
 
