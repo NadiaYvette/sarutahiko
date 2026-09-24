@@ -97,19 +97,62 @@ with reasoning and revisit triggers, so tooling questions are answered once.
 - `-Werror` only on the pinned CI GHC version, never locally, never on the floating
   matrix entries (new GHC warnings must not break contributor builds).
 
-## 5. Testing stack — tasty + hedgehog + tasty-golden
+## 5. Testing stack — tasty + hedgehog + tasty-golden, three tiers
 
 - **Runner: tasty** (composes property/golden/unit under one entry point).
-- **Property: hedgehog** (shrinker quality matters for our property-heavy design:
-  dialect parity C5, replay byte-identity, renderer round-trips, SomeRow/witness laws,
-  cache-simulator determinism).
+- **Property: hedgehog** (integrated shrinking via Applicative — no hand-written
+  shrinkers for our deep row/GADT data), **QuickCheck permitted where interop demands**
+  — and interop pull is strong: typed-protocols, io-classes/io-sim, and the Cardano
+  test machinery are QuickCheck-based. One *runner* is the invariant; both engines may
+  sit behind it.
 - **Golden: tasty-golden** (renderer bytes per family×version, golden SQL per dialect,
-  quirk fixtures).
-- QuickCheck permitted where interop demands it (typed-protocols' test machinery) —
-  both engines coexisting behind tasty is fine; one *runner* is the invariant.
-- Suites that are CI suites, not local-only: the testkit parity suite (both effect
-  systems), kakegoe fixture conformance, the expressiveness-trial suites
-  (PolicyEffect S1–S6, MCP session GADT) when they exist.
+  quirk fixtures). **Benchmarks: tasty-bench** (same runner invariant).
+- **Concurrency testing: io-sim** (deterministic scheduler from the io-classes stack —
+  agent turns, supervision restarts, and yamaarashi strategies run under reproducible
+  schedules; races become fixtures), dejafu as the alternative exploration engine.
+- **Engines:** tmp-postgres for real-Postgres dialect-parity tests (C5); temp-dir
+  SQLite; recording interpreters/transcript fixtures replace HTTP-mocking libraries
+  by design (none admitted).
+
+### 5.1 Tiers — macro testing is distinct from unit testing, structurally
+
+Separate cabal test-suites per tier so CI selects them:
+
+- **`test:unit`** — pure functions, codecs, reducers, witness dispatch, type-level
+  machinery. Fast; every push, every matrix leg.
+- **`test:macro`** — a layer with real collaborators in a controlled environment:
+  hokora turn under mock model + in-process tool + real SQLite; dual-effect parity;
+  dialect parity on real engines; codec suites against transcript fixtures. The
+  hokora's *mock ≠ skip a layer* rule is this tier's boundary rule.
+- **`test:e2e`** — full fidelity: hokora live run (real MCP subprocess + local-CLI or
+  real provider + real store), conformance against upstream implementations,
+  replay-from-crash. Smoke on push; full on nightly alongside the kakegoe sweeps
+  (which are measurement, not assertion — §11).
+
+### 5.2 Formal verification — a separate axis, employed surgically
+
+Verification (proofs over all inputs) is distinct from testing (sampling) — but Haskell
+blurs the boundary, so the policy is a four-step spectrum with a surgical rule:
+
+1. **Type-level verification (free, pervasive):** GADT state indices, `PolicyEffect`
+   phantoms, `Scoped` regions, capability rows. The capability-row grant's security
+   argument *is a parametricity theorem* — the catalog note must carry a written proof
+   sketch, with the escape-attempt suite as its empirical check, not its replacement.
+2. **Property laws (the workhorse):** L1–L4, C5, replay identity — universal claims,
+   sampled.
+3. **Liquid Haskell refinements (pragmatic middle, opportunistic):** log/cursor
+   invariants (`seq` monotonicity, cursor bounds, dispatch totality) when that layer
+   exists.
+4. **Model checking / deduction (heavyweight, two named targets):** a TLA+/PlusCal
+   spec of the MCP handshake (or inherited Agda proofs — which count double in the
+   typed-protocols adoption decision) and of the `Supervise` restart/kill-timeout
+   policy — the timing/interleaving properties sampling is weakest at. (Apalache is
+   available locally as the symbolic checker.)
+
+Most of the program stays property-tested: codec/row/glue/reducer code is where the
+type discipline plus laws already suffice, and full verification there is ceremony.
+Meaningful verification concentrates exactly where sampling is weakest: interleaving,
+timing, resource guarantees, protocol deadlocks.
 
 ## 6. Documentation strategy (first-class)
 
@@ -136,7 +179,8 @@ Four layers, with enforcement:
   hosts buys nothing). Reference workflow: typed-protocols' `haskell.yml` (IOG's
   setup-haskell actions; dependabot already in their tree — copy the shape).
 - **Matrix:** single leg — the pinned latest-stable GHC (per §1's hypermodern
-  stance) × {core test suites, dual-effect parity suites}.
+  stance) × {test:unit, test:macro, dual-effect parity}; test:e2e smoke on push,
+  full on the nightly job.
 - **Jobs:** lint (fourmolu --check, cabal-fmt --check, hlint, cabal check, weeder once
   packages exist), custom lints (SQL-lint, parity lint, layer lint), docs
   (`cabal haddock`), test matrix, **nightly benchmarks** writing to the ledger

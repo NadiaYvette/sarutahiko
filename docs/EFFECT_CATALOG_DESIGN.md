@@ -187,6 +187,11 @@ type; a class of policy code dies.
 - Higher-order operations must not provide an escape hatch: no granted effect may accept an
   `Eff es'` computation and run it in a *richer* row than the plugin was granted. Audited
   per signature at catalog-review time; the testkit includes an escape-attempt suite.
+- **The security argument is a parametricity theorem** and is recorded as such: a written
+  proof sketch (the free-theorem-style obligation that a rank-2 `∀ es. Granted :<: es =>
+  Eff es ()` consumer cannot name effects outside `Granted`, under the interpreter's
+  operational semantics) lives in this note's §6.1 follow-up, with the escape-attempt
+  suite as its empirical check — not its replacement (INFRASTRUCTURE §5.2 tier 1).
 - Runtime gates that are *UX* rather than capability (per-call consent prompts for shell
   hooks, TTY approval) remain runtime — they need human input, not type safety.
 
