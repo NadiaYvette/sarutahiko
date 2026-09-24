@@ -5,71 +5,67 @@ Related: `EFFECT_CATALOG_DESIGN.md` (`ModelAPI` signature, mock interpreters, te
 `INSTRUMENTS_SPEC.md` §2.1 (the canonical renderer — this note's forced deliverable),
 `MEMORY_ENGINE_DESIGN.md` (§5.1 cache contract, §7 secret scoping), `HOKORA_SPEC.md`
 (the first consumer), `NIH_PLAN.md` (Tier 2, ledger, offline-codegen rule)
-Anchor precedent: **baikai** (`~/src/baikai/` — 媒介, "mediation"), the keiro ecosystem's
-provider-neutral LLM client: one dispatch surface (`completeRequest`/`streamRequest`)
-routed by a `Model` value, models-as-data with a generated catalog, typed streaming
-events with an exactly-one-terminator invariant, categorized errors with `isRetryable`,
-`Usage`/`Cost` monoids, and call-time options that *translate/demote* across providers
-rather than silently dropping (`ThinkingTranslation`, cache-retention downgrades).
+Anchor precedent: **baikai** (`~/src/baikai/` — 媒介, "mediation") — the keiro ecosystem's
+provider-neutral LLM client, retained as *reference implementation and design-lesson
+donor*, not as engine (§0). Precedent for the revised decision: kuroko's own LLM pillar
+(hand-rolled OpenAI/Claude streaming handlers) — provider transports were NIH'd once
+before on the vinyl-era stack.
 Naming: candidate **utai** (謡, the chant itself — utaibon 謡本 being the libretto book
 already reserved for the memory engine); pending blessing per §6.1. Working package
 name `sarutahiko-model` until then.
 
 ---
 
-## 0. Purpose and the central decision
+## 0. Purpose and the central decision (revised v0.2)
 
 The LLM substrate is the layer every other top layer consumes: the turn program speaks
 to models only through it, the memory engine's policy calls embeddings through it, the
-instruments replay it. This note fixes its design — and its central decision, which
-follows the same doctrine as hashigakari-over-hasql:
+instruments replay it. The v0.1 draft proposed reusing baikai as the provider engine,
+transplanting the hashigakari-over-hasql doctrine. **That transplant was an analogy
+mismatch, and the maintainer correctly challenged it:** the glue-only alternative
+exists (the arena consumes the keiro stack directly), so adoption must be justified by
+more than reuse — and under the program's actual motivations (design aesthetics,
+re-grounding Haskell coverage in the row/effects/streams principles, redesign in light
+of first iterations, integration contact with our protocol stacks) it fails. Hasql
+earned reuse because its core *already embodies* compositional row-adjacent design;
+baikai's core vocabulary (`Message`/`Content`/`Options`/`Response` nominal ADTs) is
+precisely the first-iteration design class this program replaces. The revised central
+decision:
 
-> **Do not rebuild provider transports. `sarutahiko-model` owns the *signature*, the
-> row vocabulary, the canonical renderer, and the interpreters; `baikai` remains the
-> provider engine.**
+> **Provider APIs are members of the protocol/format codec bag.** The OpenAI-compatible
+> family and the Anthropic family are two row-shaped wire protocols (JSON envelopes,
+> SSE event streams, open options), implemented with the bag's own machinery;
+> local-CLI providers (claude -p, codex exec) run through the `Process` signature.
+> Baikai is a reference implementation and design-lesson donor — its laws and
+> taxonomies are confirmed and adopted; its code is not depended on.
 
-Baikai already solves the hardest non-record part of this layer — one dispatch surface
-across Anthropic/OpenAI/compatible hosts/local CLIs, typed streams, categorized errors,
-cost accounting — and it is part of the ecosystem we are in dialogue with, built on
-effectful and streamly (both our choices). Rewriting it would violate the plan's
-"never rebuild wire machinery" rule for zero records-side gain. What baikai *lacks* is
-exactly what our substrate adds: effect-signature neutrality, row-typed request/event
-vocabularies, the canonical renderer, and law-tested mock/recording interpreters.
+This follows the plan's own demand-order logic: no other wire protocol in the program
+is exercised by every layer daily. It also strengthens the answer-to-Nadeem thesis:
+kuroko already demonstrated provider access without first-iteration dependencies; the
+substrate makes that cheaper still (SSE framing via yamaarashi, row codecs, open
+envelopes, `Process`-bracketed CLIs). Design lessons adopted from baikai (provenance
+now "confirmed against first iteration"): the exactly-one-terminator stream law (L1),
+disjoint-usage monoids (L2), option translation/demotion honesty (L3), categorized
+errors with `isRetryable`, and — as independent validation of the catalog's §6.2 —
+baikai's own evolution from a `Provider` typeclass + existential to a registry of
+operation-records (handlers-as-records, first-iteration experience converging on the
+blessed design).
 
 ## 1. Package layout
 
 | Package | Contains |
 |---|---|
-| `sarutahiko-model` | The `ModelAPI` signature (GADT, per catalog rules), the request/response/event row vocabulary, tool-schema descriptors (shared with `sarutahiko-schema`/MCP), the **canonical renderer**, laws. Zero provider dependencies; zero effect-system dependencies. |
-| `sarutahiko-model-baikai` | Production interpreter: `ModelAPI` ops → baikai calls; `Model` records ↔ model rows; usage/cost events emitted as rows. The only production interpreter in v1. |
+| `sarutahiko-model` | The `ModelAPI` signature (GADT, per catalog rules), the request/response/event row vocabulary, tool-schema descriptors (shared with `sarutahiko-schema`/MCP), the **canonical renderer**, laws, the model-catalog rows (hand-maintained v1; offline-codegen from provider docs later, per the ledger rule). Zero provider dependencies; zero effect-system dependencies. |
+| `sarutahiko-model-openai` | The OpenAI-compatible codec (chat completions + SSE streaming + embeddings endpoint): one de-facto standard covering DeepSeek, OpenRouter, Together, ollama, vLLM, …. |
+| `sarutahiko-model-anthropic` | The Anthropic messages codec (event taxonomy, cache-control, thinking surface). |
+| `sarutahiko-model-local` | Local-CLI providers (claude -p, codex exec) as a `Process`-signature interpreter. |
 | `sarutahiko-model-mock` | Deterministic mock (scripted responses) and **transcript-serving** interpreter (kakegoe's replays; the testkit pattern). |
 
-Provider additions, quirks, and transport fixes are **baikai's** to own (upstream
-contributions, not forks); our tree adds interpreters only. If baikai lacks an
-operation the catalog requires (embeddings — see §6), the gap is either upstreamed to
-baikai or served by a thin direct interpreter in `sarutahiko-model-baikai`, never by a
-new provider transport in our tree.
-
-### 1.1 Boundary semantics (rows in, nominal out; streams absorbed at the edge)
-
-Two clarifications that follow from questions the maintainer raised:
-
-- **Rows ⇄ nominal mapping.** Baikai's API is nominal (`CompletionRequest`,
-  `AssistantMessageEvent`, `Options`); ours is structural (rows). The interpreter
-  field-by-field maps rows ⇄ baikai types. This is the sanctioned exception to the
-  DTO ban (NIH_PLAN §3.1, amended): the ban targets *internal* boundaries where DTO
-  multiplication is O(N²); adapters to external nominal APIs are mechanical,
-  logic-free (no policy), localized entirely inside the bridge, round-trip
-  property-tested, and O(1) per external library. No call site above the boundary
-  ever names a baikai type. Symmetry note: baikai's own `baikai-claude`/`-openai`
-  are the same pattern one layer down — our bridge adds one more "vendor" (the row
-  vocabulary) at the top.
-- **Streamly never leaks.** Baikai is internally streamly-based (also our §3.5
-  backend choice). Its `streamRequest` results are converted to `EventCursor`
-  steppers at the interpreter boundary — the same absorption move as the conduit
-  adapters in `yamaarashi-conduit` — so no streamly type appears in any signature,
-  and the yamaarashi kernel plan is untouched. L1's exactly-one-terminator law is
-  verified across the conversion by the testkit.
+Codec quirks, auth variants, and provider drift are owned by the two codec packages
+and tracked against recorded provider transcripts (kakegoe corpora double as golden
+fixtures). Because the codecs are protocol-bag members, they inherit the bag's
+conformance discipline; because there are two, vendor sprawl stays bounded — new
+"vendors" are model-catalog rows, not new code paths.
 
 ## 2. The `ModelAPI` signature
 
@@ -90,7 +86,8 @@ data EventCursor m where                       -- exactly-one-terminator invaria
               -> EventCursor m
 ```
 
-Laws (additions to the catalog's generic ones):
+Laws (additions to the catalog's generic ones; provenance = confirmed against baikai's
+first iteration):
 
 - **L1 (terminator):** every `Stream` yields exactly one terminal event (`Done` or
   `Error`), last. Adopted verbatim from baikai's invariant; the testkit checks it for
@@ -105,6 +102,8 @@ Laws (additions to the catalog's generic ones):
 - **L4 (prefix stability):** given an identical `ContextRow` and identical options, the
   interpreter emits byte-identical requests (testable via the canonical renderer). This
   is the law that makes the memory engine's cache contract real at the transport layer.
+  Under the codec decision it is testable *end to end*: codec → renderer → bytes are
+  all ours.
 
 Scope exclusions: no retry/backoff policy (that is `Supervise`/turn-program territory —
 the interpreter surfaces categorized errors, policy lives above); no secret *storage*
@@ -127,19 +126,26 @@ usage events.
 - **Tool descriptors:** a tool's function-calling schema *is* a row descriptor rendered
   by `sarutahiko-schema` — the same machinery MCP `inputSchema` uses (one
   implementation, two consumers; recorded as the schema package's contract).
-- **Models as data:** baikai's `Model` records (API tag, costs, context window, quirks)
-  are mirrored as model rows; the generated catalog remains baikai's, projected.
+- **Models as data:** model catalogs are rows (API family, base URL, costs, context
+  window, quirks — baikai's `Model` shape confirmed as the right fields); generated
+  catalogs remain an offline-codegen option from provider documentation (ledger rule),
+  with hand-maintained rows as the v1 truth.
+- **Embeddings:** resolved by the OpenAI-compatible codec's `/v1/embeddings` endpoint
+  (the codec bag's first embeddings consumer; baikai's `Baikai.Embedding` module
+  confirmed the field shape as reference). `Embed` stays v1.5; lexical-first retrieval
+  still unblocks nothing.
 
 ## 4. The canonical renderer (the instruments' forced deliverable)
 
 `renderCanonical :: ProviderFamily -> RequestVersion -> ContextRow -> ByteString`
 
 - Owned here, **shared code** per INSTRUMENTS_SPEC §2.1: the bytes kakegoe's simulator
-  hashes must be produced by the same function that (via baikai's transport) shapes the
-  request. Honest approximation, stated: providers hash *their* serialization of the
-  message prefix; our canonical rendering of that prefix is the right hash target
-  because the message array's content and order are what both engines preserve. This
-  keeps the declared upper-bound-model status of the cache simulator.
+  hashes must be produced by the same function that (via our codecs) shapes the
+  request. Under the codec decision this is exact, not approximate: renderer → codec →
+  bytes are all ours, and the honest-approximation caveat of the bridge era is
+  retired — providers hash their serialization of the message prefix, and the codec
+  *is* that serialization. The simulator's declared upper-bound status now comes only
+  from block-splitting, not from any divergence between measured and sent bytes.
 - Versioned per `ProviderFamily` **and** `RequestVersion` (renderer version policy,
   resolving INSTRUMENTS_SPEC §6.1: any byte-affecting change bumps `RequestVersion`;
   experiment manifests record the pair; hashes across versions are explicitly
@@ -154,9 +160,8 @@ usage events.
 
 - Interpreters are row-polymorphic over profile scope: the resolved credential handle
   and `Model` travel with the request (Hermes' explicit-profile rule — never frozen at
-  import); the interpreter holds no global mutable provider state of its own (baikai's
-  process-global registry is contained behind the interpreter boundary and documented
-  as such).
+  import); interpreters hold no global mutable provider state; connection reuse
+  (TLS-manager caching per host) is an interpreter concern done per-profile.
 - Usage/cost roll-ups are emitted as session events (memory engine vocabulary), so the
   cost ledger is a derived projection, and kakegoe replays carry realistic accounting.
 - Streaming concurrency: `EventCursor` steppers unfold into yamaarashi streams; the
@@ -164,17 +169,20 @@ usage events.
 
 ## 6. Open items
 
-1. **Embeddings coverage:** baikai's README names no embedding API; decide
-   upstream-to-baikai vs thin-direct interpreter when `Embed` lands (v1.5; the memory
-   engine's lexical-first retrieval means nothing blocks on it).
+1. **Codec quirk inventory v1** (the new §1's first deliverable): auth header styles;
+   SSE event taxonomies and their row encodings (Anthropic's typed event stream vs
+   OpenAI's delta objects); tool-call delta shapes; usage-report placement (stream
+   tail vs separate event); retry-relevant response headers. Built against recorded
+   provider transcripts as golden fixtures.
 2. **Transcript format** (kakegoe §6.2): request/response/event rows recorded per
-   turn, versioned like corpora; lands with the mock package.
+   turn, versioned like corpora; lands with the mock package — now also serving as
+   the codecs' golden-fixture format.
 3. **Reasoning/thinking option surface:** adopt baikai's translation semantics
    wholesale (L3) but confirm the row encoding covers clamp/collapse/drop distinctly —
    the memory engine's budget accounting may want to know *which* happened.
-4. **Local-CLI providers** (claude -p / codex exec): baikai supports them; the hokora
-   should prefer one for its live run (no network dependency, still a real provider
-   path through the full stack) — confirm subprocess stderr/exit-code mapping into
-   `ErrorCategory` at implementation.
+4. **Hokora live-run provider:** two zero-network options — a local CLI via `Process`
+   (claude -p / codex exec) or an OpenAI-compatible codec against a localhost host
+   (ollama/vLLM); confirm stderr/exit-code mapping into `ErrorCategory` for the CLI
+   path at implementation. Either exercises the full stack.
 5. **Naming:** bless `utai` (or choose otherwise) before the first real package ships;
    `utaibon`/memory-engine remains reserved alongside.
