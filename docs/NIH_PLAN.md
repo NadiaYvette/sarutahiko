@@ -513,18 +513,17 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    with envelope versioning (the one least-reversible decision above the substrate — logs
    are append-only, so get row-evolution right first), reducer library, policy effects
    (salience, compression, retrieval).
-8. **LLM substrate design note** — now written: see `LLM_SUBSTRATE_DESIGN.md`
-   (decision: baikai stays the provider engine, we own the signature/rows/renderer/
-   interpreters; the `ModelAPI` signature with laws L1–L4 including transport-level
-   prefix stability; the canonical renderer with per-family×version golden tests;
-   profiles/secrets/usage-as-events; open items — embeddings route, transcripts,
-   hokora preferring a local-CLI provider for the live run). Original summary:
-   provider effect with row-typed SSE events, function-calling schemas as row
-   descriptors (shared with MCP `inputSchema`), secrets/profile scope, token/context
-   accounting feeding the cache rules.
+8. **LLM substrate design note** — now written as **utai**: see `LLM_SUBSTRATE_DESIGN.md`
+   (v0.2 decision: provider APIs are codec-bag members — two row-codecs, OpenAI-compatible
+   + Anthropic, local CLIs via `Process`, baikai as reference/donor; the `ModelAPI`
+   signature with laws L1–L4 including transport-level prefix stability; the canonical
+   renderer with per-family×version golden tests; profiles/secrets/usage-as-events).
+   Original summary: provider effect with row-typed SSE events, function-calling schemas
+   as row descriptors (shared with MCP `inputSchema`), secrets/profile scope,
+   token/context accounting feeding the cache rules.
 9. **Hokora slice spec** (the Phase-1.5 tracer bullet): exact event rows, turn program, and
    the LOC measurement protocol.
-10. **Policy experiment instruments** — now spec'd: see `INSTRUMENTS_SPEC.md` (cache
+10. **Policy experiment instruments** — now spec'd as `kakegoe`: see `INSTRUMENTS_SPEC.md` (cache
     simulator, replay harness, corpus + checkers; six cross-package requirements the
     instruments impose — canonical renderer as shared code in `sarutahiko-model`,
     deterministic recording interpreters, corpus-as-log, scrub-manifest-gated privacy,
@@ -561,14 +560,17 @@ vocal libretto — the words the performance follows) → the memory/context eng
 that note's naming placeholder; **katatsuke** (型付, choreography notation) → reserved for
 the future workflow/turn-choreography runtime (keiro-analog); **tetsuke** (手付, percussion
 score) → the scheduler/heartbeat/timeout service; **kantsuke** (管付, the nohkan flute's
-score — the cueing notation) → the event bus (cueing and signaling); **nohkan** (能管, the
-flute instrument itself) → held in reserve. **Blessed 2026-09-24: kakegoe (掛け声)** — the
+score — the cueing notation) → the event bus (cueing and signaling); **nohkan** (能管,the flute instrument itself) → held in reserve. **Blessed 2026-09-24: kakegoe (掛け声)** — the
 drummers' calls coordinating the 四拍子 (shibyōshi) ensemble — names the
 policy-experiment instruments package (`kakegoe`, `kakegoe-gen`; formerly the working
 name `sarutahiko-instruments`), with the maintainer's rationale: kakegoe name *the
 coordination* of the ensemble, not the instruments themselves, which is faithful to what
 that package is (the English gloss "instruments" slips a little; the Japanese title is
-the true name). (Corrections 2026-09-24: 謡本 is utaibon, not
+the true name). **Blessed 2026-09-24: utai (謡)** — the chant; the LLM layer
+(`utai`, `utai-openai`, `utai-anthropic`, `utai-local`, `utai-mock`), per the
+maintainer: the LLM (perhaps with speech synthesis) is the voice of the computer — *vox
+calculi, vox dei* — with utaibon 謡本 (the libretto book) reserved for the memory engine,
+the chant/book pairing reading exactly right. (Corrections 2026-09-24: 謡本 is utaibon, not
 katatsuke; the flute score is kantsuke, the instrument nohkan — maintainer's terms
 corrected in registry.) Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
 the unseen handlers that move props on and off the stage (maps naturally to process

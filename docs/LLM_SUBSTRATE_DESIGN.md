@@ -10,9 +10,11 @@ provider-neutral LLM client, retained as *reference implementation and design-le
 donor*, not as engine (§0). Precedent for the revised decision: kuroko's own LLM pillar
 (hand-rolled OpenAI/Claude streaming handlers) — provider transports were NIH'd once
 before on the vinyl-era stack.
-Naming: candidate **utai** (謡, the chant itself — utaibon 謡本 being the libretto book
-already reserved for the memory engine); pending blessing per §6.1. Working package
-name `sarutahiko-model` until then.
+Naming: **utai** (謡, the chant itself) — blessed 2026-09-24. The LLM is the voice of the
+computer (*vox calculi*); utaibon 謡本 — the libretto book the chant is performed from —
+remains reserved for the memory engine, the pairing reading exactly right. Packages:
+`utai` (signature/rows/renderer/laws/catalog), `utai-openai`, `utai-anthropic`,
+`utai-local`, `utai-mock`.
 
 ---
 
@@ -55,11 +57,11 @@ blessed design).
 
 | Package | Contains |
 |---|---|
-| `sarutahiko-model` | The `ModelAPI` signature (GADT, per catalog rules), the request/response/event row vocabulary, tool-schema descriptors (shared with `sarutahiko-schema`/MCP), the **canonical renderer**, laws, the model-catalog rows (hand-maintained v1; offline-codegen from provider docs later, per the ledger rule). Zero provider dependencies; zero effect-system dependencies. |
-| `sarutahiko-model-openai` | The OpenAI-compatible codec (chat completions + SSE streaming + embeddings endpoint): one de-facto standard covering DeepSeek, OpenRouter, Together, ollama, vLLM, …. |
-| `sarutahiko-model-anthropic` | The Anthropic messages codec (event taxonomy, cache-control, thinking surface). |
-| `sarutahiko-model-local` | Local-CLI providers (claude -p, codex exec) as a `Process`-signature interpreter. |
-| `sarutahiko-model-mock` | Deterministic mock (scripted responses) and **transcript-serving** interpreter (kakegoe's replays; the testkit pattern). |
+| `utai` | The `ModelAPI` signature (GADT, per catalog rules), the request/response/event row vocabulary, tool-schema descriptors (shared with `sarutahiko-schema`/MCP), the **canonical renderer**, laws, the model-catalog rows (hand-maintained v1; offline-codegen from provider docs later, per the ledger rule). Zero provider dependencies; zero effect-system dependencies. |
+| `utai-openai` | The OpenAI-compatible codec (chat completions + SSE streaming + embeddings endpoint): one de-facto standard covering DeepSeek, OpenRouter, Together, ollama, vLLM, …. |
+| `utai-anthropic` | The Anthropic messages codec (event taxonomy, cache-control, thinking surface). |
+| `utai-local` | Local-CLI providers (claude -p, codex exec) as a `Process`-signature interpreter. |
+| `utai-mock` | Deterministic mock (scripted responses) and **transcript-serving** interpreter (kakegoe's replays; the testkit pattern). |
 
 Codec quirks, auth variants, and provider drift are owned by the two codec packages
 and tracked against recorded provider transcripts (kakegoe corpora double as golden
