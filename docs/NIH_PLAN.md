@@ -515,6 +515,12 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    token/context accounting feeding the cache rules.
 9. **Hokora slice spec** (the Phase-1.5 tracer bullet): exact event rows, turn program, and
    the LOC measurement protocol.
+10. **Policy experiment instruments** (from MEMORY_ENGINE_DESIGN §8): prefix-hash cache
+    simulator, pure-policy replay harness with deterministic mock `ModelAPI`, synthetic
+    corpus + task checker (shikumi-pattern). Grid sweep decides compression policy;
+    ablation decides salience v1; precision@k crossover decides retrieval backends.
+    Irreversible/contract decisions (log spine, dialect assumptions, cache-safety
+    invariant) stay review/property-gated, not metric-tuned.
 
 Suggested design order: **5 → 6/3 → 7 → 8 → 9**, with 1–2 as the first code and 4
 bench-gated. Rationale: the effect catalog is the temple's true foundation — every later
@@ -532,7 +538,13 @@ kami at the threshold). One deliberate exception: `yamaarashi` (山嵐, "porcupi
 streaming-stack family as a nod to porcupine itself, kept in Roman letters for packaging.
 The database access library is `hashigakari` (橋掛かり), the bridge onto the stage — apt
 for the library that carries rows between the database and the application (and beams are
-involved); the four hashira 柱 are held in reserve as a fallback name. Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
+involved); the four hashira 柱 are held in reserve as a fallback name. Registered 2026-09-24
+as candidates (mappings proposed, pending maintainer blessing): **utaibon** (謡本, the
+vocal libretto — the words the performance follows) → the memory/context engine, resolving
+that note's naming placeholder; **katatsuke** (型付, choreography notation) → reserved for
+the future workflow/turn-choreography runtime (keiro-analog); **tetsuke** (手付, percussion
+score) → the scheduler/heartbeat/timeout service; **nohkan** (能管, flute; its score is
+管付 kan-tsuke) → the event bus (cueing and signaling). Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
 the unseen handlers that move props on and off the stage (maps naturally to process
 supervision/harness/runner roles). Reserve Noh terms deliberately and check for collisions
 with existing repos before naming new packages; candidate future mappings (to be confirmed

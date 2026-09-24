@@ -211,14 +211,56 @@ design must make the cache-hostile path *type-visible* and consent-gated.
   maps to store-level operations plus rebuilds. This constraint must be stated to users
   as a product fact, not papered over.
 
-## 8. Metrics that decide the open questions
+## 8. Metrics that decide the open questions — the empirical protocol
 
 The engine's open questions (compression triggers, salience weights, retrieval depth) are
-not decidable a priori — they are *measurable*: cache hit rate per turn, tokens-in-context
-per solved task, compression frequency, retrieval precision (via `RetrievalHit` feedback),
-rebuild times. The hokora instruments these from day one on its single session; the plan's
-benchmark ledger (NIH_PLAN §4) gains a "policy metrics" section. Design iterations happen
-against these numbers, not against intuition.
+not decidable a priori — but most are decidable *empirically*, offline, before real usage.
+The protocol, stated so experiments are reproducible:
+
+**8.1 The three instruments.**
+
+1. **The prefix-hash cache simulator.** Provider prefix caching is a deterministic
+   function of context bytes: identical early bytes ⇒ hit. Cache hit rate is therefore
+   *simulable offline with zero provider calls* — hash the prefix at each turn boundary,
+   compare against the previous turn's hashes. This makes the most expensive-feeling
+   question (does this policy destroy the cache?) the cheapest to answer.
+2. **The policy harness.** A policy is a pure function `(log prefix) -> decisions`.
+   The harness replays N policies over the same log prefixes against a *deterministic*
+   mock `ModelAPI` (the kuroko Mock precedent) or recorded provider transcripts, and
+   measures: tokens-in-context per turn, simulated cache hits (8.1.1), compression
+   frequency, retrieval selections, and — where the workload has a checker — task success.
+3. **Workload corpora with checkers.** Synthetic-first (privacy): seeded multi-step task
+   suites in the shape the agent will serve (replays of hokora sessions once real;
+   kanban-like long jobs; transcript-like interactions). Task success needs a checker —
+   for coding-shaped workloads, the *pattern* of the keiro ecosystem's `shikumi` eval
+   harness family is the reference; our hokora-scale checker is a thin pure predicate.
+
+**8.2 The experiment designs.**
+
+- **Compression (trigger × span × loss budget):** a grid sweep; each cell scored by
+  tokens-per-solved-task, cache-hit retention, and post-compression task success; report
+  the Pareto frontier and *choose an operating point from the frontier*, not by taste.
+- **Salience v1 (feature set over spine fields):** ablation over the feature lattice;
+  the shipped set is the cheapest subset within ε of the full set's score.
+- **Retrieval (lexical vs embeddings, depth k):** precision@k against judged relevance on
+  seeded queries, plus index rebuild cost; the embeddings decision is a measured crossover,
+  not a religion.
+
+**8.3 What is *not* empirically decidable — and what gates it instead.**
+
+| Decision | Why not tunable | Gate |
+|---|---|---|
+| Spine fields (§3.1) | irreversibility; no metric can price a future migration | adversarial design review: "if this changed later, where would it live?" — anything with a plausible answer moves to payload |
+| Cross-dialect ordering assumptions (§3.2.5) | correctness, not quality | property tests: same events ⇒ identical projections on SQLite and Postgres |
+| Cache-safety contract (§5.1) | invariant, not objective | pass/fail around every experiment; a policy that violates it is disqualified, however well it scores |
+| Real-usage salience drift | needs actual users | re-evaluation at Phase 3 on fleet metrics; the harness gives direction, deployment gives verdict |
+
+Guard: synthetic corpora overfit. Every harness number is directional until reproduced on
+real (consented, anonymized) sessions at Phase 3; the plan's benchmark ledger (NIH_PLAN
+§4) records both origins.
+
+The hokora instruments all of this from day one on its single session; design iterations
+happen against these numbers, not against intuition.
 
 ## 9. Non-goals
 
@@ -233,11 +275,20 @@ against these numbers, not against intuition.
 
 ## 10. What remains to decide here (the next revision's agenda)
 
-1. Compression trigger/span/loss-budget policy, stated as testable rules (§5.2).
-2. Salience v1 feature set over spine fields (§5.2) — small enough to ship in the hokora.
+1. Compression trigger/span/loss-budget policy, stated as testable rules (§5.2) — decided
+   by the §8.2 grid sweep once the harness exists; the *rules' form* (threshold vs
+   turn-boundary triggering) is itself a grid dimension, not a pre-decision.
+2. Salience v1 feature set over spine fields (§5.2) — decided by §8.2 ablation; ship the
+   cheapest subset within ε.
 3. The `PolicyEffect` row-field type's exact encoding and its enforcement point in the
-   turn program (§5.1.4).
+   turn program (§5.1.4) — not metric-decidable: decided by an expressiveness trial
+   (can the encoding express all §5.1 contract clauses and reject a violating policy at
+   the enforcement point across a scenario suite?), i.e. compile-time, not runtime.
 4. Retrieval backends: lexical index shape (§5.3) and whether embeddings land in Phase 2
-   or 3 (hokora ships lexical only).
+   or 3 (hokora ships lexical only) — decided by the §8.2 precision@k crossover.
 5. The `SomeRow` tagging scheme for `(kind, schemaV)` — interplay with the catalog's
-   `SomeRow` standard (EFFECT_CATALOG_DESIGN §6.4) needs one worked example.
+   `SomeRow` standard (EFFECT_CATALOG_DESIGN §6.4) needs one worked example — decided by
+   property tests (round-trip, reducer filtering, cross-dialect), correctness-gated.
+6. Build the §8 instruments themselves: cache simulator, policy harness, first synthetic
+   corpus + checker. This is a backlog item in its own right (see NIH_PLAN backlog),
+   sized for the hokora phase.
