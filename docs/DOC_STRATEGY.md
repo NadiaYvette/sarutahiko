@@ -336,15 +336,49 @@ maintainer read, challenged where needed, and owns the content — the session's
 challenge-and-amend record is the intended pattern); the rules for future contributors
 (human-drafted proposals land under the same review; CI gates apply to docs).
 
-## 9. Exposure policy — public mirrors
+## 9. Exposure policy — DECIDED 2026-09-24 (everything public; formal references; prominent credit)
 
-The GitHub mirror is **public**, and the corpus contains evaluative analysis of another
-person's ecosystem by name (the "answer to Nadeem" framing — respectful, but named and
-public), local paths (`~/src/…`), references to private repositories, and internal
-decision history. The maintainer has committed all of it knowingly; *policy should make
-that a decision rather than an accident*: what is safe to publish; whether any document
-class ever gets a private/no-mirror treatment; the review rule for newly public-bound
-content; and the cross-ecosystem diplomacy stance (named analysis of others' work).
+**Everything in this repository is meant to be public** — pulled, mirrored, read. No
+document class gets a private/no-mirror treatment; the review rule for new content is
+the ordinary blessing flow. The maintainer's audit decision: nothing currently in-tree
+is an outright publishing hazard (verified: no secrets/credentials; tool-local files
+harmless), and any future outright-bad find is alerted and removed immediately.
+
+**Formal references to people.** Our-voice documents refer to **Nadeem Bitar** by full
+name (the six bare first-name instances were swept to formal form on decision day); the
+affectionate framing ("the answer to Nadeem") is rephrased in our voice to the
+**keiro-comparison thesis** — the comparison is with the ecosystem's work, and the
+respect is expressed through formality and credit, not familiarity. The maintainer
+explicitly welcomes direct feedback from Nadeem Bitar.
+
+**Local paths out, public references in.** `~/src/…` references are replaced by
+publicly usable references: GitHub URLs for public repositories, Hackage names for
+published packages; the maintainer's own not-yet-public repositories are referenced by
+name with *(publication pending)* — and publication becomes the follow-up that keeps
+the reference honest. The doc-drift judge's link-checker enforces resolvability
+mechanically, so this policy is self-enforcing once the judge runs.
+
+**Cross-ecosystem credit — prominent and granted.** The projects and maintainers whose
+code and design analysis has informed this program — **including by the rejection of
+their approaches** — receive prominent credit as derivation sources. Concretely: a
+`CREDITS.md` at the root listing the keiro ecosystem (baikai, keiro, kiroku, shibuya,
+kioku, shikumi), Hermes (Nadeem Bitar), and the upstream Haskell projects (typed-
+protocols/IOG, hasql, effectful, polysemy, streamly, conduit, porcupine,
+large-records/large-anon, hlint, brittany, and others as the register grows), each with
+what was learned from it. License note: design influence carries no license obligation;
+**code reuse does** — every REUSE_REGISTER row that lands code records its license
+field, and LICENSES/ third-party notices accompany reused code (the telix-whitepaper
+LICENSES/ directory is the pattern).
+
+**Tone: the about-face.** Differing-design-decision discussions in our-voice documents
+use a respectful engineering register: state what the other design optimizes for, what
+we chose instead, and why — criticism targets designs, never people, and charged
+phrasings ("counterexamples", "hell", "god object") are rewritten in our voice (the
+doctrine now reads "first-iteration designs whose core vocabulary predates these
+principles"). Verbatim quoted transcripts (the Gemini conversation records) are
+*archived records*: they retain their original language under a quotation header
+marking them as unedited third-party-voiced history — our tone policy governs our
+voice, not the archive.
 
 ## 10. Boundaries with adjacent artifacts
 
@@ -375,3 +409,4 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §3 decided: seven lifecycle stages (seed/draft/review/blessed/implemented/superseded/dead); invalidity as orthogonal flag overlay (erroneous/inconsistent/stale/dead-links/needs-work) carried in Status headers, flagged documents lose citability for affected fact classes until cleared; blessing mechanics formalized (dated status edit + decision-log row); revision-in-place vs new-document rule with the LLM-substrate precedent; dead documents tombstoned in docs/ATTIC.md with git history as content store; version-qualified haddock linking (Hackage for released versions, tag-pinned rebuilds otherwise). |
 | 2026-09-24 | §4 decided (with the pre-birth amendment): rot folds into the doc-drift judge; precedence = code wins at runtime, the note must be corrected regardless; implementing change stamps `implemented`, sub-stamp implemented-maps for multi-package designs; **prospective references** type the pre-birth frontier (planned/dormant/born) — dormant anchors deferred not failed, birth events activate references, NIH_PLAN §6 as the planned-documents inventory; judge covers the full document life. |
 | 2026-09-24 | §4 amended: stamping is a protocol (propose → disciplines → gate → stamp); acceptance human-gated and scope-variegated (maintainer or subsystem maintainer — delegate model applied to review authority); partial-realization shield declarative (unrealized-surface inventory in blessed notes, suppression must cite its shield, shields expire across phase boundaries); merge/PR gates structured (CI + review gate + judge checks); maintainer-final dispute default recorded pending confirmation; hokora exception stated; subsystem-maintainer staffing deferred to first collaborators. §3/§4 remainders parked: repair procedure (§2's other half), dispute path confirmation, seed formalities. |
+| 2026-09-24 | §9 decided: everything public; formal references (full names; "keiro-comparison thesis" replaces the familiar framing; maintainer welcomes direct feedback from Nadeem Bitar); local paths replaced by publicly usable references (URLs/Hackage; publication-pending markers for the maintainer's own repos, enforced by the judge's link-checker); prominent credit as derivation sources — including by rejection — via CREDITS.md; license fields on reuse rows, LICENSES/ for reused code; tone about-face in our voice (respectful engineering register, criticism of designs not people, charged phrases rewritten; verbatim transcripts preserved as marked archive records). Audit sweep found no secrets; no extraction needed. |
