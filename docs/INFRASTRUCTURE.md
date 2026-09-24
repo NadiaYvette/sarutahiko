@@ -158,7 +158,9 @@ blurs the boundary, so the policy is a four-step spectrum with a surgical rule:
    the proof artifact and the CI artifact agree. Liquid Haskell (clone at
    `~/src/liquidhaskell/`, as-needed): its GHC-plugin cost begins only when the first
    refinements land; adopt-time check that the release supports the pinned GHC
-   (hypermodern rule applies).
+   (hypermodern rule applies). TLA+ tooling confirmed locally: `~/src/tlaplus/` (TLC,
+   the explicit-state checker — jar + JRE) and `~/src/apalache/` (symbolic/SMT); both
+   external tools over `spec/` sources, nothing in-tree.
 
 Most of the program stays property-tested: codec/row/glue/reducer code is where the
 type discipline plus laws already suffice, and full verification there is ceremony.

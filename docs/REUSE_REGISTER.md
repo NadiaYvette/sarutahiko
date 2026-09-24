@@ -198,6 +198,31 @@ patches flow upstream. The design-mandated custom lints (SQL ordering, dual-effe
 parity, layer directions) remain bespoke CI jobs — hlint is the general linter, not
 the layer-lint substrate.
 
+### 2.18 smirk (regex engine) — REUSED (the owner class; redesign on demand)
+The maintainer's own ground-up PCRE engine (`~/src/smirk/`): pure native core (no C,
+no FFI), fuel-bounded execution (ReDoS defense matching the program's fail-closed
+deadline discipline), resumable continuations, mono-traversable sequence polymorphism,
+and — decisively — pre-existing dual effect-interface packages (`smirk-effectful`,
+`smirk-polysemy`) matching the program's dual-interface contract. Q1 passes on the
+merits; Q2/Q3 are the strongest possible (maintainer *is* upstream). Program placement:
+`sarutahiko-tags` (the ctags doc's regex/optlib extraction layer), log pattern
+matching, hook command patterns, config edge cases. Unlike ordinary reuse, the design
+may be reshaped for program needs (new combinators, row-typed match results, other
+effect signatures) — the maintainer-redesign escape hatch of the owner class; the
+cost model is that of internal development, not integration.
+
+### 2.19 wai + warp (HTTP interface + server) — REUSED (transport interface, not vocabulary)
+The instructive contrast with the servant verdict (2.10): wai is a tiny, frozen,
+13-year-stable callback interface — no type-level DSL, no generics, no embedded
+vocabulary — so it is *not* the design class the row vocabulary replaces; warp is pure
+transport (HTTP/1.1+2, TLS, connection pools), Q1 N/A per the doctrine's transport
+exemption, with industry-benchmark performance. Entry points: MCP Streamable-HTTP
+transport (server mode of the wire flagship), the Phase-3 gateway, the dashboard. Cost:
+one quarantined adapter over wai's minimal `Request`/`Response` types in the surface
+package; vocabulary above remains rows. NIH'ing an HTTP server would be the anti-
+doctrine: massive effort, zero design gain, against a mature protocol implementation.
+Revisit trigger: wai friction in the MCP HTTP transport.
+
 ## 3. Cases to be decided (parked, with their trigger)
 
 - **warp / wai** (HTTP server): Phase-3 surfaces (gateway, dashboard). Expected: reuse
