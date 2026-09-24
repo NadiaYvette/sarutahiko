@@ -31,6 +31,7 @@ and are checked by the script net (§5).
 | `imports/hermes_components.*` | import (diagrams) | static | cross-cutting | — |
 | `transcripts/gemini-effect-algebras.md` | transcript | archive | cross-cutting | — |
 | `transcripts/gemini-rows-for-mcp-lsp.md` | transcript | archive | cross-cutting | — |
+| `transcripts/web-style-guides.md` | transcript | archive | cross-cutting (style survey) | — |
 
 Archived: none (the tombstone register, `registers/ATTIC.md`, will list dead
 documents here when any exist; superseded documents stay in place with successor

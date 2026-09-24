@@ -416,12 +416,18 @@ edge (the K1/K3 discipline applied to prose; Yesod's `RenderMessage` is the ecos
 battle-tested precedent; gettext-style external catalogs and `text-icu` for
 collation/formatting are register-judged when demand arrives).
 
-## 7. Terminology and style control
+## 7. Terminology and style control — DECIDED (2026-09-24)
 
-The Noh registry must be used consistently (first-use rule: kanji + romaji + gloss per
-document). The corpus has de facto developed a dense, rationale-first, table-heavy
-style. *Policy needed:* codify the style or leave it to osmosis; voice rules; the
-relationship between the naming registry and prose usage.
+**Style: the corpus's dense rationale-first register is canonical and codified by
+declaration, not by rulebook.** Design notes and registers keep the de facto style —
+dense, rationale-first, table-heavy, present tense for stable truth. Per-genre
+reference targets are adopted from the survey recorded in
+`../transcripts/web-style-guides.md`: user-facing documentation genres (tutorials,
+README surfaces) follow the Google/Microsoft developer-style register (second person,
+active voice, fewer words); whitepapers follow the academic register (IEEE/ACM/AMS:
+precise, no colloquialism, inclusive "we"). The naming registry governs prose via the
+first-use rule (kanji + romaji + gloss per document); no further rules are imposed —
+the style is held by review and the judge, not by a rulebook that would itself drift.
 
 **The §7 amendment (2026-09-24): assistant-context budgets.** AGENTS.md is an explicit
 **pointer file with an ~4 KB budget** — an index into selectively loadable canonical
@@ -435,13 +441,15 @@ row-decomposed so envelope-without-payload is a valid summary unit
 (OBSERVABILITY_DESIGN §7). One maintenance line is additionally added to AGENTS.md
 so its own rules are discoverable by assistants.
 
-## 8. Co-authorship and authority
+## 8. Co-authorship and authority — DECIDED (2026-09-24)
 
-Unusual to this program: the design corpus is **AI-drafted and maintainer-blessed**.
-*Policy needed:* say so explicitly, and define what blessing certifies (that the
-maintainer read, challenged where needed, and owns the content — the session's
-challenge-and-amend record is the intended pattern); the rules for future contributors
-(human-drafted proposals land under the same review; CI gates apply to docs).
+The design corpus is **AI-drafted and maintainer-blessed**, by policy. What blessing
+certifies: the maintainer read the document, challenged it where needed (the
+challenge-and-amend record is the intended pattern), and owns the content — blessing
+is an authority transfer, not a rubber stamp. Future human contributions land under
+the same review: drafted by anyone (human or machine), challenged, blessed; CI gates
+apply to documentation changes the same as code. The repair procedure (§2) and the
+stamp protocol (§4) are this section's operating arms.
 
 ## 9. Exposure policy — DECIDED 2026-09-24 (everything public; formal references; prominent credit)
 
@@ -545,3 +553,4 @@ in public.
 | 2026-09-24 | §10+§11 decided: §10 — CHANGELOGs cross-referenced to INFRASTRUCTURE §6.3; ADR format declined (notes are the richer records; decision-log rows supply the numbered-decision essence); ledger home and corpus docs by cross-reference; TODOs owned canonically by notes' open-item sections with a one-directional mechanical sync to issues on the primary mirror as a convenience projection adopted when collaborators arrive. §11 — docs outside LOC budgets; documentation intensity (docs-words/core-LOC) a nightly descriptive ledger row, visible because it is part of the keiro-comparison thesis. With these, all issue sections are decided — the strategy graduates from seed to policy (v1.0). |
 | 2026-09-24 | Backlog item 11 written: `OBSERVABILITY_DESIGN.md` (**kagami-ita** 鏡板, blessed; alternates mawari-butai / hanamiko / mie reserved) — the interpreter edge as the sole instrumentation point (K1–K4: instrumentation is an interpreter concern; dual interfaces with an observer-effect parity law; row-typed envelope events generalized from the memory log; zero-cost-when-absent capability grants); metrics as reductions over the event stream via mergeable quantile sketches (reuse row 2.20: the maintainer's t-digest as owner class, Greenwald–Khanna, Q-digest); replay-based serviceability via the kakegoe recording interpreters; scrub-manifest-gated privacy posture; small-context accommodation (§7 corollaries); open questions O1–O7 (retention defaults, span shape, metrics exposure, recorder home, sampling, envelope home, high-cardinality top-k). |
 | 2026-09-24 | §3/§4 remainders closed: dispute resolution is **override-as-explicit-action** — no ambient maintainer-wins default; the maintainer may override by recorded decision naming the dispute, the overridden authority, and the reasoning (visible, auditable, costing a record); seed formalities resolved — a seed needs no owner or cadence, only inventory presence. No parked remainders remain in the strategy. |
+| 2026-09-24 | §7 and §8 decided — the last two open sections: style codified by declaration (the dense rationale-first register stays canonical; per-genre reference targets adopted from the survey in transcripts/web-style-guides.md — developer-style register for user-facing genres, academic register for whitepapers; held by review and the judge, not a drifting rulebook); co-authorship explicit (AI-drafted, maintainer-blessed; blessing certifies read/challenged/owned and transfers authority; future human contributions under the same review, CI gates apply to docs). |
