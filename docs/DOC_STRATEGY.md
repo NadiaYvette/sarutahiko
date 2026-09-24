@@ -123,6 +123,20 @@ behavior the code no longer has, stale rationales, inaccurate explanations). Mos
 tasks should be covered by the programmatic net; broader, less-structured LLM scans
 run occasionally (nightly/weekly cadence) over the remainder.
 
+*Code comprehension is part of the judge's job (remark 2026-09-24).* Consistency is
+bidirectional — prose must match the code *as it is*, not as the notes wish it were —
+so the judge must actually read and understand the implementing source: the
+behavioral claims of a law are checked against the interpreter/handler that implements
+it, example snippets against compilable/running code, exit criteria against the
+artifacts that satisfy them, quirk obligations against the codec paths that encode
+them. This raises the bar on the oracles (code-reading competence, not just prose
+diffing — a reason not to lean on SaaS diff-reviewers) and on the harness (context
+assembly must pair each claim with the right source files — the anchor graph again:
+claims point at IDs, IDs point at packages, packages are read). The three-tier test
+strategy supplies ground truth where it exists: property suites and fixtures are
+execution evidence the judge can cite, and haddock (per §1 canonicity) is checked
+against both notes and code.
+
 *Fallible-oracle consensus.* Each LLM is treated as an individually fallible but
 mostly-reliable oracle: findings pass on **consensus** (multiple models agreeing);
 **any single veto triggers a more intensive review** (targeted re-examination with
