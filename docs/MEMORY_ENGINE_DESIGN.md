@@ -66,26 +66,58 @@ PVP-for-signatures policy are both precedents for the *discipline*; the differen
 hook payloads can be migrated by re-running producers, while log events are immutable
 history.
 
-### 3.1 The envelope row
+### 3.1 The envelope row (v0.2 — blessed 2026-09-24)
 
-Every event is a row with a fixed administrative spine and an open payload:
+**The principle: the spine is the *address*, not the *meaning*.** Spine = exactly what an
+event needs to be routed, decoded, traversed, audited, and retained *without knowing what
+it means*. Payload = the meaning. A field earns spine only if a reducer that must work
+across all `(kind, schemaV)` pairs forever, with zero schema knowledge, needs it; those
+reducers are session-tail assembly, audit, retention/pruning, and causal traversal. Every
+future "should this be spine?" question is decided by three mechanical tests: the
+**address test** (routing/identity/decode dispatch), the **universal-reducer test** (does
+an eternal schema-blind reducer need it), and the **adversarial test** (if this changed
+later, where would it live? — any plausible answer ⇒ payload).
 
 ```haskell
 type Envelope extra =
-  '[ "eventId"   ':= UUID          -- monotone per store (kiroku-style)
-   , "kind"      ':= Kind          -- closed enum of event families
-   , "schemaV"   ':= Natural       -- payload schema version
-   , "ts"        ':= UTCTime
-   , "session"   ':= SessionId
-   , "actor"     ':= Actor         -- user | model | tool:<name> | system:<component>
-   , "cause"     ':= Maybe UUID    -- provenance chain (tool call caused observation)
-   , "payload"   ':= SomeRow       -- existentially packaged, tagged by (kind, schemaV)
-   ] ++ extra
+  '[ "seq"      ':= Word64        -- store-local monotone position; THE only ordering (§3.4)
+   , "eventId"  ':= UUID          -- identity; referenced by causes; survives pruning/exports
+   , "kind"     ':= Kind          -- closed enum of event families (additive only)
+   , "schemaV"  ':= Natural       -- payload schema version (decode dispatch, fail-closed)
+   , "ts"       ':= UTCTime       -- INFORMATIONAL; never used for ordering (law T)
+   , "session"  ':= SessionId     -- partition key
+   , "actor"    ':= Text          -- user | model | tool:<name> | system:<component>;
+                                  -- stored as text, total parse with catch-all (law A)
+   , "cause"    ':= Maybe UUID    -- single causal parent (tool call → observation)
+   , "payload"  ':= SomeRow       -- existentially packaged, tagged by (kind, schemaV)
+   ] ++ extra                   -- compile-time, deployment-level extension ONLY (law X)
 ```
 
-The spine is chosen so that *every* reducer and every retrieval index can be built from
-spine fields alone, without decoding payloads — `payload` is only decoded by reducers that
-have opted into a specific `(kind, schemaV)`.
+Field examination record (v0.2):
+
+- **`seq`/`eventId` split** (repairs the v0.1 sketch): identity and ordering are two
+  different needs. `eventId` never changes and is what `cause` references; `seq` is the
+  store-local position that defines the fold order. Conflating them (monotone UUIDs) is
+  impossible; ordering by UUID is random; see §3.4.
+- **`ts` law (T):** clocks do not order events (NTP steps, skew, same-ms collisions).
+  `ts` is informational (display, retention age, debugging); **no reducer may order by
+  `ts`**; `seq` is the only ordering. This also rejects hybrid logical clocks: we are
+  single-writer per session; HLC machinery would bake distributed assumptions into a
+  design that §6 rejects.
+- **`actor` law (A):** a closed enum in forever-data must round-trip unknown values (a
+  future `Actor` constructor must not corrupt old stores under old code). Representation:
+  store as `Text`, construct via smart constructors, read via total parse with a
+  catch-all — the open-envelope rule from the formats bag.
+- **`cause` and compression spans:** a single optional parent makes the causal graph a
+  tree, which is correct for tool→observation chains. Compression summarizes a *span*, so
+  `ContextCompressed` events carry the span (`fromSeq`/`toSeq`) **in their payload** —
+  the tail reducer is exactly the reducer that must understand compression anyway, so
+  span-in-payload applies the spine principle rather than violating it. The audit reducer
+  never needs span boundaries. (Alternative rejected for v0.2: general
+  `causes := [UUID]` DAG — heavier indexes, no current consumer.)
+- **`extra` law (X):** the tail parameter exists for *compile-time, deployment-level*
+  spine extension only (e.g. a fleet build adding `tenant` before any store exists).
+  It is never a runtime escape hatch — runtime spine growth would contradict rule 4.
 
 ### 3.2 The versioning rules
 
@@ -102,9 +134,8 @@ have opted into a specific `(kind, schemaV)`.
    migration possible). Anything that might later need to change (token counts? embedding
    model ids?) starts as a payload field, never a spine field.
 5. **Cross-dialect honesty.** The log must behave identically on SQLite (hokora, single-user)
-   and Postgres (fleet). The only safe assumptions are: monotone insertion ids (not UUID
-   ordering), session-scoped linearizability, and no cross-session ordering. Reducers that
-   would need global ordering are wrong and get redesigned.
+   and Postgres (fleet). The ordering assumptions admitted are exactly those of §3.4;
+   reducers that would need any other ordering are wrong and get redesigned.
 
 ### 3.3 What counts as an event
 
@@ -114,7 +145,82 @@ Err on the side of *too many* kinds, factored late: `MessageAppended`, `ToolInvo
 Compression *writes an event* (`ContextCompressed`) rather than mutating history — the
 cache-breaking moment is thus itself in the log, replayable and auditable.
 
+### 3.4 The ordering contract (blessed alongside spine v0.2)
+
+Why there is a contract at all: SQLite and Postgres differ in where their ordering
+*guarantees* actually live, and a design that exploits an implementation behavior rather
+than a guaranteed one works on the hokora and breaks on the fleet. The contract makes the
+walked path (`seq` within a `session` partition) the only thing anyone may rely on, and
+everything else either documented-but-unexploitable or forbidden.
+
+**The three-level order hierarchy.**
+
+1. **The walked path (the contract).** `ORDER BY seq ASC WITHIN session` — `seq` is
+   store-local, monotone, dense, and the *only* ordering primitive. Every consumer uses
+   this and nothing else. It is delivered as an explicit cursor, never assumed from
+   scan order.
+2. **Documented, unexploitable (table scan order).** An unrouted full-log scan is
+   *observed* to come back in `seq` order per session (both engines) — recorded here so
+   nobody rediscovers it and leans on it. Optimization only: a scan may use it as a
+   heuristic, then *verify* contiguity cheaply and fall back to an explicit sort on
+   violation. Correctness never reads scan order.
+3. **Undefined and never used:** cross-session ordering (except: two events *known* to
+   come from one conversation, ordered by their `seq`s); `ts` ordering (law T);
+   `nextval`-shared-sequence global order (fleet-only, see below).
+
+**How each engine delivers level 1.**
+
+- *Postgres:* `bigserial`-style `seq` in the events table (per-store monotone, dense,
+  gap-free in single-writer use); per-session reads are an index over `(session, seq)`.
+  For kiroku-adjacent deployments only: a Postgres `SEQUENCE` can give a global append
+  order — a documented dialect *extension*, used solely as a tie-break for read-only
+  fleet aggregation, never for projections (which must stay dialect-neutral).
+- *SQLite:* `INTEGER PRIMARY KEY` (`rowid`) aliased as `seq` — monotone, dense,
+  single-writer by §6's model.
+
+**Contract items.**
+
+- **C1.** `seq` is store-local, monotone, dense (no gaps); it has no meaning outside its
+  store and must never appear in exported or compared data (identity is `eventId`'s job).
+- **C2.** Sessions are linearizable (§6): within a session, one total order by `seq`,
+  writes append at the tail. Across sessions, no order exists.
+- **C3.** Cursor discipline: consumers receive `(session, seq)` cursors; reads resume by
+  `WHERE session = ? AND seq > ?`. No `OFFSET`-style positional paging, no scan-order
+  reliance.
+- **C4.** `ts` is informational only (law T already says this; C4 applies it to SQL:
+  `ts` indexes exist for retention queries only, never for ordering queries).
+- **C5.** Snapshot/replay equivalence: replaying `events ORDER BY seq WITHIN session`
+  on either dialect yields byte-identical projections.
+- **C6.** `updatedAt`-style timestamp columns are *forbidden* anywhere in the log
+  schema — an append-only design should never want them, and their presence is the
+  classic vector for silently reintroducing timestamp ordering.
+
+**Known dialect differences (documented, unexploitable).** Postgres MVCC may move dead
+rows to the physical tail after VACUUM, and AUTOINCREMENT-vs-rowid recycling details
+differ; SQLite rowid reuse after deletes is avoided by never deleting (retention prunes
+whole stores or prefixes with `seq` bookkeeping). None of these are order *guarantees*,
+so none are load-bearing.
+
+**Enforcement.** Property tests: identical event streams through SQLite and Postgres
+interpreters produce identical projections (C5); a generator that shuffles `ts` and
+interleaves sessions must not change any projection. SQL-lint rule: any log query that
+`ORDER BY`s something other than `(session, seq)` fails CI.
+
+**What is *not* admitted** (redesigned, not accommodated): reducers needing global
+cross-session order; schedulers inferring sequence from time; `ts`-windowed folds; any
+use of scan order for correctness. If a future feature wants one of these, the feature is
+wrong for this log.
+
+**Revisitation triggers** (the events that would reopen this contract, per the maintainer's
+revisit-if-it-fails-us principle): (i) multi-writer sessions (§6 abandoned) ⇒ seq becomes
+Lamport/portz-style logical clocks; (ii) active-active replication ⇒ HLC or CRDT event
+mesh, spine extension via `extra` before any affected store exists; (iii) kiroku-interop
+needing a shared global order ⇒ adopt their monotone-id convention behind the cursor
+interface, which is exactly why C1/C3 confine `seq` behind an explicit cursor today.
+
 ## 4. Reducers — the easy part, stated precisely
+
+(Consumers of §3.4: all folds walk `(session, seq)` cursors and nothing else.)
 
 A reducer is a pure `fold` over `(kind, schemaV)`-filtered events producing a projection.
 Discipline:
