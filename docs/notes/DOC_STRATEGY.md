@@ -353,6 +353,18 @@ document). The corpus has de facto developed a dense, rationale-first, table-hea
 style. *Policy needed:* codify the style or leave it to osmosis; voice rules; the
 relationship between the naming registry and prose usage.
 
+**The §7 amendment (2026-09-24): assistant-context budgets.** AGENTS.md is an explicit
+**pointer file with an ~4 KB budget** — an index into selectively loadable canonical
+documents, not a restatement of them (the §1 projection doctrine, promoted to a
+design constraint). Empirical trigger: a small-context model (cogito:3b) truncated a
+32 KB assembled context against this repo — the consumer, not the corpus, was the
+limiter. Corollaries, generalizable to any consumer: canonical documents lead with a
+short header block (status, related, thesis) so small-context readers can decide
+*whether* to load more without reading it all; the kagami-ita event envelope is
+row-decomposed so envelope-without-payload is a valid summary unit
+(OBSERVABILITY_DESIGN §7). One maintenance line is additionally added to AGENTS.md
+so its own rules are discoverable by assistants.
+
 ## 8. Co-authorship and authority
 
 Unusual to this program: the design corpus is **AI-drafted and maintainer-blessed**.
@@ -440,3 +452,5 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §9 decided: everything public; formal references (full names; "keiro-comparison thesis" replaces the familiar framing; maintainer welcomes direct feedback from Nadeem Bitar); local paths replaced by publicly usable references (URLs/Hackage; publication-pending markers for the maintainer's own repos, enforced by the judge's link-checker); prominent credit as derivation sources — including by rejection — via CREDITS.md; license fields on reuse rows, LICENSES/ for reused code; tone about-face in our voice (respectful engineering register, criticism of designs not people, charged phrases rewritten; verbatim transcripts preserved as marked archive records). Audit sweep found no secrets; no extraction needed. |
 | 2026-09-24 | §9 amended: derivation credit granted as a deliberate choice, not merely where license obligations attach — influence credit is independent of code use. |
 | 2026-09-24 | §5 decided: directories now — `docs/notes/`, `docs/registers/`, `docs/imports/` (verbatim third-party material incl. the Hermes inventory and diagrams), `docs/transcripts/` (conversation archives; freely renamable, title = origin, filename = topic, provenance headers on the renamed Gemini transcripts); hybrid index (`docs/INDEX.md`: generated inventory table + hand-curated reading paths, script net beneath the judge); no archive directory (index's Archived section is the archive); tier as index metadata only; cross-references two-layer — ID citations canonical, relative links convenience, enforced by a zero-LLM script net under the judge's semantic layer. |
+| 2026-09-24 | §7 amended: assistant-context budgets — AGENTS.md as an explicit ~4 KB pointer file (index into selectively loadable canonical docs), header-blocks-first rule for canonical documents, row-decomposed envelopes (envelope-without-payload as summary unit); empirical trigger: cogito:3b truncating a 32 KB assembled context (the consumer, not the corpus, was the limiter). |
+| 2026-09-24 | Backlog item 11 written: `OBSERVABILITY_DESIGN.md` (**kagami-ita** 鏡板, blessed; alternates mawari-butai / hanamiko / mie reserved) — the interpreter edge as the sole instrumentation point (K1–K4: instrumentation is an interpreter concern; dual interfaces with an observer-effect parity law; row-typed envelope events generalized from the memory log; zero-cost-when-absent capability grants); metrics as reductions over the event stream via mergeable quantile sketches (reuse row 2.20: the maintainer's t-digest as owner class, Greenwald–Khanna, Q-digest); replay-based serviceability via the kakegoe recording interpreters; scrub-manifest-gated privacy posture; small-context accommodation (§7 corollaries); open questions O1–O7 (retention defaults, span shape, metrics exposure, recorder home, sampling, envelope home, high-cardinality top-k). |

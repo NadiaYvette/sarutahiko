@@ -23,6 +23,7 @@ and are checked by the script net (§5).
 | `notes/LLM_SUBSTRATE_DESIGN.md` | design | draft | model | — |
 | `notes/HOKORA_SPEC.md` | spec | draft | cross-cutting (vertical slice) | — |
 | `notes/INSTRUMENTS_SPEC.md` | spec | draft | cross-cutting (measurement) | — |
+| `notes/OBSERVABILITY_DESIGN.md` | design | draft | cross-cutting (observability) | — |
 | `registers/REUSE_REGISTER.md` | register | living | cross-cutting | — |
 | `registers/CODEC_QUIRKS.md` | register (living) | living | model | — |
 | `imports/HERMES_DESIGN.md` | import | static | cross-cutting | — |
@@ -36,8 +37,7 @@ links — no archive directory per §5).
 
 Planned, not yet written (the pre-birth frontier — prospective references to these
 are *dormant*, not dead links, per DOC_STRATEGY §4): `registers/ATTIC.md`; the
-tutorial track (`docs/tutorial/`); the observability & serviceability note
-(NIH_PLAN backlog item 11).
+tutorial track (`docs/tutorial/`).
 
 ## Part 2 — Reading paths
 

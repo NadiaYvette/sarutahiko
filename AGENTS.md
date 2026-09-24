@@ -39,6 +39,7 @@ code implements blessed designs.
 | Infrastructure | `docs/notes/INFRASTRUCTURE.md` | toolchain, warnings, tests, CI, procedure |
 | Codec quirks | `docs/registers/CODEC_QUIRKS.md` | living; fixture-backed rows |
 | Documentation policy | `docs/notes/DOC_STRATEGY.md` | lifecycle, flags, canonicity |
+| Observability | `docs/notes/OBSERVABILITY_DESIGN.md` | kagami-ita: events, tracing, metrics, replay |
 | Corpus index | `docs/INDEX.md` | inventory + reading paths |
 
 ## Operational advisories (binding unless a canonical doc supersedes)
@@ -60,3 +61,5 @@ code implements blessed designs.
    proposing package names; keep first-use format (kanji + romaji + gloss).
 6. **Secrets/privacy:** no secrets in tree; corpora and fixtures follow the
    scrub-manifest rule (INSTRUMENTS_SPEC §2.4).
+7. **This file has an ~4 KB budget** (DOC_STRATEGY §7 amendment): it is a pointer
+   file — add links, not content; canonical documents absorb any new material.

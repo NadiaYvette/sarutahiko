@@ -609,4 +609,10 @@ supervision/harness/runner roles). Reserve Noh terms deliberately and check for 
 with existing repos before naming new packages; candidate future mappings (to be confirmed
 by the maintainer, not assumed): kuroko-family = supervisors/schedulers, waki =
 interlocutor surfaces (adapters that talk to the world), kyōgen interludes = fast auxiliary
-pathways, mugen/kami-mono = the overarching agentic core.
+pathways, mugen/kami-mono = the overarching agentic core. **Blessed 2026-09-24:
+kagami-ita (鏡板)** — the mirror-board at the rear of the Noh stage, the stage's own
+surface returned to the audience — names the observability & serviceability layer
+(`OBSERVABILITY_DESIGN.md`, backlog item 11). Alternates considered and held in
+reserve: *mawari-butai* (廻り舞台, the revolving stage — the 360° view), *hanamiko*
+(花道, the runway through the audience — the path from stage to observers), *mie*
+(見得, the dramatic held pose — snapshot semantics; narrower, reserved).

@@ -223,6 +223,19 @@ package; vocabulary above remains rows. NIH'ing an HTTP server would be the anti
 doctrine: massive effort, zero design gain, against a mature protocol implementation.
 Revisit trigger: wai friction in the MCP HTTP transport.
 
+### 2.20 t-digest (NadiaYvette/t-digest) + the mergeable-quantile-sketch family — REUSED (owner class)
+The maintainer's ground-up mergeable t-digest (`github.com/NadiaYvette/t-digest`,
+publication-pending, flagged by the author as possibly needing rework) anchors the
+sketch family for kagami-ita metrics (OBSERVABILITY_DESIGN §4): t-digest for
+latency/token-tail distributions, Greenwald–Khanna where deterministic ε-quantile
+bounds are wanted, Q-digests (Ivkin et al., arXiv:1907.00236) for small fixed integer
+domains. Owner class: total control, redesign permitted as internal development
+(reworked publish, algorithm tweaks, Haskell-idiomatic APIs — pure cores are
+testkit-able per the catalog). Metrics are reductions over the event stream, so
+sketch snapshots are storable rows in kakegoe experiment records. Open corner
+recorded as O7: high-cardinality top-k/heavy-hitters is outside the three-family
+space; count-min or similar judged per the register when demand arrives.
+
 ## 3. Cases to be decided (parked, with their trigger)
 
 - **warp / wai** (HTTP server): Phase-3 surfaces (gateway, dashboard). Expected: reuse
