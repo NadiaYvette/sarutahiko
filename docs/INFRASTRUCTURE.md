@@ -131,6 +131,11 @@ Separate cabal test-suites per tier so CI selects them:
 
 ### 5.2 Formal verification — a separate axis, employed surgically
 
+Scope note: this document holds strategy and rationale; *per-component* test and
+verification plans (which properties for the log, which for codecs, which for the turn
+program) live in the component design notes and the roadmap — e.g. MEMORY_ENGINE §5's
+property list, HOKORA_SPEC's exit criteria, the catalog's per-signature laws.
+
 Verification (proofs over all inputs) is distinct from testing (sampling) — but Haskell
 blurs the boundary, so the policy is a four-step spectrum with a surgical rule:
 
@@ -146,13 +151,98 @@ blurs the boundary, so the policy is a four-step spectrum with a surgical rule:
 4. **Model checking / deduction (heavyweight, two named targets):** a TLA+/PlusCal
    spec of the MCP handshake (or inherited Agda proofs — which count double in the
    typed-protocols adoption decision) and of the `Supervise` restart/kill-timeout
-   policy — the timing/interleaving properties sampling is weakest at. (Apalache is
-   available locally as the symbolic checker.)
+   policy — the timing/interleaving properties sampling is weakest at. **Tooling:**
+   nothing in-tree and nothing NIH'd — TLA+/PlusCal sources in `spec/`, checked with
+   TLC (`tla2tools` jar + a JRE) or Apalache (symbolic/SMT checker, available locally
+   at `~/src/apalache`); spec invariants are then mirrored as hedgehog properties so
+   the proof artifact and the CI artifact agree. Liquid Haskell (clone at
+   `~/src/liquidhaskell/`, as-needed): its GHC-plugin cost begins only when the first
+   refinements land; adopt-time check that the release supports the pinned GHC
+   (hypermodern rule applies).
 
 Most of the program stays property-tested: codec/row/glue/reducer code is where the
 type discipline plus laws already suffice, and full verification there is ceremony.
 Meaningful verification concentrates exactly where sampling is weakest: interleaving,
 timing, resource guarantees, protocol deadlocks.
+
+### 5.3 Alternatives considered — the rationale ledger
+
+Recorded so the comparisons stay answered (same discipline as the reuse register).
+
+**Runners.** *Hspec* — BDD DSL (`describe`/`it`) in its own `SpecM`; ubiquitous and
+readable; but integrating other test kinds needs adapter packages
+(hspec-hedgehog/golden), eroding the one-runner invariant at each seam. *tasty* — a
+framework of frameworks: one `TestTree`, providers lift into it (hunit, hedgehog,
+quickcheck, golden, bench, doctest), and an **ingredient** system controls execution
+(workers, timeouts, `-p` per-test pattern selection — which is also how the §5.1 tiers
+are selectable). *sydtest* — the modern dark horse: parallel-safe **resource
+composition** (fresh resources per test via setup functions), built-in webserver and
+process-spawn testing, native QuickCheck *and* hedgehog support; costs are the smaller
+community and the pull toward its validity-family ecosystem. Its differentiators
+overlap what we build anyway (`Process` effect + testkit interpreters *are* a resource
+model). **Choice: tasty.** Revisit sydtest if e2e ergonomics chafe.
+
+**Property engines.** *QuickCheck* (the 2000 original): `Arbitrary` class with explicit
+generators **and explicit per-type shrink functions** — the crux: neglected shrinkers
+(`shrink = const []` defaults) fail to minimize failures on deep types, and our types
+(`SomePayload` existentials, wide rows, witness GADTs) are the hard case. Also its
+unmatched asset: 25 years of ecosystem — `Arbitrary` instances in dependencies,
+state-machine testing (quickcheck-state-machine, IOG's fork), and the IOG test
+machinery we interop with. *Hedgehog*: **integrated shrinking** — generators are
+Applicative-structured and the shrink tree is derived from the generator, so structural
+shrinking is free; no hand-written shrinkers ever; costs are no `Arbitrary` interop
+(bridged via `Hedgehog.QuickCheck`), smaller instance ecosystem, and the QC-side
+state-machine center of gravity. *genvalidity*: derivable QuickCheck generators with
+systematic invalid-data production (good for parser round-trips); drags the validity
+family; doesn't fix shrinking. *leancheck*: enumerative (`Listable`, deterministic,
+enumeration order = shrink order); elegant for small closed types, combinatorially
+hopeless for wide/recursive data. **Choice: hedgehog for our types; `Hedgehog.QuickCheck`
+adapters where IOG machinery wants `Gen`; QuickCheck-native suites where a dependency's
+conformance suite is QC-shaped.**
+
+**Concurrency testing.** *dejafu* — systematic interleaving exploration (bounded
+systematic, random, round-robin schedules) over an instrumented `ConcT` monad; strong
+coverage guarantees, heavy re-execution cost, slowed development. *io-sim* (io-classes
+stack) — a **drop-in simulated IO monad with a deterministic scheduler and virtual
+time** (the clock advances when all threads block ⇒ timeout/timer tests run instantly
+and deterministically); typed-protocols drivers run on it directly; recent versions add
+automatic race exploration (`exploreRaces`); traces are reproducible fixtures. Its
+interface discipline (code against `io-classes`, not raw IO) is *not a tax here* — it
+is the dual-interface doctrine applied to time and concurrency: `Clock`/`Process`/
+`Supervise` interpreters get real-IO and io-sim instances, the same turn program under
+both. **Choice: io-sim** (also the practical harness for the §5.2 tier-4 properties —
+deterministic schedules now, TLA+ proofs alongside). dejafu noted as the alternative
+for raw-IO code we decline to interface-discipline.
+
+**Database engines in tests.** *tmp-postgres* — a real Postgres (initdb in a temp dir,
+ephemeral port) per suite; cost is initdb seconds + CI binary availability, mitigated
+by its cluster-cache (initdb once, clone per test). *Service containers* (CI
+`services:`) — same engine, deployment-realistic, but break hermetic local runs.
+*Temp-dir SQLite* — instant/hermetic but the *other* dialect; cannot catch
+Postgres-specific behavior (rollback sequence gaps, MVCC edges). **Strategy: SQLite
+temp-dir in `test:unit` (fast, hermetic); the C5 dialect-parity macro property runs
+both engines — SQLite always, real Postgres via tmp-postgres in CI (cluster-cached),
+service container optionally for nightly full runs.**
+
+**HTTP mocking — none, by design.** Our codecs consume byte streams below the layer
+mocking libraries address; recorded transcript fixtures (kakegoe corpus format) *are*
+the mocks — feeding recorded bytes through a codec is the test, and quirk rows point at
+fixtures. If a Phase-3 surface needs server-level tests, `Network.Wai.Test`
+(in-process WAI requests, no sockets) is the right tool at that layer — not an HTTP
+mocking library.
+
+**Benchmarks.** *criterion* — the statistical gold standard (bootstrapped CIs,
+kernel-density reports); slow, runner-independent; retained as a *deep-dive*
+investigation tool, not infrastructure. *gauge* — a criterion fork, cleaner internals,
+same methodology; no differentiator for us. *tasty-bench* — criterion-quality
+linear-regression measurement inside the tasty tree **with regression comparison
+against previously recorded results** — which is the ledger integration exactly
+(nightly runs compare against recorded bounds). **Choice: tasty-bench** (one-runner
+invariant), and the role framing matters more than the tool: performance in this
+program is achieved by *fundamental redesign and theory brought into practice*
+(church-encoded O(1) binds, linear-time large-anon rows, io-sim determinism) —
+benchmarks exist to validate that the theory landed (regression detection, design
+confirmation), not to guide micro-tuning.
 
 ## 6. Documentation strategy (first-class)
 
@@ -222,7 +312,9 @@ Four layers, with enforcement:
 
 - Runtime metrics: kakegoe's instruments (cache simulator, replay harness) — CI runs
   them nightly, the ledger records experiment manifests (re-runnable from manifest
-  alone).
+  alone). Benchmarking stance (per §5.3): performance is earned by design and theory,
+  so benchmarks validate designs (tasty-bench regression bounds) rather than tune
+  implementations.
 - Compile-time ledger: nightly job, pinned GHC, timing script over the wide-record
   fixture set (≥40-column table); regressions above the recorded bound fail the
   nightly.
