@@ -205,7 +205,13 @@ no FFI), fuel-bounded execution (ReDoS defense matching the program's fail-close
 deadline discipline), resumable continuations, mono-traversable sequence polymorphism,
 and — decisively — pre-existing dual effect-interface packages (`smirk-effectful`,
 `smirk-polysemy`) matching the program's dual-interface contract. Q1 passes on the
-merits; Q2/Q3 are the strongest possible (maintainer *is* upstream). Program placement:
+merits; Q2/Q3 are the strongest possible (maintainer *is* upstream). **i18n
+obligation (recorded 2026-09-24):** Unicode regex concerns — case-insensitive
+matching under locale/simple case folding, Unicode property classes, grapheme-correct
+`.` and boundaries — are the known gap between PCRE-class engines and full Unicode
+regex semantics; smirk's owner-class redesign scope explicitly includes resolving
+them via the program's two-stage Unicode resolution (UCD property tables extracted
+from checked-in UCD data files at build time, ICU as oracle). Program placement:
 `sarutahiko-tags` (the ctags doc's regex/optlib extraction layer), log pattern
 matching, hook command patterns, config edge cases. Unlike ordinary reuse, the design
 may be reshaped for program needs (new combinators, row-typed match results, other
@@ -301,7 +307,10 @@ row-describe at the edge. **The three caveats, reviewed 2026-09-24:**
    real locale work begins, the choice is a small FFI shim over `u_formatMessage`-era
    APIs or a pure-Haskell MessageFormat implementation (parser + plural selectors —
    plausibly a codec-bag-shaped NIH candidate; CLDR plural data as a checked-in
-   projection). Decided at demand time per the register.
+   projection). Decided at demand time per the register. The shim option has an
+   existing precedent: **bidi-icu** (Kmett, in the codex monorepo) is precisely such
+   a small shim — a single `.hsc` over ICU's `ubidi_*` — written for the Unicode
+   Bidirectional Algorithm; see the parked bidi row below.
 3. **CLDR/ICU-version variance.** Behavior (plural rules, collation tailoring, date
    patterns) varies with the system ICU version, and text-icu links system ICU via
    pkg-config. Doctrine contains this: locale rendering lives at the presentation
@@ -318,9 +327,40 @@ preferred wherever normalization appears *below* the presentation edge (protocol
 codecs, fixture canonicalization, log key normalization), because it removes the
 system-ICU variance of caveat 3 from layers that must be reproducible; text-icu (or
 ICU itself) remains the edge-layer choice for collation/dates/numbers, and doubles
-as the test *oracle* for property suites over our pure Unicode helpers. Adoption
+as the test *oracle* for property suites over our pure Unicode helpers. **The
+extraction thesis (maintainer, 2026-09-24):** the general mechanism behind
+unicode-transforms — *build-time codegen of Unicode tables from upstream data
+files* — generalizes program-wide: any UCD/CLDR table we need (case folding,
+property classes, plural rules) is extracted from checked-in UCD/CLDR **data files**
+at build time, with parsing static tables out of FFI-bound C sources (as smirk
+could for pcre2) only the fallback when no data file exists — data files always
+preferred where they exist. Template-Haskell extraction is declined: build-time
+codegen keeps the artifacts hermetic, inspectable, and GHC-release-independent.
+Adoption
 timing: with the first real surface needing collation/date/number rendering beyond
 the ASCII minimum (Phase 3), or with the i18n package (2.21) whichever comes first.
+- **i18n** (`Data.Text.I18n`, Hackage; cloned locally): gettext-style runtime
+  catalogs — locale dictionary lookup with placeholder substitution and plural
+  forms. Pattern-adjacent to the typed-message rule but untyped at the core (string
+  keys, lookups at call sites), so implementation is declined where the
+  shakespeare-derived design (2.21) uses message GADTs + record dictionaries; its
+  **runtime catalog loading** remains the reference for the translation-file
+  projection format. Trigger: first surface shipping user-facing strings (Phase 3).
+- **bidi-icu + the codex monorepo** (Kmett; cloned locally): `bidi-icu` is a minimal
+  `.hsc` shim over ICU's `ubidi_*` (UAX #9 bidirectional algorithm) — the existing
+  precedent for the shim option of row 2.22 caveat 2, and the likely bidi primitive
+  for any mixed-direction text at the presentation edge (Licensing: BSD-2 OR
+  Apache-2.0; experimental, version 0). The wider codex monorepo (`harfbuzz` text
+  shaping, `smawk` optimal line-breaking via totally-monotone matrices, `freetype`,
+  fontconfig) is the natural reuse stack if the Phase-3 surfaces grow beyond the TUI
+  toward real glyph rendering — judged as a bundle when that demand arrives.
+  Trigger: bidi need or dashboard/GUI work (Phase 3).
+- **unicode-tricks** (Hackage; cloned locally): ~30 modules of character-block
+  helpers (braille, chess, dice, sextant blocks…) over the `unicode` property
+  package — charming but TUI-cosmetic, no protocol/record relevance; declined
+  without a case unless the kakegoe dashboards want pretty terminal rendering,
+  at which point it is re-judged as a cosmetic dependency (transport-class). Trigger:
+  dashboard development (Phase 3).
 - **kiroku / shibuya / keiro / kioku** (keiro stack): interop-first contact strategy
   (NIH_PLAN); reuse-or-reimplement is not currently posed — hashigakari reads/writes
   their formats; deeper integration decisions wait for the contact spike.
