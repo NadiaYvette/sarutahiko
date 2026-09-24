@@ -17,20 +17,55 @@ implicit. This seed records the issue space as seen before decisions land; as ea
 policy is decided, its section here is rewritten from "issue" to "decision + rationale."
 The document is itself the first exemplar of the lifecycle rules it will define.
 
-## 1. The audience map is triple — decide which document is canonical per fact class
+## 1. The audience map — DECIDED 2026-09-24: three audiences, three document genres
 
-Three audiences want different documents: **arrivals** (orientation: what the program
-is, the mountain metaphor, the map), **API consumers** (Haddock: signatures, laws,
-examples — including external consumers: hashigakari-beam users, smirk, the cross-REPL
-products), and **maintainers** (the design corpus: rationale, adversarial review
-records, decision provenance). The same fact — e.g. the cache-safety contract — is
-wanted by all three in different forms. *Policy needed:* for each fact class (laws,
-wire quirks, decisions, naming, procedures), which document is canonical and which
-documents are projections.
+All three audiences get purpose-built documents, with canonicity per fact class:
 
-*Current de facto:* design notes canonical for rationale; haddock will be canonical
-for laws (per INFRASTRUCTURE §6.1); the naming registry (NIH_PLAN §6.1) canonical for
-names.
+**Arrivals → tutorials.** An orientation layer (the mountain metaphor, the map, reading
+order, first runnable example) written as a tutorial track, distinct from the design
+notes (which assume the context tutorials establish). Home: `docs/tutorial/` (or a
+handbook-style root README pointing into it); grows as phases land, seeded by NIH_PLAN.
+
+**API consumers → verbose Haddock, deliberately richer than ecosystem convention.**
+Policy points, per the maintainer:
+
+- *Verbose but meaningful*: haddock runs to full paragraphs — laws stated, invariants,
+  examples, failure behavior — with no minimum-length quota and no filler; the test is
+  whether every sentence earns its place, and verbosity is the *default* rather than
+  brevity.
+- *Mathematical notation used properly.* Haddock renders no TeX; the program's practice:
+  inline Unicode math (∀ es, O(n), r₁ ++ r₂ — already the corpus's style), and display
+  math/diagrams as **rendered SVG figures included via haddock image markup**
+  (`<<docs/figs/….svg>>`), generated from a checked-in source DSL rather than drawn by
+  hand (candidates: mermaid → SVG pre-render, PlantUML, svgbob, or TikZ via a build
+  script — choice deferred to first use; the check-in-source + render-to-SVG pattern is
+  the decision).
+- *Links used radically*: `--hyperlinked-source` for code-to-code navigation; URLs to
+  academic papers (DOI/arXiv) wherever a design note cites a source (the corpus already
+  carries citations — the Wagner–Graham paper, Well-Typed's large-records post);
+  hyperlinks to sibling repos (kuroko, brittany, smirk, typed-protocols, the keiro
+  stack) and to relevant webpages/specs (MCP spec sections, RFCs). Haddock's URL
+  auto-linking plus explicit markup; the rule is that a claim with an external source
+  *links to it*.
+
+**Maintainers → the design corpus, with a whitepaper distillation in the telix genre.**
+The notes/registers remain the working corpus (canonical for rationale and decisions).
+Over it, the program produces **whitepapers**: LaTeX (lualatex/biber pipeline,
+telix-whitepaper `~/src/telix-whitepaper/` as the pattern — multi-part `src/`, a real
+`.bib` corpus, glossary, reproducible `build.sh`, markdown export), **grounded in the
+code** (every claim linking to the implementing package/module), with full academic
+referencing and links to codebases and online material. First candidate: the program
+paper itself (records-as-products × effects-as-sums × the code-volume ledger with the
+kuroko/hokora measurements) — written when the hokora gives it its measurement.
+Position in the map: the whitepaper is the *distillation* of the notes for the widest
+maintainer/researcher audience; it cites notes and code rather than replacing them.
+
+Canonicity per fact class (resolving the open question): **laws** — haddock canonical
+(notes carry the design rationale for them); **wire quirks** — CODEC_QUIRKS canonical
+(codec haddock links to quirk IDs); **decisions** — REUSE_REGISTER/INFRASTRUCTURE/
+DOC_STRATEGY canonical per domain (notes carry the narrative); **naming** — the NIH_PLAN
+registry; **tutorials** — canonical for orientation facts only, always deferring to
+canonical sources for technical claims (with links, per policy).
 
 ## 2. Single-source-of-truth and drift
 
@@ -129,3 +164,4 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | Date | Decision |
 |---|---|
 | 2026-09-24 | Seed created: §1–§11 recorded as open issues; policy decisions to be logged here as they land. |
+| 2026-09-24 | §1 decided: three audiences, three genres — tutorials for arrivals; verbose, math-and-link-rich Haddock for API consumers (SVG figures from checked-in DSL sources; external citations and repo links as policy); design corpus + LaTeX whitepaper distillation (telix genre: lualatex/biber, `.bib` corpus, grounded-in-code) for maintainers. Canonicity fixed per fact class: laws→haddock, quirks→CODEC_QUIRKS, decisions→registers, naming→registry. |
