@@ -244,7 +244,10 @@ mode-indexed GADT states, render loop as a yamaarashi stream of frames.
 ### 3.1 Row discipline
 - One field definition, many rows. No per-message ADTs for wire types; rows plus open-variant
   dispatch. Unknown fields are *preserved* (open envelopes), never dropped.
-- Projections are `rcast`-style and zero-cost; DTO types are banned at module boundaries.
+- Projections are `rcast`-style and zero-cost; DTO types are banned at *internal* module
+  boundaries. Sanctioned exception (LLM_SUBSTRATE §1.1): adapters to external nominal APIs
+  (baikai, etc.) live entirely inside bridge packages, are logic-free, and are
+  round-trip property-tested.
 - TriState HKD (`Record (TriState) r`) is the single patch representation (RFC 7396/6902),
   with a generic diff engine computing minimal SQL UPDATEs for the db tier.
 

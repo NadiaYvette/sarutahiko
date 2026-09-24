@@ -50,6 +50,27 @@ operation the catalog requires (embeddings — see §6), the gap is either upstr
 baikai or served by a thin direct interpreter in `sarutahiko-model-baikai`, never by a
 new provider transport in our tree.
 
+### 1.1 Boundary semantics (rows in, nominal out; streams absorbed at the edge)
+
+Two clarifications that follow from questions the maintainer raised:
+
+- **Rows ⇄ nominal mapping.** Baikai's API is nominal (`CompletionRequest`,
+  `AssistantMessageEvent`, `Options`); ours is structural (rows). The interpreter
+  field-by-field maps rows ⇄ baikai types. This is the sanctioned exception to the
+  DTO ban (NIH_PLAN §3.1, amended): the ban targets *internal* boundaries where DTO
+  multiplication is O(N²); adapters to external nominal APIs are mechanical,
+  logic-free (no policy), localized entirely inside the bridge, round-trip
+  property-tested, and O(1) per external library. No call site above the boundary
+  ever names a baikai type. Symmetry note: baikai's own `baikai-claude`/`-openai`
+  are the same pattern one layer down — our bridge adds one more "vendor" (the row
+  vocabulary) at the top.
+- **Streamly never leaks.** Baikai is internally streamly-based (also our §3.5
+  backend choice). Its `streamRequest` results are converted to `EventCursor`
+  steppers at the interpreter boundary — the same absorption move as the conduit
+  adapters in `yamaarashi-conduit` — so no streamly type appears in any signature,
+  and the yamaarashi kernel plan is untouched. L1's exactly-one-terminator law is
+  verified across the conversion by the testkit.
+
 ## 2. The `ModelAPI` signature
 
 Per catalog rules: GADT over `m`, cursors not streams, laws stated, scope exclusions
