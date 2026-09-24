@@ -1,12 +1,13 @@
-# Sarutahiko — NIH Replacement Plan for the Nadeem Bitar AI Coding Ecosystem, Hermes, and Supporting Software
+# Sarutahiko — NIH Replacement Plan for the Nadeem Bitar (keiro) Ecosystem, the Hermes Agent, and Supporting Software
 
 Status: DRAFT v0.1 · 2026-09-23
 Scope: a ground-up Haskell reimplementation ("NIH") of the substantial components of the
-Nadeem Bitar AI coding ecosystem and of Hermes (per `HERMES_DESIGN.md`), plus the network
+Nadeem Bitar (keiro) ecosystem — baikai, keiro, kiroku, shibuya, kioku, shikumi and
+kin — and of the Hermes agent (Nous Research; per `HERMES_DESIGN.md`), plus the network
 protocols, file formats, and supporting libraries they lean on, built on extensible records
 (large-anon / large-records / vinyl interop), row-typed algebraic effects, and row-polymorphic
 streaming pipelines. The greenfield database library concept from
-`docs/Haskell Algebraic Effects Pattern Names-2.md` is folded in as its own workstream.
+`docs/transcripts/gemini-rows-for-mcp-lsp.md` is folded in as its own workstream.
 
 Sources consolidated by this plan:
 
@@ -134,8 +135,8 @@ The five substrate bags — (1) extensible-record network protocol codecs, (2) e
 file format codecs, (3) `yamaarashi`, (4) `hashigakari`, (5) the large-*/vinyl record
 foundation — move and store rows but have no behavior. Note (1) and (2) are really *one* bag
 with two spouts: both are field dictionaries + generic codecs + envelope preservation over the
-same `sarutahiko-fields` vocabulary, so the marginal cost of the Nth codec is a field list and
-a decoder recipe, not a new serializer. The climb to the Nadeem Bitar / Hermes ecosystems adds
+same `sarutahiko-fields` vocabulary, so the marginal cost of the Nth codec is a field list and a decoder recipe, not a new serializer. The climb to the Nadeem Bitar (keiro) ecosystem and
+the Hermes agent (Nous Research) adds
 behavior layers, each standing on the row substrate:
 
 | Layer | Contents (NIH-of) | Principal code-volume lever |
@@ -222,9 +223,9 @@ Bundles move inter-reliant by design: (a) wire+effect substrate (everything need
 
 #### The maintenance-burden thesis and the kuroko precedent
 
-The program is, explicitly, an answer to Nadeem Bitar's stack: the claim is that the same
+The program is, explicitly, an answer to the Nadeem Bitar (keiro) ecosystem: the claim is that the same
 capabilities fall out of a dramatically smaller core maintenance burden when the substrate is
-rows + effects + streams. The working evidence is `~/src/kuroko/` — an effectful autonomous
+rows + effects + streams. The working evidence is the maintainer's `kuroko` project — an effectful autonomous
 agent sidecar, complete agent capability in ≈1k core LOC (<1.5k claimed; 1.9k incl. tests):
 Dhall-typed policies, ReAct workflow as a porcupine DAG with a CAS-store step cache, and
 three effect groups (`LLM` with OpenAI/Claude/Mock handlers; `Tool` with vinyl/docrec rows,
@@ -433,7 +434,7 @@ bullet through *every* layer in one executable — one-shot CLI → interpreted 
 model call, one MCP tool over yamaarashi stdio transport) → session events appended to a
 hashigakari-sqlite row log → one pure reducer → printed summary. Excluding substrate
 packages, budget ≤2k LOC, measured. This is the first quantitative datum for the
-answer-to-Nadeem thesis (kuroko ≈1k LOC on vinyl/persistent; the hokora is the same claim on
+keiro-comparison thesis (kuroko ≈1k LOC on vinyl/persistent; the hokora is the same claim on
 our substrate, with wire conformance and a real store). It validates the effect-signature
 catalog against a real consumer before Phase 2 hardens it — the walking-skeleton argument:
 substrate APIs are only trustworthy once something on the peak stands on them.

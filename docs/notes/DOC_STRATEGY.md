@@ -480,7 +480,9 @@ maintainer's explicit position: derivation credit is granted **by choice, not
 obligation** — even where no direct code use creates a license duty, the credit is
 still given, because it is owed in the register's own terms (design analysis is
 derivation). Concretely: a `CREDITS.md` at the root listing the keiro ecosystem (baikai,
-keiro, kiroku, shibuya, kioku, shikumi), Hermes (Nadeem Bitar), and the upstream
+keiro, kiroku, shibuya, kioku, shikumi — **Nadeem Bitar**), the Hermes agent
+(**Nous Research**, https://hermes-agent.nousresearch.com/ — diffuse authorship,
+attributed to the company per the maintainer's 2026-09-24 correction), and the upstream
 Haskell projects (typed-protocols/IOG, hasql, effectful, polysemy, streamly, conduit,
 porcupine, large-records/large-anon, hlint, brittany, and others as the register grows),
 each with what was learned from it. License note: design influence carries no license

@@ -42,7 +42,7 @@ decision:
 > taxonomies are confirmed and adopted; its code is not depended on.
 
 This follows the plan's own demand-order logic: no other wire protocol in the program
-is exercised by every layer daily. It also strengthens the answer-to-Nadeem thesis:
+is exercised by every layer daily. It also strengthens the keiro-comparison thesis:
 kuroko already demonstrated provider access without first-iteration dependencies; the
 substrate makes that cheaper still (SSE framing via yamaarashi, row codecs, open
 envelopes, `Process`-bracketed CLIs). Design lessons adopted from baikai (provenance

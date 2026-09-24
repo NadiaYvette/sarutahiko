@@ -22,7 +22,8 @@ below is judged against them:
    first-iteration Haskell libraries deserve re-coverage under more advanced design
    principles.
 3. **Redesign from first-iteration experience** — where a first iteration exists, its
-   lessons (and its users' complaints) are design input; Nadeem's stack is the
+   lessons (and its users' complaints) are design input; the Nadeem Bitar (keiro)
+   ecosystem is the
    richest such source we have.
 4. **Integration contact** — components must compose with our protocol stacks, record
    vocabulary, and effect catalog without per-call-site adapters.

@@ -38,7 +38,7 @@ forces them to compose while reshaping them is still cheap.
 2. **The thesis measurement.** Kuroko delivered agent capability in ≈1k core lines on
    vinyl/persistent, with no wire conformance and a TH-bound store. The hokora delivers
    the same class of capability on our substrate *with* a conformance-tested MCP transport
-   and a real event-sourced log. Near budget ⇒ the first datum for the answer-to-Nadeem
+   and a real event-sourced log. Near budget ⇒ the first datum for the keiro-comparison
    thesis. ≈3× over budget ⇒ an even more valuable datum: the substrate has a problem,
    discovered while it is still cheap to fix.
 3. **Catalog stress test.** Every signature it touches — `Process`, `Log`, `ModelAPI`,
