@@ -95,9 +95,9 @@ canonical sources for technical claims (with links, per policy).
 Planned duplications already exist: laws (catalog note ↔ haddock ↔ property tests),
 quirks (CODEC_QUIRKS ↔ fixtures ↔ codec haddocks), naming (registry ↔ READMEs ↔ cabal
 synopses), decisions (INFRASTRUCTURE ↔ CI config ↔ cabal commons). Any fact written
-twice drifts. Canonicity per duplication class was fixed in §1; the open halves are
-the *repair procedure* and §4's rot mechanics (note/code precedence). The assessment
-half is now decided:
+twice drifts. Canonicity per duplication class was fixed in §1; the assessment and
+repair halves are decided below, and §4 owns the rot mechanics (note/code
+precedence). The assessment half:
 
 **The doc-drift judge (blessed component).** An LLM-powered assessment instrument,
 added to the component list (Noh name to be chosen at package-planning time), that
@@ -160,7 +160,18 @@ checks as effect programs is the intended Phase-2 self-application.
 
 **Choice: class 2/3 harness (promptfoo-style or headless agentic) with
 programmatic pre-filtering, multi-oracle consensus with veto-triggered intensive
-review, findings→row store, advisory authority.** Repair procedure remains open.
+review, findings→row store, advisory authority.**
+
+**Repair procedure — DECIDED 2026-09-24 (the (c)+(d) synthesis):** the judge's findings may
+carry proposed patches — mechanical repairs (path rewrites, stale links, §9 sweep fixes)
+especially — as *proposals*; machine labor concentrates where it is safe. **Flag-clearing
+is human-gated**: a flag clears only when a maintainer (or subsystem maintainer, per §4's
+variegated scope) accepts a repair, with the clearing witnessed by a dated status edit
+citing both the finding row and the accepting change SHA. Repairs touching *blessed*
+content get no new gate — they ride §3/§4's existing gates (blessing protocol, review
+gate) as already decided. **Cadence is batched, not per-finding**: sweep → triage → one
+batched repair change per cycle, matching the batched-push policy (INFRASTRUCTURE §12),
+so repair churn and push churn get the same answer.
 
 ## 3. Lifecycle and authority — DECIDED 2026-09-24 (states, invalidity flags, dead documents)
 
@@ -445,6 +456,7 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §1 decided: three audiences, three genres — tutorials for arrivals; verbose, math-and-link-rich Haddock for API consumers (SVG figures from checked-in DSL sources; external citations and repo links as policy); design corpus + LaTeX whitepaper distillation (telix genre: lualatex/biber, `.bib` corpus, grounded-in-code) for maintainers. Canonicity fixed per fact class: laws→haddock, quirks→CODEC_QUIRKS, decisions→registers, naming→registry. |
 | 2026-09-24 | §1 amended: tutorials upgraded to scaled-textbook with enlightenment-forcing exercises (AI-assisted answering expected; explanation is the deliverable) and machine-authorship as explicit policy — volumes on command, human effort spent on curation/challenge/blessing. Whitepaper apparatus donors named: telix (pipeline shape) + nadie (imakeidx/truexindy named indices with UTF-8 collation, multilingual babel with per-script fonts — Japanese required for Noh vocabulary, biblatex autocite, minted); apparatus designed in from the template's first commit, never retrofitted (the nadie retrofit failure is the cautionary example). |
 | 2026-09-24 | §2 partially decided (assessment half): the doc-drift judge blessed as a component — corpus-wide LLM assessment with programmatic pre-filtering (ID/symbol/link nets bound the invocation burden), fallible-oracle consensus (≥2 providers; any veto triggers intensive review), findings to the row store, advisory authority. SaaS PR-reviewers dismissed as the mechanism (PR-diff-scoped vs our as-yet-unidentified-drift sweeps) with rationale and survey recorded. Repair procedure still open. |
+| 2026-09-24 | §2's repair procedure decided — the (c)+(d) synthesis: judge-proposed patches are free proposals (mechanical repairs especially); flag-clearing human-gated, witnessed by a dated status edit citing finding row + accepting change SHA; blessed-content repairs ride §3/§4's existing gates (no new gate); batched sweep→triage→repair cadence matching the batched-push policy. §2 is now fully decided. |
 | 2026-09-24 | §2 amended: the judge must understand the code — consistency is bidirectional; behavioral claims verified against implementing source, examples against compilable code, exit criteria against artifacts; oracle bar raised (code-reading competence), harness bar raised (anchor-graph context assembly), test suites/fixtures citable as execution evidence. |
 | 2026-09-24 | §3 decided: seven lifecycle stages (seed/draft/review/blessed/implemented/superseded/dead); invalidity as orthogonal flag overlay (erroneous/inconsistent/stale/dead-links/needs-work) carried in Status headers, flagged documents lose citability for affected fact classes until cleared; blessing mechanics formalized (dated status edit + decision-log row); revision-in-place vs new-document rule with the LLM-substrate precedent; dead documents tombstoned in docs/ATTIC.md with git history as content store; version-qualified haddock linking (Hackage for released versions, tag-pinned rebuilds otherwise). |
 | 2026-09-24 | §4 decided (with the pre-birth amendment): rot folds into the doc-drift judge; precedence = code wins at runtime, the note must be corrected regardless; implementing change stamps `implemented`, sub-stamp implemented-maps for multi-package designs; **prospective references** type the pre-birth frontier (planned/dormant/born) — dormant anchors deferred not failed, birth events activate references, NIH_PLAN §6 as the planned-documents inventory; judge covers the full document life. |
