@@ -181,7 +181,9 @@ so human attention scales with adjudication, not with commit volume.
 
 **Lifecycle stages** (the main line; carried in each document's Status header):
 
-1. `seed` — issue space recorded, policy pending (this document's current state)
+1. `seed` — issue space recorded, policy pending (this document held this state
+   until v1.0); a seed needs no owner and no cadence — its only obligation is
+   presence in the inventory (the §5 index), so a parked idea cannot be lost
 2. `draft` — full draft exists, pre-review
 3. `review` — under maintainer review; challenges pending resolution
 4. `blessed` — decisions adopted; blessing date(s) in the Status header (mechanics:
@@ -289,6 +291,16 @@ review. On Radicle this maps onto patches and delegate thresholds. Until contrib
 exist, the maintainer occupies all gates (the hokora exception — stated so the policy
 implies no multi-party fiction). Subsystem-maintainer assignments await the first
 collaborators; the mechanism is defined, the staffing is not.
+
+**Dispute resolution — DECIDED 2026-09-24 (override as explicit action).** When
+authorities disagree — maintainer vs subsystem maintainer, either vs the judge's
+consensus — there is no ambient "maintainer wins by default." Instead the maintainer
+may **override by explicit decision**: a recorded action (a decision-log row or
+document amendment) naming the dispute, the overridden authority, and the reasoning.
+Authority otherwise flows through the normal gates; the override exists so every
+dispute has a terminator, but its use is visible, auditable, and costs a record —
+the corpus's everything-explicit doctrine (blessings, flags, shields) applied to
+authority itself.
 
 **Pre-birth documentation — DECIDED 2026-09-24 (the frontier).** The mirror of the
 attic problem, and thornier: no git history holds ground truth for what does not
@@ -532,3 +544,4 @@ in public.
 | 2026-09-24 | §5 decided: directories now — `docs/notes/`, `docs/registers/`, `docs/imports/` (verbatim third-party material incl. the Hermes inventory and diagrams), `docs/transcripts/` (conversation archives; freely renamable, title = origin, filename = topic, provenance headers on the renamed Gemini transcripts); hybrid index (`docs/INDEX.md`: generated inventory table + hand-curated reading paths, script net beneath the judge); no archive directory (index's Archived section is the archive); tier as index metadata only; cross-references two-layer — ID citations canonical, relative links convenience, enforced by a zero-LLM script net under the judge's semantic layer. |
 | 2026-09-24 | §10+§11 decided: §10 — CHANGELOGs cross-referenced to INFRASTRUCTURE §6.3; ADR format declined (notes are the richer records; decision-log rows supply the numbered-decision essence); ledger home and corpus docs by cross-reference; TODOs owned canonically by notes' open-item sections with a one-directional mechanical sync to issues on the primary mirror as a convenience projection adopted when collaborators arrive. §11 — docs outside LOC budgets; documentation intensity (docs-words/core-LOC) a nightly descriptive ledger row, visible because it is part of the keiro-comparison thesis. With these, all issue sections are decided — the strategy graduates from seed to policy (v1.0). |
 | 2026-09-24 | Backlog item 11 written: `OBSERVABILITY_DESIGN.md` (**kagami-ita** 鏡板, blessed; alternates mawari-butai / hanamiko / mie reserved) — the interpreter edge as the sole instrumentation point (K1–K4: instrumentation is an interpreter concern; dual interfaces with an observer-effect parity law; row-typed envelope events generalized from the memory log; zero-cost-when-absent capability grants); metrics as reductions over the event stream via mergeable quantile sketches (reuse row 2.20: the maintainer's t-digest as owner class, Greenwald–Khanna, Q-digest); replay-based serviceability via the kakegoe recording interpreters; scrub-manifest-gated privacy posture; small-context accommodation (§7 corollaries); open questions O1–O7 (retention defaults, span shape, metrics exposure, recorder home, sampling, envelope home, high-cardinality top-k). |
+| 2026-09-24 | §3/§4 remainders closed: dispute resolution is **override-as-explicit-action** — no ambient maintainer-wins default; the maintainer may override by recorded decision naming the dispute, the overridden authority, and the reasoning (visible, auditable, costing a record); seed formalities resolved — a seed needs no owner or cadence, only inventory presence. No parked remainders remain in the strategy. |
