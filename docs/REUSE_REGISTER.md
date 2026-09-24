@@ -179,6 +179,25 @@ verdict (2.10). Baikai's own experience (haddocks diverging from actual API beha
 counted as evidence that generated bindings drift from wire reality — our codecs are
 verified against recorded transcripts instead.
 
+### 2.16 brittany (formatter) — REUSED, WITH UPSTREAMING (maintainer is the contributor)
+Chosen over fourmolu (INFRASTRUCTURE §2): the maintainer prefers brittany's
+expressive layout (intelligent horizontal space and alignment; comment fidelity) and
+holds an unusual provenance position — a 42-commit series in `~/src/brittany` ahead of
+the stale lspitzner upstream (GHC 9.14 support, comment-handling repairs, test
+modernization), with a close relationship to the new package maintainer who adopted
+brittany and included the series. Formatting adjustments flow upstream rather than
+forking. Risk (GHC-API coupling, historical unmaintained banner) is managed by the
+series itself; CI pins the fork (or its Hackage successor). Revisit trigger: brittany
+failing to format an adopted GHC feature faster than upstream extension.
+
+### 2.17 hlint (linter) — REUSED, WITH RULE PATCHING
+No credible alternative exists, and NIH is a heavy lift versus protocol libraries (the
+cost class is different: semantics-preserving source transformation over the full GHC
+AST). Maintainer holds a clone (`~/src/hlint/`); program-specific rules and rule
+patches flow upstream. The design-mandated custom lints (SQL ordering, dual-effect
+parity, layer directions) remain bespoke CI jobs — hlint is the general linter, not
+the layer-lint substrate.
+
 ## 3. Cases to be decided (parked, with their trigger)
 
 - **warp / wai** (HTTP server): Phase-3 surfaces (gateway, dashboard). Expected: reuse

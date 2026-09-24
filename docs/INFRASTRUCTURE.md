@@ -38,12 +38,36 @@ with reasoning and revisit triggers, so tooling questions are answered once.
   fork); ghcup makes the pin a one-line change. Nix flakes remain optional per-repo
   (baikai-style), never program-mandatory.
 
-## 2. Formatting — fourmolu
+## 2. Formatting — brittany (amended 2026-09-24; fourmolu draft superseded)
 
-- `fourmolu` with a checked-in `fourmolu.yaml` (the arena *and* baikai already ship one —
-  the ecosystem default); enforced as `fourmolu --check` in CI, applied in place locally.
-  No commit hooks (CI is authoritative; hooks rot).
-- `cabal-fmt --check` for `.cabal` files in the same CI job.
+- **`brittany`**, enforced as `brittany --check` in CI, applied in place locally; no
+  commit hooks (CI is authoritative; hooks rot). `cabal-fmt --check` for `.cabal` files
+  in the same CI job.
+- **Rationale (maintainer):** aesthetic preference for brittany's output over
+  fourmolu's, *plus* an unusually strong provenance position: the maintainer has a
+  42-commit series in `~/src/brittany` ahead of the (stale) lspitzner upstream —
+  GHC 9.14 extension/layout support, extensive comment-handling repairs, test-suite
+  modernization — and a close relationship with the new package maintainer who adopted
+  brittany and included that series. Formatting adjustments we need can flow upstream,
+  which is the same relationship the doctrine gives hlint.
+- **Trade-offs, honestly stated** (the fourmolu draft's case, kept for the register):
+  fourmolu's advantage is *predictability* — a single opinionated style, zero-config by
+  philosophy, the de-facto ecosystem default (arena/baikai ship fourmolu.yaml), so
+  external contributors meet no surprises; brittany's advantages are *expressiveness*
+  (it makes intelligent use of horizontal space and alignment rather than forcing one
+  canonical layout — the aesthetic the maintainer prefers) and *comment fidelity*
+  (retains newlines/comments where they were, a real property for a codebase dense with
+  law annotations). brittany's historical risks — the old README's "effectively
+  unmaintained" banner and GHC-API coupling — are directly addressed by the maintainer's
+  series (GHC 9.14 support now in the fork) and by the upstream relationship; the fork
+  is 42 ahead / 0 behind, and Hackage's latest is 0.14.0.2.
+- **Condition of adoption:** the CI formatter is the *fork* (or its Hackage successor)
+  carrying the series, pinned by commit in `bin/`; if the series' Hackage release lands,
+  the pin moves to the release. Revisit trigger: brittany failing to format a GHC
+  feature we adopt (or-patterns etc.) faster than we can extend it upstream.
+- Register: REUSE_REGISTER gains a brittany row (2.16) — reuse-with-upstreaming,
+  distinct from 2.4/2.13 (engine reuse) because here we carry the development weight.
+  hlint (2.17): reuse with rule patching, same pattern.
 
 ## 3. Linting
 
