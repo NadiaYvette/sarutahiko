@@ -544,6 +544,16 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    token/context accounting feeding the cache rules.
 9. **Hokora slice spec** (the Phase-1.5 tracer bullet): exact event rows, turn program, and
    the LOC measurement protocol.
+12. **i18n ecosystem design note** (raised 2026-09-24; the NIH-i18n decision of
+    REUSE_REGISTER 2.22): the pure-Haskell Unicode/CLDR stack — locale-as-record (CLDR
+    inheritance as record merge), services as capability effects, ICU-parity as a law,
+    pinned UCD/CLDR data in-tree, table extraction per the extraction thesis, phased
+    scope (segmentation/bidi/plural/classic-MF/numbers → collation → calendars;
+    dictionary-breaking and shaping stay at the edge). Faithfulness: ICU4C source as
+    semantic ground truth, Go x-text / ICU4X as architectural references, official
+    conformance files as fixtures, ICU as oracle. Working name candidate:
+    **aikyōgen** (間狂言, the interlude actor explaining the play in the vernacular),
+    pending blessing. Follows the observability note in design order.
 11. **Observability & serviceability design note** (raised 2026-09-24; scope — a design,
     not a plan): what the ecosystem makes visible about itself. Structured event emission
     (the memory log's envelope discipline generalized outside the memory engine);

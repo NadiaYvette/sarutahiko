@@ -289,7 +289,28 @@ space; count-min or similar judged per the register when demand arrives.
   (publication-pending), `Text.Shakespeare.I18N`.
   Trigger: first real surface ships user-facing strings (Phase 3).
 
-### 2.22 text-icu (ICU4C bindings) — REUSED as the locale primitive layer (with three recorded caveats)
+### 2.22 text-icu (ICU4C bindings) — role revised 2026-09-24: oracle and reference source, not dependency (the i18n NIH decision)
+**The direction (maintainer, 2026-09-24): the internationalisation ecosystem is NIH'd
+pure-Haskell**, with faithfulness carried by (a) source analysis of ICU4C (semantic
+ground truth) and the pure reimplementations Go x-text / ICU4X (architectural
+references — ICU4X, the Consortium's own pure-Rust ICU, is the existence proof and
+design donor), (b) formal verification aimed where it is strong (normalization
+confluence; collation transitivity per UTS #10's mechanized axioms; bidi algebraic
+properties), (c) empirical regression testing against the official UCD/CLDR
+conformance files plus ICU as second oracle. Extensible records carry the redesign:
+locale as a resolved record (CLDR inheritance as record merge — root ⊕ lang ⊕ region),
+services as capability-granted effects, ICU-parity as an enforced law of the dual
+interfaces, UCD/CLDR versions pinned in-tree (hermetic — row 2.22's three caveats
+invert into design goals). Phased scope: normalization/case/properties, bidi,
+plural rules + classic MessageFormat, BCP-47/locale resolution, number formatting
+first; collation UCA+simple-tailoring then full CLDR tailoring; Gregorian+tz then
+calendars; **dictionary-based breaking and text shaping stay at the edge** (codex /
+harfbuzz) absent a heroic decision. The original reuse verdict is retained below as
+the historical record and as the oracle role's justification.
+
+---
+
+### 2.22a text-icu (ICU4C bindings) — the original verdict (2026-09-24): REUSED as the locale primitive layer (with three recorded caveats)
 ICU is the reference implementation of Unicode services — collation, normalization,
 segmentation, case mapping, charset conversion/detection, regex, number/date
 formatting, all backed by CLDR data. Reimplementing it fails Q1/Q2/Q3 outright (no
