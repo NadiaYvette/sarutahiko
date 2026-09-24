@@ -551,9 +551,9 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
     scope (segmentation/bidi/plural/classic-MF/numbers → collation → calendars;
     dictionary-breaking and shaping stay at the edge). Faithfulness: ICU4C source as
     semantic ground truth, Go x-text / ICU4X as architectural references, official
-    conformance files as fixtures, ICU as oracle. Working name candidate:
-    **aikyōgen** (間狂言, the interlude actor explaining the play in the vernacular),
-    pending blessing. Follows the observability note in design order.
+    conformance files as fixtures, ICU as oracle. **Blessed name: kogaki** (小書,
+    the variant annotations beside the master text); alternates in the registry's
+    reserve. Follows the observability note in design order.
 11. **Observability & serviceability design note** (raised 2026-09-24; scope — a design,
     not a plan): what the ecosystem makes visible about itself. Structured event emission
     (the memory log's envelope discipline generalized outside the memory engine);
@@ -626,14 +626,13 @@ surface returned to the audience — names the observability & serviceability la
 (`OBSERVABILITY_DESIGN.md`, backlog item 11). Alternates considered and held in
 reserve: *mawari-butai* (廻り舞台, the revolving stage — the 360° view), *hanamiko*
 (花道, the runway through the audience — the path from stage to observers), *mie*
-(見得, the dramatic held pose — snapshot semantics; narrower, reserved). **i18n layer,
-proposed and evaluated 2026-09-24** (backlog item 12; recon in
-`transcripts/noh-writing-motifs.md`): **kogaki** (小書, "small writing" — the
-variant-performance annotations set beside the master text) is the proposal: the i18n
-layer is exactly alternate realizations annotated alongside canonical messages —
-variant-of-a-master-text semantics, which outclasses the other candidates. Evaluated
-and held: **fude** (筆, the brush — names the instrument, not the relation of variant
-to canon); **tanzaku** (短冊, the poem strip — a message fragment, not the system);
-**aikyōgen** (間狂言, the interlude explaining the play in the vernacular — strong on
-the translation angle but names the explainer, not the annotation structure);
-utaibon/mie already reserved elsewhere. Blessing pending; the design note confirms.
+(見得, the dramatic held pose — snapshot semantics; narrower, reserved). **Blessed
+2026-09-24: kogaki (小書)** — "small writing", the variant-performance annotations
+set beside the master text — names the i18n layer (backlog item 12; recon in
+`transcripts/noh-writing-motifs.md`): the i18n layer is exactly alternate
+realizations annotated alongside canonical messages, variant-of-a-master-text
+semantics. Evaluated and held in reserve: **fude** (筆, the brush — names the
+instrument, not the relation of variant to canon); **tanzaku** (短冊, the poem strip
+— a message fragment, not the system); **aikyōgen** (間狂言, the interlude explaining
+the play in the vernacular — strong on the translation angle but names the
+explainer, not the annotation structure); utaibon/mie already reserved elsewhere.

@@ -37,5 +37,6 @@ link targets. First-use rule in prose (§7): kanji + romaji + gloss.
 - **utai** (謡) — the LLM layer; *vox calculi*. → `../notes/LLM_SUBSTRATE_DESIGN.md`
 - **kakegoe** (掛け声) — the policy-experiment instruments; the calls coordinating the ensemble. → `../notes/INSTRUMENTS_SPEC.md`
 - **kagami-ita** (鏡板) — the observability & serviceability layer; the mirror-board. → `../notes/OBSERVABILITY_DESIGN.md`
+- **kogaki** (小書) — the i18n layer; the variant annotations set beside the master text. → `../notes/NIH_PLAN.md` §6.1
 - **hokora** (祠) — the Phase-1.5 vertical validation slice. → `../notes/HOKORA_SPEC.md`
 - **C1–C6** — the cross-dialect ordering contract on the log substrate. → `../notes/MEMORY_ENGINE_DESIGN.md` §3.4
