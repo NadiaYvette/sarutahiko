@@ -61,10 +61,13 @@ with reasoning and revisit triggers, so tooling questions are answered once.
   unmaintained" banner and GHC-API coupling — are directly addressed by the maintainer's
   series (GHC 9.14 support now in the fork) and by the upstream relationship; the fork
   is 42 ahead / 0 behind, and Hackage's latest is 0.14.0.2.
-- **Condition of adoption:** the CI formatter is the *fork* (or its Hackage successor)
-  carrying the series, pinned by commit in `bin/`; if the series' Hackage release lands,
-  the pin moves to the release. Revisit trigger: brittany failing to format a GHC
-  feature we adopt (or-patterns etc.) faster than we can extend it upstream.
+- **Condition of adoption:** the CI formatter is the *new upstream*
+  (`github.com/xwinus/brittany`, the adopting maintainer — Vaclav Svejcar — with 161
+  commits of active development beyond the stale lspitzner master, including the
+  maintainer's 42-commit series, now fully merged and verified contained), pinned by
+  commit; the pin moves to its Hackage releases as they land. Revisit trigger: brittany
+  failing to format a GHC feature we adopt (or-patterns etc.) faster than we can extend
+  it upstream.
 - Register: REUSE_REGISTER gains a brittany row (2.16) — reuse-with-upstreaming,
   distinct from 2.4/2.13 (engine reuse) because here we carry the development weight.
   hlint (2.17): reuse with rule patching, same pattern.
