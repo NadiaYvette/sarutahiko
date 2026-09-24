@@ -145,7 +145,98 @@ Err on the side of *too many* kinds, factored late: `MessageAppended`, `ToolInvo
 Compression *writes an event* (`ContextCompressed`) rather than mutating history — the
 cache-breaking moment is thus itself in the log, replayable and auditable.
 
-### 3.4 The ordering contract (blessed alongside spine v0.2)
+### 3.4a The SomeRow worked example (§10 item 5, resolved)
+
+The catalog's `SomeRow` standard (EFFECT_CATALOG_DESIGN §6.4), worked end to end for the
+log's `(kind, schemaV)` payload tagging. Five payloads, two engines, one reducer.
+
+**The payload schemas and their registry.** Payload rows are ordinary rows; the registry
+is a GADT of witnesses — one constructor per `(kind, schemaV)` pair. This registry is the
+single place a new payload version is ever declared:
+
+```haskell
+data Kind = KMessageAppended | KToolObserved | KContextCompressed | …
+
+-- version 1 rows…
+type MessageAppendedV1   = '[ "role" ':= Role, "content" ':= Text ]
+type ToolObservedV1      = '[ "callId" ':= UUID, "output" ':= Text, "ok" ':= Bool ]
+type ContextCompressedV1 = '[ "fromSeq" ':= Word64, "toSeq" ':= Word64
+                            , "summary" ':= Text, "summaryKey" ':= SummaryKey ]
+-- …and a same-version additive extension (rule 1: optional fields, ignorable by old
+-- reducers): MessageAppended gains which model produced it.
+type MessageAppendedV1'  = MessageAppendedV1 ++ '[ "model" ':= Maybe Text ]
+
+-- the witness registry: PVP-for-data applies here (adding a constructor is additive;
+-- re-typing one is breaking)
+data Tag (k :: Kind) (v :: Row Type) where
+  TagMsgV1 :: Tag 'KMessageAppended MessageAppendedV1
+  TagObsV1 :: Tag 'KToolObserved     ToolObservedV1
+  TagCmpV1 :: Tag 'KContextCompressed ContextCompressedV1
+
+-- the existential package: the row type is erased, the witness survives
+data SomePayload where
+  SomePayload :: Tag k v -> Record Identity v -> SomePayload
+```
+
+**Act 1 — write path.** A tool observation happens:
+
+```haskell
+row  #callId .= cid #output .= out #ok .= True   -- Record Identity ToolObservedV1
+let ev = envelope #kind := KToolObserved #schemaV := 1
+           #payload := SomePayload TagObsV1 row …spine…
+append @SessionStore ev
+```
+
+What physically lands (spine = columns, payload = JSONB/blob): `seq` and the spine
+fields as columns; `kind = "tool_observed"`, `schemaV = 1` **as spine columns** — so
+reducer filtering never decodes payloads, honoring §3.1's promise concretely; the payload
+JSON plus the tag text for forensics.
+
+**Act 2 — read path.** A reducer declares the `(kind, schemaV)` pairs it accepts (type-
+level list, value-level set derived from it); the log layer's fold checks the tag against
+the declaration using spine fields only, then decodes via the witness:
+
+```haskell
+type TailAccepted =
+  '[ '(KMessageAppended, 1), '(KToolObserved, 1), '(KContextCompressed, 1) ]
+
+foldSession :: … -> (forall k v. Tag k v ∈ TailAccepted
+                     => Tag k v -> Record Identity v -> acc -> Eff es acc)
+            -> acc -> Eff es acc
+```
+
+Undeclared pair ⇒ the fold **fails closed** with the offending tag named (§3.2.2) — never
+a mis-decode, never a silent skip. Typed continuation: inside the continuation the row is
+fully typed, no dynamic lookup anywhere.
+
+**Act 3 — the two evolution moves.**
+
+- *Same-version extension:* the writer starts emitting `MessageAppendedV1'` (with
+  `"model"`). The tail reducer still declares `MessageAppendedV1`. This **works**, because
+  payload decoders are lenient at the field level (unknown keys ignored — the formats
+  bag's open-envelope rule). The crisp rule the example surfaces:
+  **strict across versions, lenient within a version.** The `(kind, schemaV)` gate is
+  strict; unknown *fields* inside a declared version are ignorable additions.
+- *Version bump:* a semantic change to tool observations (say, structured output parts)
+  ships as `TagObsV2 :: Tag 'KToolObserved ToolObservedV2` + `schemaV = 2`. Old reducers
+  now fail closed on new events — which is the *correct* behavior — and heal by declaring
+  both versions and replaying. No spine change, no store migration, no history rewrite:
+  replay is the only migration mechanism (§4), and it works because the witness registry
+  is code, not stored data.
+
+**Act 4 — generalization to the catalog.** `SomePayload` is the `SomeRow` standard's first
+worked instance: same shape (existential + witness GADT), different witness domain. The
+standard's distilled requirements, now demonstrated: (i) a witness GADT per domain; (ii)
+declared-acceptance filtering with fail-closed semantics; (iii) strict-across/lenient-
+within; (iv) the registry lives in code so evolution = replay. The turn program's
+`SomeDecision` partition (§5.1.4) is the second instance — same lesson, syntax side.
+
+**What the example proves (property tests).** Round-trip: write → read → same typed row;
+filtering: undeclared ⇒ refused with the tag named, mis-decode impossible by construction;
+cross-dialect: identical behavior on SQLite and Postgres (C5's generator covers payloads);
+evolution: version-bump + replay reproduces projections byte-identically.
+
+### 3.4b The ordering contract (blessed alongside spine v0.2)
 
 Why there is a contract at all: SQLite and Postgres differ in where their ordering
 *guarantees* actually live, and a design that exploits an implementation behavior rather
@@ -434,9 +525,9 @@ happen against these numbers, not against intuition.
    adoption via the six-scenario expressiveness trial at implementation time.
 4. Retrieval backends: lexical index shape (§5.3) and whether embeddings land in Phase 2
    or 3 (hokora ships lexical only) — decided by the §8.2 precision@k crossover.
-5. The `SomeRow` tagging scheme for `(kind, schemaV)` — interplay with the catalog's
-   `SomeRow` standard (EFFECT_CATALOG_DESIGN §6.4) needs one worked example — decided by
-   property tests (round-trip, reducer filtering, cross-dialect), correctness-gated.
+5. ~~The `SomeRow` tagging scheme for `(kind, schemaV)`.~~ Resolved — worked example in
+   §3.4a (witness registry, strict-across/lenient-within, evolution by replay); the
+   generalization requirements feed the catalog's `SomeRow` standard.
 6. Build the §8 instruments themselves: cache simulator, policy harness, first synthetic
    corpus + checker. This is a backlog item in its own right (see NIH_PLAN backlog),
    sized for the hokora phase.
