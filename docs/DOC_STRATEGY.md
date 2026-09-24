@@ -162,16 +162,61 @@ checks as effect programs is the intended Phase-2 self-application.
 programmatic pre-filtering, multi-oracle consensus with veto-triggered intensive
 review, findings→row store, advisory authority.** Repair procedure remains open.
 
-## 3. Lifecycle and authority
+## 3. Lifecycle and authority — DECIDED 2026-09-24 (states, invalidity flags, dead documents)
 
-De facto states exist (draft → review → blessed → implemented → revised) but are
-unformalized. *Policy needed:* transition rules; what blessing means mechanically (the
-corpus's practice: a dated status edit recording the maintainer's decision); and
-**revision-in-place vs new document** when reality diverges — the LLM substrate
-v0.1→v0.2 precedent (revision in place, correction-of-record, the maintainer's
-challenge preserved as part of the history) versus fresh documents; how much history
-is preserved (the quirk inventory's append-only rule with "fixed as of" notes may or
-may not generalize).
+**Lifecycle stages** (the main line; carried in each document's Status header):
+
+1. `seed` — issue space recorded, policy pending (this document's current state)
+2. `draft` — full draft exists, pre-review
+3. `review` — under maintainer review; challenges pending resolution
+4. `blessed` — decisions adopted; blessing date(s) in the Status header (mechanics:
+   the dated status edit in a maintainer commit, plus the document's decision-log row —
+   the corpus's de facto practice, now formal)
+5. `implemented` — the blessed design realized in code; stamped at the implementing
+   change (partial stamps permitted: "implemented (Tier-0 core, 2026-10-…)")
+6. `superseded` — replaced; must link its successor
+7. `dead` — removed from the tree; tombstoned (below)
+
+**Invalidity flags** — an orthogonal overlay on stages 2–5 (not stages themselves: an
+implemented document can be inconsistent without leaving `implemented`, and repair
+must not force a re-blessing cycle). Flags, carried in the Status header
+(`flags: inconsistent(finding #…), dead-links`):
+
+- `erroneous` — contains factual errors
+- `inconsistent` — contradicts other corpus documents or the code (typical doc-drift
+  judge finding; the finding row is referenced)
+- `stale` — describes behavior that has moved on (the rot vector, §4)
+- `dead-links` — references that no longer resolve
+- `needs-work` — generic defect flag
+
+Setting/clearing: the doc-drift judge sets flags (advisory, citing finding rows);
+humans may flag; the maintainer adjudicates and clears on repair. **Effect of a flag:
+the document is not citable as canonical for the fact classes its flags touch** (§1
+canonicity), until cleared. Repair is ordinary commits; no re-blessing required unless
+the repair changes a decision.
+
+**Revision-in-place vs new document** (the LLM substrate v0.1→v0.2 precedent stands):
+revise in place when the document's identity and scope survive the change (correction
+of record, the maintainer's challenge preserved in the history); a new document when
+the scope or thesis changes (the old one is superseded or killed). Living documents
+(inventories, registers) are append-only by their own rules (quirk history: "fixed as
+of" notes, never deletion).
+
+**Dead documents and the attic.** Removal is `git rm` plus a tombstone row in
+`docs/ATTIC.md`: title, former path, removal commit SHA, last-content SHA, reason,
+successor link (if any), and recovery instructions. Git history is the content store
+(`git show <last-content-sha>:<former-path>`); nothing is stubbed in-tree. **Versioned
+references:** live documents must link haddock version-qualified whenever the
+referenced artifact can change — Hackage versioned docs for released packages
+(`hackage.haskell.org/package/P-v/docs`), tag-pinned source links otherwise. A dead
+(or superseded) document's stale links therefore still resolve: Hackage if released,
+else rebuild at the recorded tag on demand (`cabal haddock` at the tag) — and for
+removed *documents* (which have no haddock), the last-content SHA is the permanent
+address. This keeps the anchor graph (§2) navigable into the past without maintaining
+a documentation server.
+
+Still open under this section: contributor rules beyond the maintainer (§8 covers
+authority; PR mechanics await collaborators).
 
 ## 4. The rot problem — design ahead of code
 
@@ -252,3 +297,5 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §1 decided: three audiences, three genres — tutorials for arrivals; verbose, math-and-link-rich Haddock for API consumers (SVG figures from checked-in DSL sources; external citations and repo links as policy); design corpus + LaTeX whitepaper distillation (telix genre: lualatex/biber, `.bib` corpus, grounded-in-code) for maintainers. Canonicity fixed per fact class: laws→haddock, quirks→CODEC_QUIRKS, decisions→registers, naming→registry. |
 | 2026-09-24 | §1 amended: tutorials upgraded to scaled-textbook with enlightenment-forcing exercises (AI-assisted answering expected; explanation is the deliverable) and machine-authorship as explicit policy — volumes on command, human effort spent on curation/challenge/blessing. Whitepaper apparatus donors named: telix (pipeline shape) + nadie (imakeidx/truexindy named indices with UTF-8 collation, multilingual babel with per-script fonts — Japanese required for Noh vocabulary, biblatex autocite, minted); apparatus designed in from the template's first commit, never retrofitted (the nadie retrofit failure is the cautionary example). |
 | 2026-09-24 | §2 partially decided (assessment half): the doc-drift judge blessed as a component — corpus-wide LLM assessment with programmatic pre-filtering (ID/symbol/link nets bound the invocation burden), fallible-oracle consensus (≥2 providers; any veto triggers intensive review), findings to the row store, advisory authority. SaaS PR-reviewers dismissed as the mechanism (PR-diff-scoped vs our as-yet-unidentified-drift sweeps) with rationale and survey recorded. Repair procedure still open. |
+| 2026-09-24 | §2 amended: the judge must understand the code — consistency is bidirectional; behavioral claims verified against implementing source, examples against compilable code, exit criteria against artifacts; oracle bar raised (code-reading competence), harness bar raised (anchor-graph context assembly), test suites/fixtures citable as execution evidence. |
+| 2026-09-24 | §3 decided: seven lifecycle stages (seed/draft/review/blessed/implemented/superseded/dead); invalidity as orthogonal flag overlay (erroneous/inconsistent/stale/dead-links/needs-work) carried in Status headers, flagged documents lose citability for affected fact classes until cleared; blessing mechanics formalized (dated status edit + decision-log row); revision-in-place vs new-document rule with the LLM-substrate precedent; dead documents tombstoned in docs/ATTIC.md with git history as content store; version-qualified haddock linking (Hackage for released versions, tag-pinned rebuilds otherwise). |

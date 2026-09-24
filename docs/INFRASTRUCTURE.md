@@ -327,6 +327,12 @@ Four layers, with enforcement:
 
 - **Commits:** descriptive-imperative subject; body explains the *why*; Codebuff
   footer per session convention; HEREDOC style for multi-line messages.
+- **Pushing (amended 2026-09-24, hosting-resources policy):** commits are local and
+  frequent; **pushes are batched** — at session end or on maintainer request, not
+  after every commit. AI-assisted development that pushes per change overtaxes
+  hosting services' network/CPU (a documented maintainer complaint); rate-limited
+  hosts get cool-downs and at most one retry, never hammering. `bin/push-all` is the
+  single fan-out point so batching is one command when it does happen.
 - **Flow:** trunk-based `master`; solo PR-less but CI-gated; design review happens
   *in the notes* (adversarial questions and their resolutions are recorded in the
   documents — the docs are the institutional memory, not PR threads).
