@@ -502,6 +502,13 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    maintainer's fork (the `large-records-interfaces` monorepo, forking being the
    mechanism that grants private-interface access for analogue packages), canonical
    for the program, with selective upstreaming of public-surface improvements.
+   **In-note decision order (2026-09-24):** the row-evolution standard is written
+   first — demand-pulled by the memory engine's envelope (the least-reversible
+   decision above the substrate) — and is *requirements-emitting*: it fixes the
+   absence-representation and default-attachment contracts the functor family must
+   satisfy; the HKD functor family then lands as its own blessing against that
+   written contract (vocabulary deferred rather than blessed prematurely); the field
+   datum/registry decision comes last, scoped by the others.
 2. Start Phase 0: multi-package `cabal.project` plus Tier-0 package stubs.
 3. Draft the MCP conformance test plan (spec examples → row-typed fixtures) to nail Phase-1
    exit criteria.
