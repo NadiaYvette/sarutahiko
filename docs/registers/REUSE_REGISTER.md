@@ -367,6 +367,15 @@ the ASCII minimum (Phase 3), or with the i18n package (2.21) whichever comes fir
   shakespeare-derived design (2.21) uses message GADTs + record dictionaries; its
   **runtime catalog loading** remains the reference for the translation-file
   projection format. Trigger: first surface shipping user-facing strings (Phase 3).
+- **organ-bank / frankenstein** (maintainer's own; owner class): source-analysis
+  tooling for the i18n faithfulness program — organ-bank's shim translators for
+  foreign-source surface analysis, frankenstein's LLVM/MLIR-level reassembly work —
+  the program-internal donors for the C/other-language source analysis of
+  REUSE_REGISTER 2.22's faithfulness triad, alongside per-language third-party
+  parsers (tree-sitter grammars, libclang) register-judged per language at demand.
+  Recorded as program tooling rather than third-party references; redesign/expansion
+  is internal development. Trigger: i18n note (backlog 12) reaches its
+  source-analysis phase.
 - **bidi-icu + the codex monorepo** (Kmett; cloned locally): `bidi-icu` is a minimal
   `.hsc` shim over ICU's `ubidi_*` (UAX #9 bidirectional algorithm) — the existing
   precedent for the shim option of row 2.22 caveat 2, and the likely bidi primitive
