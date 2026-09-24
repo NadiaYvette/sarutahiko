@@ -16,26 +16,30 @@ code implements blessed designs.
 ## Read first (in this order)
 
 1. `README.md` — build/run one-liners.
-2. `docs/NIH_PLAN.md` — the program: decisions taken (§0), package map (§2),
+2. `docs/INDEX.md` — corpus inventory and reading map (DOC_STRATEGY §5).
+3. `docs/notes/NIH_PLAN.md` — the program: decisions taken (§0), package map (§2),
    contracts (§3), roadmap (§4), naming registry (§6.1).
-3. The design note for whatever you're touching (see map below).
+4. The design note for whatever you're touching (see map below). Layout: `docs/notes/`
+   (designs/specs), `docs/registers/` (living registers), `docs/imports/` (verbatim
+   third-party material), `docs/transcripts/` (conversation archives).
 
 ## Canonical documents map
 
 | Domain | Canonical | Notes |
 |---|---|---|
-| Program/decisions | `docs/NIH_PLAN.md` | §0 decisions; §6 backlog |
-| Streaming | `docs/YAMAARASHI_DESIGN.md` | kernel API/backends, §3.6 layering |
-| Database | `docs/HASHIGAKARI_DESIGN.md` | row AST, dialect ceilings, cursors |
-| Effect catalog | `docs/EFFECT_CATALOG_DESIGN.md` | signatures, laws, capability rows |
-| Memory/context | `docs/MEMORY_ENGINE_DESIGN.md` | spine v0.2, ordering C1–C6, PolicyEffect |
-| LLM substrate | `docs/LLM_SUBSTRATE_DESIGN.md` | codec decision, renderer, laws L1–L4 |
-| Hokora slice | `docs/HOKORA_SPEC.md` | Phase 1.5 |
-| Instruments | `docs/INSTRUMENTS_SPEC.md` | cache simulator, replay harness |
-| Reuse decisions | `docs/REUSE_REGISTER.md` | check before adding dependencies |
-| Infrastructure | `docs/INFRASTRUCTURE.md` | toolchain, warnings, tests, CI, procedure |
-| Codec quirks | `docs/CODEC_QUIRKS.md` | living; fixture-backed rows |
-| Documentation policy | `docs/DOC_STRATEGY.md` | lifecycle, flags, canonicity |
+| Program/decisions | `docs/notes/NIH_PLAN.md` | §0 decisions; §6 backlog |
+| Streaming | `docs/notes/YAMAARASHI_DESIGN.md` | kernel API/backends, §3.6 layering |
+| Database | `docs/notes/HASHIGAKARI_DESIGN.md` | row AST, dialect ceilings, cursors |
+| Effect catalog | `docs/notes/EFFECT_CATALOG_DESIGN.md` | signatures, laws, capability rows |
+| Memory/context | `docs/notes/MEMORY_ENGINE_DESIGN.md` | spine v0.2, ordering C1–C6, PolicyEffect |
+| LLM substrate | `docs/notes/LLM_SUBSTRATE_DESIGN.md` | codec decision, renderer, laws L1–L4 |
+| Hokora slice | `docs/notes/HOKORA_SPEC.md` | Phase 1.5 |
+| Instruments | `docs/notes/INSTRUMENTS_SPEC.md` | cache simulator, replay harness |
+| Reuse decisions | `docs/registers/REUSE_REGISTER.md` | check before adding dependencies |
+| Infrastructure | `docs/notes/INFRASTRUCTURE.md` | toolchain, warnings, tests, CI, procedure |
+| Codec quirks | `docs/registers/CODEC_QUIRKS.md` | living; fixture-backed rows |
+| Documentation policy | `docs/notes/DOC_STRATEGY.md` | lifecycle, flags, canonicity |
+| Corpus index | `docs/INDEX.md` | inventory + reading paths |
 
 ## Operational advisories (binding unless a canonical doc supersedes)
 

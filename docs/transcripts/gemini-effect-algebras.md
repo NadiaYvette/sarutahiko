@@ -1,6 +1,85 @@
 # **Haskell Algebraic Effects Pattern Names**
 
+> **Provenance:** archived Gemini conversation transcript (Gemini app, 2026-09; URL below),
+> imported verbatim 2026-09-24. Genre: `transcript` — a primary-source record of the
+> program's origin discussions, not a design document; citable as reasoning history,
+> never as canon (DOC_STRATEGY §1 canonicity table, §5). Filename assigned by topic,
+> freely renamable; original title retained above.
+
 [https://gemini.google.com/app/0b570181753f5b78](https://gemini.google.com/app/0b570181753f5b78)
+
+&nbsp;
+
+*User prompt: What is using the alternatives of a variant type or perhaps GADTs to represent different ways for an algebraic effect to manifest called as a coding pattern esp. in Haskell?*
+
+Response: In Haskell, representing the various operations of an algebraic effect as constructors of a variant type or GADT is most commonly referred to as defining an **Effect Signature** (or **Effect Algebra**).
+
+This is a specific application of **Deep Embedding**, where you reify operations into data structures (syntax) rather than executing them immediately as functions (semantics).
+
+Depending on the specific architectural layer and library ecosystem you are working in, this pattern goes by a few distinct but related names:
+
+> * **Effect Signatures / Effect Syntax:** In modern algebraic effect systems (like polysemy, freer-simple, and effectful's dynamic effects), the GADT itself is the "signature" of the effect. Each constructor represents a distinct way the effect can manifest or be requested.  
+> * **The Operational Pattern (or Freer Monad):** Standard Free Monads require the underlying data type to be a Functor. Because GADTs with specific return-type indices (like a in Get :: State s s) cannot easily have a standard Functor instance derived for them, they are lifted using the *Freer* Monad (or Operational Monad, popularized by the operational package). This pattern explicitly uses GADTs to represent a sequence of instructions.  
+> * **Defunctionalization:** In a broader programming language theory context, turning a function (an active operation) into a data type constructor (a passive request) is a form of defunctionalization.
+
+Here is the canonical visualization of this pattern, where the GADT defines the *Syntax* of the effect, entirely decoupled from how the handler will eventually provide the *Semantics*:
+
+\-- The Effect Signature (Deep Embedding)  
+data FileSystem m a where  
+&nbsp;&nbsp;ReadFile  :: FilePath \-\> FileSystem m String  
+&nbsp;&nbsp;WriteFile :: FilePath \-\> String \-\> FileSystem m ()
+
+\-- The GADT constructors represent the distinct manifestations&nbsp;  
+\-- of the effect, with the return type perfectly indexed.
+
+By encoding the effect as a GADT, you gain the ability to pattern-match on the effect's variants in your interpreters, allowing you to seamlessly swap out a production IO handler for a pure state-based mock during testing.
+
+---
+
+*User prompt: How do extensible variants (related to extensible records) factor into coding patterns used with effect systems?*
+
+Response: In modern Haskell effect systems, extensible variants (often referred to as **Open Sums** or **Open Unions**) are the fundamental architectural mechanism that makes effects composable.
+
+While a GADT defines a single isolated effect, an extensible variant allows you to dynamically compose multiple GADTs into a single, unified algebraic structure without the rigid nesting of Monad Transformers (MTL).
+
+Here is how extensible variants function as the structural backbone of effect systems:
+
+### **1\. The "Open Union" Pattern**
+
+Extensible records represent an open *product* type (a struct containing Field A AND Field B). Extensible variants represent an open *sum* type (an enum that can be Variant A OR Variant B).
+
+In an effect system (like polysemy, freer-simple, or eff), a program is evaluated as a sequence of discrete operations. Any given operation emitted by the program might belong to the Reader effect, OR the State effect, OR the FileSystem effect. Therefore, the internal representation of an effectful instruction is an extensible variant indexed by a type-level list (a "row") of effects.
+
+\-- A simplified representation of an Open Union in an effect system.  
+\-- It holds exactly one effect 'e' that exists somewhere in the row 'r'.  
+data Union (r :: \[Effect\]) (m :: Type \-\> Type) (a :: Type) where  
+&nbsp;&nbsp;Union :: (Member e r) \=\> e m a \-\> Union r m a
+
+### **2\. Injection (send)**
+
+When you write business logic, you write operations for a specific GADT (e.g., WriteFile). To make this work alongside other effects, the library uses the extensible variant to "inject" the single GADT into the larger open sum. This is usually hidden behind a function called send.
+
+Because the variant is extensible, the compiler only requires that the specific effect exists *somewhere* in the row of effects (Member e r), meaning the order of effects no longer matters.
+
+### **3\. Decomposition (The Handler Pattern)**
+
+Extensible variants define how effect handlers process operations. A handler acts as a pattern match on the extensible variant. It attempts to "project" or extract a specific effect from the union:
+
+> * **Match:** If the operation is the effect the handler knows how to process (e.g., FileSystem), it executes the semantics.  
+> * **Miss (Delegation):** If the operation belongs to a different effect, the handler safely reconstructs the variant *without* its own effect in the type-level list and passes it down to the next handler.
+
+\-- A typical decomposition signature peeling one effect off the row  
+decomp :: Union (e ': r) m a \-\> Either (Union r m a) (e m a)
+
+### **4\. Unifying Records and Effects**
+
+In some frameworks, the duality between extensible records and variants is exploited directly to build the effect system. The package extensible (by fumieval) is the prime example of this. It uses a single core abstraction (a parameterized hlist) to provide both extensible records (using the Identity functor) and extensible effects (using the Free monad over an open variant).
+
+In this architecture, an effect row is literally just a variant over an extensible record's schema, treating effect handlers as row-polymorphic record updates.
+
+**In summary:** If GADTs are the distinct nouns and verbs of your effect vocabulary, the extensible variant is the grammar. It provides the O(1) structural container that allows disparate effect GADTs to be mixed into a single Eff r a type signature, bypassing the quadratic boilerplate of transformer stacks.
+
+---
 
 *User prompt: How could extensible records in Haskell be applied to MCP/JSON-RPC via the vinyl, docrecords, record-soup et al Hackage Haskell packages? Would these provide more concise ways to implement MCP? Could similar be applied to LSP? Is this angle able to leverage effect systems at all?*
 
@@ -34,16 +113,16 @@ JSON-RPC over standard I/O is fundamentally a stream processing problem. You can
 
 For instance, an incoming byte stream can be chunked by a conduit, parsed into a vinyl extensible record via aeson, and then the Method field of that record serves as the discriminant to dispatch into an effect handler.
 
-`-- Conceptual architecture bridging records and effects`  
-`handleRPC`   
-  `:: (Tools :> es, FileSystem :> es)`   
-  `=> Rec ElField '[Id, Method, Params]`   
-  `-> Eff es (Rec ElField '[Id, Result])`  
-`handleRPC req = case getField @Method req of`  
-  `"tools/call" -> do`  
-      `res <- executeTool (getField @Params req)`  
-      `pure $ Field (getField @Id req) :& Field res :& RNil`  
-  `_ -> ...`
+\-- Conceptual architecture bridging records and effects  
+handleRPC&nbsp;  
+&nbsp;&nbsp;:: (Tools :\> es, FileSystem :\> es)&nbsp;  
+&nbsp;&nbsp;\=\> Rec ElField '\[Id, Method, Params\]&nbsp;  
+&nbsp;&nbsp;\-\> Eff es (Rec ElField '\[Id, Result\])  
+handleRPC req \= case getField @Method req of  
+&nbsp;&nbsp;"tools/call" \-\> do  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;res \<- executeTool (getField @Params req)  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;pure $ Field (getField @Id req) :& Field res :& RNil  
+&nbsp;&nbsp;\_ \-\> ...
 
 #### **3\. Records as the Dual to Variants**
 
@@ -124,7 +203,7 @@ These libraries do not need their internals modified at all; they only require w
 
 > * **squeal-postgresql**  
   * **Why it's easy:** Squeal already models database tables, constraints, and query results as type-level row lists:  
-    `Row '[ "id" ::: 'NotNull 'PGint4, "name" ::: 'NotNull 'PGtext ]`
+    Row '\[ "id" ::: 'NotNull 'PGint4, "name" ::: 'NotNull 'PGtext \]
 
   * **Retrofit:** Squeal’s internal representation of a row value is essentially an n-ary product (NP from sop-core). Because its queries already return rows indexed by field names and PG types, mapping Squeal’s output to large-anon or vinyl does not require inventing new type machinery—it only requires writing an isomorphism between Squeal's NP / Generics.SOP row representation and your anonymous record representation.
 
@@ -142,9 +221,9 @@ Libraries that require tables to be parameterized over a functor f (HKD) are the
 
 > * **esqueleto (Projections only)**  
   * **Why it's viable:** While persistent tables themselves are tightly coupled to Template Haskell and EntityDef, esqueleto queries frequently suffer from tuple exhaustion when selecting custom columns:  
-    `select $ do`  
-      `u <- from $ table @User`  
-      `pure (u ^. UserId, u ^. UserName, ...) -- Nested tuples beyond 8 elements`
+    select $ do  
+    &nbsp;&nbsp;u \<- from $ table @User  
+    &nbsp;&nbsp;pure (u ^. UserId, u ^. UserName, ...) \-- Nested tuples beyond 8 elements
 
   * **Retrofit:** Rather than modifying Persistent's storage layer, you can retrofit Esqueleto's SqlSelect typeclass for extensible records. A query can project directly into an anonymous record { id \= u ^. UserId, name \= u ^. UserName }, eliminating intermediate DTO generation without breaking existing schema definitions.
 
@@ -217,8 +296,8 @@ Beam relies heavily on GHC.Generics to provide default implementations for the B
 
 To make this work with large-anon, you would define a nominal wrapper to align the kinds, since Beam expects a type of kind (\* \-\> \*) \-\> \*:
 
-`newtype AnonTable (r :: Row Type) (f :: Type -> Type) =`   
-  `AnonTable (Record f r)`
+newtype AnonTable (r :: Row Type) (f :: Type \-\> Type) \=&nbsp;  
+&nbsp;&nbsp;AnonTable (Record f r)
 
 From there, you bypass GHC.Generics entirely. Because large-anon already provides highly optimized, linear-time row combinators (like map, ap, and sequence over its internal array representation), implementing the required Beamable methods for AnonTable r becomes a direct mapping to large-anon's existing API.
 
@@ -254,7 +333,7 @@ The OpenTelemetry protocol (OTLP) transports traces, metrics, and logs across di
 
 > * **The Problem:** Telemetry spans contain a standard envelope (trace\_id, span\_id, timestamp) coupled with an open-ended collection of Attributes (key-value metadata like http.status\_code, db.statement, user.id). Most implementations collapse these into stringly-typed dynamic dictionaries, losing static type safety across services.  
 > * **The Row-Polymorphic Solution:** Extensible records allow spans to be statically typed against the domain attributes they are guaranteed to carry:  
->   `Span '["http.status_code" ':= Int, "http.method" ':= Method]`
+>   Span '\["http.status\_code" ':= Int, "http.method" ':= Method\]
 
 >   Middleware can safely append context attributes (extending the row) or read required fields without parsing dynamic maps.
 
@@ -264,7 +343,7 @@ The CNCF CloudEvents specification defines a common envelope format for event da
 
 > * **The Problem:** CloudEvents enforces a core envelope (id, source, type) alongside domain-specific data payloads and arbitrary *extension attributes*. Handlers often need to inspect routing headers without deserializing the main payload, or pass through unhandled extensions.  
 > * **The Row-Polymorphic Solution:** Using row polymorphism, an event handler can require only the extension fields relevant to its routing decisions:  
->   `handleBillingEvent :: (HasField "tenantId" r Text) => CloudEvent r PaymentPayload -> Eff es ()`
+>   handleBillingEvent :: (HasField "tenantId" r Text) \=\> CloudEvent r PaymentPayload \-\> Eff es ()
 
 >   This eliminates intermediate DTOs when forwarding events through pipeline routers.
 
@@ -277,7 +356,7 @@ HTTP PATCH endpoints frequently use JSON Merge Patch (RFC 7396), which requires 
 > 3. Field set to a new value.  
 > * **The Problem:** With standard records, this requires manually wrapping every field in Maybe (Maybe a) or writing custom parser types for every entity update.  
 > * **The Row-Polymorphic Solution:** With Higher-Kinded Data (HKD) or anonymous records parameterized over a functor *f*:  
->   `type PatchRecord r = Record (TriState) r`
+>   type PatchRecord r \= Record (TriState) r
 
 >   A generic diff engine can compare an existing entity Record Identity r against an incoming patch PatchRecord r and compute the minimal SQL update statement automatically.
 
@@ -343,136 +422,6 @@ Because Dhall types are evaluated at the *runtime* of the Haskell host process, 
 **Sources**
 
 > 1. [Avoiding quadratic core code size with large records \- Well-Typed](https://well-typed.com/blog/2021/08/large-records/)
-
----
-
-*User prompt: How do rel8 and beam differ with respect to my database extensible record concerns? Which ways might one be better than the other as a flagship extensible records database interface library for my project?*
-
-Response: The core architectural divergence between beam and rel8 lies in their backend abstraction and how they implement Higher-Kinded Data (HKD). beam is a multi-dialect abstract syntax tree compiler that requires you to define databases, schemas, and tables as a deeply nested hierarchy of HKDs. rel8 is an unapologetically PostgreSQL-specific DSL built on top of opaleye that maps Haskell types directly to Postgres semantics.
-
-When determining which to retrofit as a flagship extensible records package for Hackage, the decision hinges on whether you want to solve the multi-backend tuple problem or build the ultimate PostgreSQL streaming pipeline.
-
-### **1\. The Generics Bottleneck (Beamable vs Rel8able)**
-
-Both libraries suffer from quadratic compilation times on wide tables because they use GHC.Generics to synthesize the structural metadata (skeletons) of their HKD tables. However, they approach this generation differently.
-
-> * **Beam's Coupling:** beam is deeply, structurally bound to GHC.Generics.Rep. Its typeclasses (Beamable, Table, Database) mandate methods like zipBeamFieldsM and tblSkeleton that are heavily entwined with generic representation. Because you already have large-records benchmarks working with Beam, you know that bypassing this with an AnonTable (Record f r) wrapper is mechanically feasible.  
-> * **Rel8's Coupling:** rel8 abstracts its generics through the hkd package (by Sandy Maguire) and its own Rel8able class. It uses a slightly more modern approach to generics, but it still chokes on tables with 40+ columns. Replacing Rel8able with a large-anon dictionary traversal is arguably cleaner because rel8 focuses purely on table-level operations, whereas beam forces you to also thread the needle through its DatabaseEntity definitions.
-
-### **2\. Ad-Hoc Projections and Row Polymorphism**
-
-This is where the user experience of your flagship library will be judged.
-
-> * **Beam's Tuple Hell:** When you do a complex JOIN in Beam and select a subset of columns, you get back nested tuples: (C f Int, (C f Text, C f Bool)). To fix this with large-anon, you would need to write a type-level function that flattens Beam's tuple-tree into a linear row type.  
-> * **Rel8's Product Types:** rel8 uses opaleye under the hood, which models rows as profunctor products. rel8 provides an evaluate function that can map these products into Haskell types. Because large-anon records are fundamentally products, the isomorphism between a Rel8 query projection and a large-anon row is mathematically more direct. You can yield an anonymous record natively without writing complex tuple-flattening type families.
-
-### **3\. Execution, Streaming, and Algebraic Effects**
-
-If this database library is going to feed into advanced architectures—such as stabilizing packages with effectful or pumping data through conduit and streamly—the execution layer matters immensely.
-
-> * **Beam:** Execution is abstracted behind MonadBeam. While this allows you to swap SQLite for Postgres, it means the streaming semantics are generalized and sometimes clunky.  
-> * **Rel8:** Because rel8 compiles down to opaleye, which typically executes via hasql, you get direct access to hasql's high-performance binary decoders and native Postgres cursors. Yielding large-anon records directly from a rel8 query means you can drop the result straight into a conduit or streamly stream without defining a single intermediate DTO. This pairs perfectly with algebraic effect systems: a database effect handler can execute the query, yield the anonymous record stream, and pass it directly to the next effect layer (e.g., an HTTP SSE response) with zero translation overhead.
-
-### **Strategic Recommendation for a Flagship Package**
-
-**Choose beam if your goal is maximum ecosystem reach.** The Haskell community currently defaults to persistent or beam for general-purpose applications. Publishing beam-large-anon proves that extensible records can solve the two worst things about standard Haskell ORMs: the GHC.Generics compile-time crash, and the lack of ad-hoc projection types. Because you already have the large-records foundation here, the path to a working 1.0 is shorter.
-
-**Choose rel8 if your goal is the highest possible technical ceiling.** If you want to build a truly uncompromising, modern Haskell data pipeline, rel8 combined with large-anon is superior. It perfectly aligns Postgres row types with Haskell row types, allowing you to exploit native JSONB, arrays, and advanced joins, streaming the results natively into conduit or effectful stacks. It represents a more coherent architectural vision: a pure, row-polymorphic pipeline from the database wire protocol to the API boundary.
-
----
-
-*User prompt: Could it make sense to try to get the best of both worlds by means of a written-from-scratch new competitor? I don't entirely understand the streaming issue. Please tell me more about that. The rel8 tuple representation seems like it would be worth changing over to even in a beam retrofit. Are large-records and large-anon using antiquated generics? Could it be worth implementing or changing over to a different basis for an equivalent of large-records/large-anon/large-generics?*
-
-Response: Building a completely greenfield database library from scratch is the only way to achieve a purely row-polymorphic query AST from the ground up, but it comes at the massive cost of rewriting SQL syntax tree compilation. To decide if that is worth it—or how to salvage existing libraries—we need to untangle the streaming limitations, the tuple problem, and what is actually happening under the hood of large-records.
-
-**The Streaming Issue Explained** When we talk about "streaming" a database query, we are talking about memory boundaries. If you query a table with a million rows, standard libraries pull all one million rows into the Haskell runtime memory at once, construct a massive list, and then hand it to your application.
-
-For high-performance data pipelines, you need the database to hold the result set and feed it to Haskell over the network wire one chunk at a time using **cursors**.
-
-**Beam** abstracts over many databases (Postgres, SQLite, MySQL). To maintain this illusion, its MonadBeam interface largely defaults to list-based returns. While there are streaming extensions for Beam, they are often clunky because the library must mask the underlying backend's specific cursor mechanics.
-
-**Rel8**, on the other hand, compiles down to Opaleye, which is often executed by hasql. Because hasql is aggressively optimized for PostgreSQL, it exposes native Postgres cursors natively. You can open a transaction, declare a cursor, and stream the binary protocol directly into a memory-constant conduit or streamly pipeline. If you yield large-anon records from a rel8 query, you achieve the holy grail: reading a massive Postgres table over the wire, parsing it instantly into linear-time anonymous records, and piping it out via SSE or JSON-RPC, all while consuming almost zero RAM.
-
-**The Beam Tuple Problem & Profunctors** You noticed that rel8's use of Opaleye's product profunctors is superior to beam's nested tuples for ad-hoc projections. You are entirely correct.
-
-However, trying to retrofit beam to use profunctors instead of tuples means you are no longer retrofitting beam—you are gutting it. Beam’s entire query AST (Q), its JOIN mechanics, and its SELECT projections are hardcoded to assemble nested tuples when combining tables. If you rip out the tuple mechanics to replace them with Opaleye-style profunctors or native large-anon row concatenation, you will effectively have to rewrite the entire SQL generation engine. At that point, you are building a new library anyway.
-
-**Are large-records and large-anon using antiquated generics?** No, they are the exact opposite. They are highly specialized, cutting-edge workarounds designed to bypass standard GHC.Generics.
-
-Standard GHC.Generics is antiquated in how it handles large products. It represents a record as a deeply nested binary tree of types. When GHC tries to compile a record with 50+ fields, traversing this tree causes an *O*(*n*2) explosion in core code size, blowing up compile times and memory usage.
-
-To fix this, Edsko de Vries built large-records and large-anon to completely bypass GHC.Generics. They use a GHC compiler plugin to intercept the record definition and rewrite its internal representation into a flat, highly optimized SmallArray\# backed by Any. The generic metadata is then generated in linear *O*(*n*) time using a custom SOP-style dictionary (which is what large-generics provides).
-
-**Is it worth changing to a different basis?** Currently, there is no better foundation in standard Haskell. To build a fundamentally better basis for extensible records than what large-anon currently does, you would need GHC itself to implement true, native row-polymorphism at the compiler level (which has been debated for years but never merged).
-
-Unless you want to write a completely new GHC Core plugin, large-anon's SmallArray\# approach is the absolute performance ceiling for wide records in Haskell today.
-
-**The Verdict on a From-Scratch Competitor** If you want the best of both worlds—native row-polymorphism without GHC generics blowup, combined with high-performance memory-constant streaming—a from-scratch library is the purest path.
-
-You would use hasql for the binary streaming and execution, completely ignoring its query builder. You would then write a new, lightweight query AST where every SELECT, JOIN, and WHERE clause is a type-level operation on a large-anon row. This avoids the tuple-hell of Beam and the legacy template-haskell of Persistent, giving you a pipeline that feels like modern TypeScript but executes with bare-metal Haskell safety.
-
-**Sources**
-
-> 1. [Avoiding quadratic core code size with large records \- Well-Typed](https://well-typed.com/blog/2021/08/large-records/?utm_source=gemini)
-
----
-
-*User prompt: Can the database streaming issue be dealt with in an efficient way that maintains cross-database compatibility? Can advanced features of Haskell be leveraged for that?*
-
-Response: Yes. The memory-efficient streaming problem can be solved across different database backends by shifting the abstraction layer away from the SQL standard—which handles cursors wildly inconsistently—and into the Haskell execution runtime using existentials and continuations.
-
-To achieve memory-constant, cross-database streaming without sacrificing the row-polymorphic benefits of large-anon, you must decouple the *query compilation* from the *execution iterator*.
-
-Here is how advanced Haskell features can be leveraged to build a unified, zero-leak streaming architecture across any backend.
-
-### **1\. Existential State Machines (Hiding the Backend)**
-
-PostgreSQL requires opening a transaction and issuing FETCH FORWARD 1000 FROM cursor\_name. SQLite streams natively by repeatedly calling the C function sqlite3\_step on a prepared statement pointer.
-
-To unify these without buffering everything in memory, you encapsulate the backend-specific state inside an existential GADT. The application layer never sees the Postgres transaction or the SQLite pointer; it only sees a uniform state machine that yields anonymous records.
-
-`-- An existential wrapper hiding the database-specific cursor state`  
-`data DBCursor (m :: Type -> Type) (row :: Row Type) where`  
-  `DBCursor`   
-    `:: backendState`   
-    `-> (backendState -> m (Maybe (Record row, backendState))) -- Step`  
-    `-> (backendState -> m ())                                 -- Close`  
-    `-> DBCursor m row`
-
-By defining the stream as an existential stepper function, streamly or conduit can unfold this structure generically. For Postgres, the backendState holds the transaction context and cursor name. For SQLite, it holds the raw Ptr sqlite3\_stmt.
-
-### **2\. Linear Types for Resource Safety**
-
-The most dangerous part of cross-database streaming is connection leakage. If a downstream pipeline short-circuits (e.g., taking only the first 10 records from a million-row cursor), the database cursor must be explicitly closed to free the C-level resources or release the Postgres transaction lock.
-
-By leveraging GHC's LinearTypes extension, you can enforce at compile-time that the stream is completely consumed or explicitly finalized.
-
-`-- The cursor must be linearly consumed to guarantee resource cleanup`  
-`consumeStream :: DBCursor m row %1 -> m ()`
-
-This guarantees that regardless of which database backend is executing the query, the underlying file descriptors or network sockets are never left hanging if the Haskell garbage collector is delayed.
-
-### **3\. Algebraic Effects (effectful) for Dispatch**
-
-To maintain cross-database compatibility at the application level, you bridge the existential cursor with an algebraic effect system. This allows your business logic to stream row-polymorphic records without knowing which database engine is serving them.
-
-You define a dynamic effect for your database operations:
-
-`data StreamingDB :: Effect where`  
-  `StreamQuery :: Query (Record row) -> StreamingDB m (DBCursor m row)`
-
-You then write specific handlers for this effect:
-
-> * runPostgresStreaming: Compiles the AST into a DECLARE CURSOR block, maps the binary hasql decoder to the large-anon row, and injects the FETCH logic into the existential stepper.  
-> * runSQLiteStreaming: Compiles the AST to standard SQLite syntax, maps the C-types to the large-anon row, and injects sqlite3\_step into the stepper.
-
-Because the handler resolves the SQL dialect and the execution mechanism simultaneously, the core application pipeline remains completely pure, row-polymorphic, and backend-agnostic.
-
-### **4\. Type-Level Dialect Resolution**
-
-While the stream execution is handled by existentials, the AST compilation must still account for dialect differences (e.g., Postgres LIMIT vs SQL Server TOP). You can use Type Families to constrain the query builder so that it can only generate syntax valid for the active handler.
-
-By indexing your Query type with a dialect tag, you can ensure that backend-specific SQL features (like Postgres JSONB operators) are either rejected at compile-time when using a generic backend handler, or safely compiled down to the common denominator.
 
 ---
 

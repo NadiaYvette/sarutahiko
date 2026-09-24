@@ -5,9 +5,9 @@ Related: `NIH_PLAN.md` (§0 decisions, §2 package map, the code-volume ledger),
 notes under `docs/`
 Purpose: a standing record of every reuse-or-reimplement decision the program makes, with
 reasoning and revisit triggers, so the question "why not just use X?" is answered once, in
-writing, and stays answered. When this document outgrows `docs/`'s flat layout, it becomes
-`docs/decisions/` (one file per case, or an index — to be decided by its actual growth
-shape, per the maintainer's anticipation).
+writing, and stays answered. If a register outgrows one file, it splits *within
+`docs/registers/`* (per-case files plus an index) — the directory decision of
+DOC_STRATEGY §5 supersedes the earlier `docs/decisions/` anticipation.
 
 ---
 

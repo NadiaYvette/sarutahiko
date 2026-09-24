@@ -14,9 +14,9 @@ Sources consolidated by this plan:
   protocols × file formats × databases program (Gemini conversation, forward-ported
   porcupine/docrecords/record-soup, large-generics/large-records/large-anon ecosystem,
   vinyl interop).
-- `docs/HERMES_DESIGN.md` — the component inventory being replaced: plugin system, execution
+- `docs/imports/HERMES_DESIGN.md` — the component inventory being replaced: plugin system, execution
   surfaces, CLI structure, MCP/JSON-RPC embedding, TUI/gateway/ACP surfaces.
-- `docs/hermes_components.dot` — the dependency graph to be re-homed package by package.
+- `docs/imports/hermes_components.dot` — the dependency graph to be re-homed package by package.
 - `docs/Reimplementing Tree-sitter and Ctags in Haskell.md` — the code-intelligence workstream
   (incremental GLR parsing, tags indexing, RTS-friendly pure core).
 
@@ -543,6 +543,15 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    token/context accounting feeding the cache rules.
 9. **Hokora slice spec** (the Phase-1.5 tracer bullet): exact event rows, turn program, and
    the LOC measurement protocol.
+11. **Observability & serviceability design note** (raised 2026-09-24; scope — a design,
+    not a plan): what the ecosystem makes visible about itself. Structured event emission
+    (the memory log's envelope discipline generalized outside the memory engine);
+    tracing across `Process`/`ModelAPI`/DB boundaries with correlation IDs riding
+    `SomeRow`s; metrics with the kakegoe ledger as first consumer; debug/replay
+    affordances built on the recording interpreters; serviceability of the hokora slice
+    specifically. Sits beside INSTRUMENTS_SPEC: instruments measure policy, this makes
+    the running system observable — to humans, and to the doc-drift judge. Name: from
+    the Noh registry (stage sightlines/lighting vocabulary), TBD at writing time.
 10. **Policy experiment instruments** — now spec'd as `kakegoe`: see `INSTRUMENTS_SPEC.md` (cache
     simulator, replay harness, corpus + checkers; six cross-package requirements the
     instruments impose — canonical renderer as shared code in `sarutahiko-model`,

@@ -203,7 +203,7 @@ the scope or thesis changes (the old one is superseded or killed). Living docume
 of" notes, never deletion).
 
 **Dead documents and the attic.** Removal is `git rm` plus a tombstone row in
-`docs/ATTIC.md`: title, former path, removal commit SHA, last-content SHA, reason,
+`docs/registers/ATTIC.md` (per §5's directory structure): title, former path, removal commit SHA, last-content SHA, reason,
 successor link (if any), and recovery instructions. Git history is the content store
 (`git show <last-content-sha>:<former-path>`); nothing is stubbed in-tree. **Versioned
 references:** live documents must link haddock version-qualified whenever the
@@ -300,15 +300,40 @@ Net effect: the frontier is *typed* (planned, dormant, born) rather than confuse
 with error states, and the judge's scope now covers the full document life: pre-birth
 (dormant anchors), bloom (blessed claims vs code), and death (attic tombstones).
 
-## 5. Structure and discoverability
+## 5. Structure and discoverability — DECIDED (2026-09-24)
 
-`docs/` is flat with ten-plus documents and growing (REUSE_REGISTER already anticipates
-reorganizing to `docs/decisions/`). *Policy needed:* an index with a map (what to read
-in what order for arrivals); naming conventions for standing documents (registers,
-inventories) vs point-in-time notes; the archive rule (when a document moves aside);
-whether notes map onto the package tiers; cross-reference conventions that survive all
-five mirrors (relative links — verified to resolve in every renderer we're mirrored
-on).
+**Directories now** (the tree crossed the threshold with twenty files and the
+observability direction landing): `docs/notes/` (design notes and specs; the
+suffix-as-genre table — `_DESIGN`, `_SPEC`, `_STRATEGY`, `_PLAN` — still governs within),
+`docs/registers/` (living registers and inventories: `REUSE_REGISTER`, `CODEC_QUIRKS`;
+the future `ATTIC.md` tombstone register lives here too), `docs/imports/` (third-party
+documents and artifacts kept verbatim — currently the Hermes inventory and its rendered
+diagrams), `docs/transcripts/` (conversation transcripts as archive). New genres decide
+directory and suffix together at creation. Transcripts are freely renamable: the title
+records origin, the filename records topic.
+
+**Hybrid index.** `docs/INDEX.md` has two parts: an inventory table *generated* from
+Status headers (path, genre, stage, flags, implemented-map — cannot drift by
+construction, zero LLM cost) and hand-curated reading paths for §1's three audiences
+(arrival order, API-consumer entry points, maintainer corpus map). A script net (zero
+LLM) mechanically checks: every relative link resolves, target headings exist, every
+document has an inventory row. The judge's semantic layer runs above the script net.
+
+**No archive directory.** Superseded documents stay in place (header + successor link);
+dead documents leave via §3's tombstone procedure. The index's "Archived" section is
+the archive.
+
+**Tier as index metadata only.** Each note is pinned to a tier column (substrate /
+streaming / database / memory / model / surface / cross-cutting); no filenames or
+directories encode tiers, so re-tiering is an index edit. The column feeds the judge's
+anchor graph (claim → document → tier → package).
+
+**Cross-references: IDs canonical, links convenience.** ID citations (`L2`, `Q7`,
+`MAP-§3.4`) are the stable reference layer — they survive renames, all mirrors, and
+death (via the tombstone register's last-content SHA). Relative hyperlinks are the
+convenience layer: relative paths only (§9 bans absolute and `~/` paths), hard heading
+anchors avoided except where verified across renderers. The script net enforces the
+convenience layer mechanically; the judge checks semantic sense above it.
 
 ## 6. Rendering and build infrastructure
 
@@ -413,3 +438,5 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §4 decided (with the pre-birth amendment): rot folds into the doc-drift judge; precedence = code wins at runtime, the note must be corrected regardless; implementing change stamps `implemented`, sub-stamp implemented-maps for multi-package designs; **prospective references** type the pre-birth frontier (planned/dormant/born) — dormant anchors deferred not failed, birth events activate references, NIH_PLAN §6 as the planned-documents inventory; judge covers the full document life. |
 | 2026-09-24 | §4 amended: stamping is a protocol (propose → disciplines → gate → stamp); acceptance human-gated and scope-variegated (maintainer or subsystem maintainer — delegate model applied to review authority); partial-realization shield declarative (unrealized-surface inventory in blessed notes, suppression must cite its shield, shields expire across phase boundaries); merge/PR gates structured (CI + review gate + judge checks); maintainer-final dispute default recorded pending confirmation; hokora exception stated; subsystem-maintainer staffing deferred to first collaborators. §3/§4 remainders parked: repair procedure (§2's other half), dispute path confirmation, seed formalities. |
 | 2026-09-24 | §9 decided: everything public; formal references (full names; "keiro-comparison thesis" replaces the familiar framing; maintainer welcomes direct feedback from Nadeem Bitar); local paths replaced by publicly usable references (URLs/Hackage; publication-pending markers for the maintainer's own repos, enforced by the judge's link-checker); prominent credit as derivation sources — including by rejection — via CREDITS.md; license fields on reuse rows, LICENSES/ for reused code; tone about-face in our voice (respectful engineering register, criticism of designs not people, charged phrases rewritten; verbatim transcripts preserved as marked archive records). Audit sweep found no secrets; no extraction needed. |
+| 2026-09-24 | §9 amended: derivation credit granted as a deliberate choice, not merely where license obligations attach — influence credit is independent of code use. |
+| 2026-09-24 | §5 decided: directories now — `docs/notes/`, `docs/registers/`, `docs/imports/` (verbatim third-party material incl. the Hermes inventory and diagrams), `docs/transcripts/` (conversation archives; freely renamable, title = origin, filename = topic, provenance headers on the renamed Gemini transcripts); hybrid index (`docs/INDEX.md`: generated inventory table + hand-curated reading paths, script net beneath the judge); no archive directory (index's Archived section is the archive); tier as index metadata only; cross-references two-layer — ID citations canonical, relative links convenience, enforced by a zero-LLM script net under the judge's semantic layer. |
