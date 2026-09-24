@@ -254,11 +254,54 @@ over from Hermes and made enforceable here:
   requires either an explicit turn boundary or user consent (`--now`-style opt-in).
 3. Toolsets, system-prompt sections, and skills are frozen for the duration of a
   conversation turn sequence (the Footprint Ladder rule from HERMES_DESIGN).
-4. Policy components must *declare* their cache impact: `Pure` (reads only), `TailOnly`
-  (appends), `PrefixBreaking` (requires §5.1.2 conditions). The type
-  `PolicyEffect = PrefixBreaking | TailOnly | Pure` is a row field on every policy
-  component, checked by the turn program — the capability-row idea applied to cache
-  hygiene.
+4. **PolicyEffect — the encoding (v0.2, spec'd; adopt via the expressiveness trial).**
+   Principle: *policies propose, the turn program disposes*. Components never write
+   context — physically, because context-writing is not in their effect row; the turn
+   program is the single writer. PolicyEffect classifies not components but **decisions**:
+   a closed kind `PolicyEffect = Pure | TailOnly | PrefixBreaking` carried as a phantom on
+   decision data, consumed by exactly one executor per class:
+
+   ```haskell
+   data PolicyEffect = Pure | TailOnly | PrefixBreaking
+
+   data Decision (e :: PolicyEffect) where
+     Score    :: Salience          -> Decision 'Pure            -- informs; touches nothing
+     Retrieve :: NonEmpty BlockRef -> Decision 'TailOnly        -- appended to the suffix
+     Restate  :: BlockRef          -> Decision 'TailOnly
+     Compress :: Span -> SummaryKey -> Decision 'PrefixBreaking
+
+   type PolicyCap es = (SessionStore :<: es, ModelAPI :<: es, Log :<: es)
+   type Policy = ∀ es. PolicyCap es => Eff es [SomeDecision]   -- no context-write effect
+
+   extend  :: Context -> [Decision 'TailOnly] -> Context       -- appends only
+   rewrite :: ConsentGated -> Context
+        -> NonEmpty (Decision 'PrefixBreaking) -> (Context, CacheInvalidated 'True)
+   ```
+
+   Enforcement points: **E1** row construction (no context-write API exists for any
+   component, any row — capability rows); **E2** `Decision` exported abstract, smart
+   constructors per stage module (`Compress` built only in the compression stage);
+   **E3** `extend` accepts only `TailOnly` decisions (misrouting is a type error);
+   **E4** `rewrite` requires a `ConsentGated` proof produced only by the approval stage
+   (the runtime UX gate at the one prefix-breaking path); **E5** system sections/toolsets
+   are turn-program *inputs* fixed per sequence, never policy outputs (Footprint Ladder
+   by construction); **E6** cache status is structural — prefix unchanged ⟺ `rewrite` not
+   called — cross-checked against `ContextCompressed` log events in property tests.
+   Packaging honesty: policies return existentially wrapped decisions carrying a runtime
+   singleton witness (`SPolicyEffect e`); `partition` splits `SomeDecision`s into typed
+   lists — the SomeRow rule again (types don't cross packaging; one runtime dispatch at
+   the boundary buys type safety on the far side). Phantoms/singletons erase; the
+   partition is O(n) dispatch a runtime-tag design needs anyway.
+
+   **Expressiveness trial (adoption gate).** S1 context-mutating component → no API
+   (compile); S2 `PrefixBreaking` routed to `extend` → type error; S3 `Compress` built
+   outside the compression stage → constructor hidden (compile); S4 `rewrite` without
+   consent → compile; S5 mid-sequence toolset swap via policy → unrepresentable; S6
+   policy ordering log reads by `ts` / across sessions → rejected by §3.4 property
+   tests. Adopted iff all six behave as specified. Note: adding a fourth class = adding
+   an executor = design event (PVP-for-data). Beyond safety: policies-as-decision-
+   producers is exactly the shape §8's replay harness consumes — the safety encoding and
+   the measurement instruments are one decision.
 
 This is where the engine is *not* glue: a policy that is naively "smart" (dynamic
 retrieval, eager summarization) destroys the cache and costs more than it saves. The
@@ -386,10 +429,9 @@ happen against these numbers, not against intuition.
    turn-boundary triggering) is itself a grid dimension, not a pre-decision.
 2. Salience v1 feature set over spine fields (§5.2) — decided by §8.2 ablation; ship the
    cheapest subset within ε.
-3. The `PolicyEffect` row-field type's exact encoding and its enforcement point in the
-   turn program (§5.1.4) — not metric-decidable: decided by an expressiveness trial
-   (can the encoding express all §5.1 contract clauses and reject a violating policy at
-   the enforcement point across a scenario suite?), i.e. compile-time, not runtime.
+3. The `PolicyEffect` encoding — now spec'd in §5.1.4 v0.2 (decisions phantom-tagged by
+   a closed kind, capability-row components, single-writer turn program, consent proof);
+   adoption via the six-scenario expressiveness trial at implementation time.
 4. Retrieval backends: lexical index shape (§5.3) and whether embeddings land in Phase 2
    or 3 (hokora ships lexical only) — decided by the §8.2 precision@k crossover.
 5. The `SomeRow` tagging scheme for `(kind, schemaV)` — interplay with the catalog's
