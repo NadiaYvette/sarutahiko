@@ -360,15 +360,18 @@ mechanically, so this policy is self-enforcing once the judge runs.
 
 **Cross-ecosystem credit — prominent and granted.** The projects and maintainers whose
 code and design analysis has informed this program — **including by the rejection of
-their approaches** — receive prominent credit as derivation sources. Concretely: a
-`CREDITS.md` at the root listing the keiro ecosystem (baikai, keiro, kiroku, shibuya,
-kioku, shikumi), Hermes (Nadeem Bitar), and the upstream Haskell projects (typed-
-protocols/IOG, hasql, effectful, polysemy, streamly, conduit, porcupine,
-large-records/large-anon, hlint, brittany, and others as the register grows), each with
-what was learned from it. License note: design influence carries no license obligation;
-**code reuse does** — every REUSE_REGISTER row that lands code records its license
-field, and LICENSES/ third-party notices accompany reused code (the telix-whitepaper
-LICENSES/ directory is the pattern).
+their approaches** — receive prominent credit as derivation sources. Per the
+maintainer's explicit position: derivation credit is granted **by choice, not
+obligation** — even where no direct code use creates a license duty, the credit is
+still given, because it is owed in the register's own terms (design analysis is
+derivation). Concretely: a `CREDITS.md` at the root listing the keiro ecosystem (baikai,
+keiro, kiroku, shibuya, kioku, shikumi), Hermes (Nadeem Bitar), and the upstream
+Haskell projects (typed-protocols/IOG, hasql, effectful, polysemy, streamly, conduit,
+porcupine, large-records/large-anon, hlint, brittany, and others as the register grows),
+each with what was learned from it. License note: design influence carries no license
+obligation; **code reuse does** — every REUSE_REGISTER row that lands code records its
+license field, and LICENSES/ third-party notices accompany reused code (the
+telix-whitepaper LICENSES/ directory is the pattern).
 
 **Tone: the about-face.** Differing-design-decision discussions in our-voice documents
 use a respectful engineering register: state what the other design optimizes for, what
