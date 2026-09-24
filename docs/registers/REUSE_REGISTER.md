@@ -311,9 +311,15 @@ row-describe at the edge. **The three caveats, reviewed 2026-09-24:**
 
 Maintenance note: text-icu now lives under the haskell GitHub organization and was
 last released 0.8.x (2024) — alive, slow-moving; transliteration split into the
-`text-icu-translit` subpackage. Adoption timing: with the first real surface needing
-collation/date/number rendering beyond the ASCII minimum (Phase 3), or with the
-i18n package (2.21) whichever comes first.
+`text-icu-translit` subpackage. Companion note: for the normalization slice alone,
+**unicode-transforms** (pure Haskell NFC/NFD/NFKC) is the hermetic alternative —
+preferred wherever normalization appears *below* the presentation edge (protocol
+codecs, fixture canonicalization, log key normalization), because it removes the
+system-ICU variance of caveat 3 from layers that must be reproducible; text-icu (or
+ICU itself) remains the edge-layer choice for collation/dates/numbers, and doubles
+as the test *oracle* for property suites over our pure Unicode helpers. Adoption
+timing: with the first real surface needing collation/date/number rendering beyond
+the ASCII minimum (Phase 3), or with the i18n package (2.21) whichever comes first.
 - **kiroku / shibuya / keiro / kioku** (keiro stack): interop-first contact strategy
   (NIH_PLAN); reuse-or-reimplement is not currently posed — hashigakari reads/writes
   their formats; deeper integration decisions wait for the contact spike.
