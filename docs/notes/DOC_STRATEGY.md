@@ -349,16 +349,59 @@ convenience layer: relative paths only (§9 bans absolute and `~/` paths), hard 
 anchors avoided except where verified across renderers. The script net enforces the
 convenience layer mechanically; the judge checks semantic sense above it.
 
-## 6. Rendering and build infrastructure
+## 6. Rendering and build infrastructure — DECIDED (2026-09-24)
 
-*Policy needed:* Haddock specifics beyond warnings-as-failures (module intros; a laws
-presentation format; combined-program haddock with `--hoogle` vs per-package);
-markdown corpus rendering (plain everywhere vs a generated docs site — noting five
-mirrors, so what is canonical when renderings differ); diagrams (ASCII renders
-everywhere; mermaid only on some hosts); and the **glossary** — the program's
-vocabulary is growing fast (spine, envelope, witness registry, decision, PolicyEffect,
-cursor, stepper, tier, bundle, hokora, …) and needs a canonical glossary with a
-maintenance owner.
+**Canonical source and projections.** The git markdown corpus is canonical; every other
+format is a projection (the §1 doctrine applied to formats — the five-mirror divergence
+question dissolves). One pandoc-driven script renders: an HTML site, plain-text tiers,
+and per-whitepaper PDFs; rendered artifacts are never committed (checked-in DSL-source
+SVGs excepted, per §1). CI runs the render and the §5 script net. Hakyll is the
+registered site-generator candidate (now cloned locally) for when the tutorial track
+needs navigation/search.
+
+**Progressive enhancement.** Authoring targets a base dialect (GFM + Unicode math — the
+house style) so the plain-text tier is always honest; rich-only material (figures, deep
+LaTeX) is added only with graceful degradation to the base tier. Diagrams: DSL-source +
+checked-in SVG (§1); ASCII companions only where the plain tier needs them.
+
+**Whitepapers: LaTeX** (lualatex + biber; the §1 apparatus donors are all LaTeX-native:
+imakeidx/truexindy named indices, babel multilingual with per-script fonts — Japanese
+required — biblatex autocite, minted). Typst is the registered fallback, with apparatus
+friction (indices, CJK) as the named revisit trigger.
+
+**Literate Haskell: a first-class authoring mode, and the book aspiration.** The
+maintainer favors LaTeX-style literate Haskell ("should have been predominant");
+whitepapers may be assembled from `.lhs` sources, and assembling the whole ecosystem's
+source into a book is recorded as a whenever-time-permits aspiration. The known
+obstacle is named: integrating LaTeX generated from multiple `.lhs` sources into one
+larger document with unified indices/bibliography. The planned answer when undertaken:
+lhs2TeX (`~/src/lhs2tex` as reference, publication-pending) per-module rendering into a
+master document with a shared style file, one `\include` structure, one index and
+bibliography — the telix `build.sh` pattern. Until then, code in whitepapers renders
+via minted/listings; haddock's `--hyperlinked-source` covers beautiful code for API
+docs.
+
+**Haddock specifics.** Per-package units (Hackage-compatible); `--hoogle` output
+generated in CI into a local hoogle database of our APIs; module intros mandatory (the
+§7 header-blocks-first rule applied to modules); laws carry their catalog IDs (`L2`,
+`C6`) with links to the property tests that witness them; `--hyperlinked-source` on.
+
+**Glossary.** `docs/registers/GLOSSARY.md` — a term *index*, not a restating authority:
+one-line definitions plus links to each term's canonical home (the defining document
+stays canonical, per §1). Entries are added in the same change as the term's
+introducing document; the script net checks link targets.
+
+**i18n.** Translation policy is hybrid: **on-demand machine-translated projections**
+provide coverage (explicitly marked non-canonical — source language and translation
+date in the header; the English source wins per the canonicity table), while **standing
+target languages** receive correction passes, supported by mechanical linguistic-match
+auditing (source/render divergence checks) with human overrides. UTF-8 is the norm
+everywhere (corpus, code, wire). For **user-facing strings in code**, the design rule
+follows the architecture: no display-string literals in core code — messages are typed
+(message constructors/rows), rendered per-locale by an interpreter at the presentation
+edge (the K1/K3 discipline applied to prose; Yesod's `RenderMessage` is the ecosystem's
+battle-tested precedent; gettext-style external catalogs and `text-icu` for
+collation/formatting are register-judged when demand arrives).
 
 ## 7. Terminology and style control
 
@@ -460,6 +503,7 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §1 amended: tutorials upgraded to scaled-textbook with enlightenment-forcing exercises (AI-assisted answering expected; explanation is the deliverable) and machine-authorship as explicit policy — volumes on command, human effort spent on curation/challenge/blessing. Whitepaper apparatus donors named: telix (pipeline shape) + nadie (imakeidx/truexindy named indices with UTF-8 collation, multilingual babel with per-script fonts — Japanese required for Noh vocabulary, biblatex autocite, minted); apparatus designed in from the template's first commit, never retrofitted (the nadie retrofit failure is the cautionary example). |
 | 2026-09-24 | §2 partially decided (assessment half): the doc-drift judge blessed as a component — corpus-wide LLM assessment with programmatic pre-filtering (ID/symbol/link nets bound the invocation burden), fallible-oracle consensus (≥2 providers; any veto triggers intensive review), findings to the row store, advisory authority. SaaS PR-reviewers dismissed as the mechanism (PR-diff-scoped vs our as-yet-unidentified-drift sweeps) with rationale and survey recorded. Repair procedure still open. |
 | 2026-09-24 | §2's repair procedure decided — the (c)+(d) synthesis: judge-proposed patches are free proposals (mechanical repairs especially); flag-clearing human-gated, witnessed by a dated status edit citing finding row + accepting change SHA; blessed-content repairs ride §3/§4's existing gates (no new gate); batched sweep→triage→repair cadence matching the batched-push policy. §2 is now fully decided. |
+| 2026-09-24 | §6 decided: markdown corpus canonical, all other formats projections (pandoc-driven script → HTML site + plain tiers + whitepaper PDFs; rendered artifacts never committed; CI render + §5 script net; hakyll registered for the tutorial track); progressive-enhancement authoring on the GFM+Unicode-math base dialect; whitepapers in LaTeX (lualatex/biber; Typst the registered fallback with apparatus friction as trigger); literate Haskell a first-class authoring mode with the whole-ecosystem book as an aspiration — multi-file lhs2TeX integration named as the obstacle, master-document + shared-style assembler the planned answer; haddock per-package with --hoogle CI output, mandatory intros, ID-carrying laws, --hyperlinked-source; glossary as docs/registers/GLOSSARY.md term index (one-liners + canonical links, same-change maintenance); i18n hybrid — on-demand non-canonical translation projections for coverage, standing targets with mechanical match auditing + human overrides for corrections, UTF-8 norm, and the typed-messages-at-the-edge rule for user-facing strings in code (K1/K3 applied to prose). |
 | 2026-09-24 | §2 amended: the judge must understand the code — consistency is bidirectional; behavioral claims verified against implementing source, examples against compilable code, exit criteria against artifacts; oracle bar raised (code-reading competence), harness bar raised (anchor-graph context assembly), test suites/fixtures citable as execution evidence. |
 | 2026-09-24 | §3 decided: seven lifecycle stages (seed/draft/review/blessed/implemented/superseded/dead); invalidity as orthogonal flag overlay (erroneous/inconsistent/stale/dead-links/needs-work) carried in Status headers, flagged documents lose citability for affected fact classes until cleared; blessing mechanics formalized (dated status edit + decision-log row); revision-in-place vs new-document rule with the LLM-substrate precedent; dead documents tombstoned in docs/ATTIC.md with git history as content store; version-qualified haddock linking (Hackage for released versions, tag-pinned rebuilds otherwise). |
 | 2026-09-24 | §4 decided (with the pre-birth amendment): rot folds into the doc-drift judge; precedence = code wins at runtime, the note must be corrected regardless; implementing change stamps `implemented`, sub-stamp implemented-maps for multi-package designs; **prospective references** type the pre-birth frontier (planned/dormant/born) — dormant anchors deferred not failed, birth events activate references, NIH_PLAN §6 as the planned-documents inventory; judge covers the full document life. |

@@ -26,6 +26,7 @@ and are checked by the script net (§5).
 | `notes/OBSERVABILITY_DESIGN.md` | design | draft | cross-cutting (observability) | — |
 | `registers/REUSE_REGISTER.md` | register | living | cross-cutting | — |
 | `registers/CODEC_QUIRKS.md` | register (living) | living | model | — |
+| `registers/GLOSSARY.md` | register (term index) | living | cross-cutting | — |
 | `imports/HERMES_DESIGN.md` | import | static | cross-cutting | — |
 | `imports/hermes_components.*` | import (diagrams) | static | cross-cutting | — |
 | `transcripts/gemini-effect-algebras.md` | transcript | archive | cross-cutting | — |
@@ -37,7 +38,7 @@ links — no archive directory per §5).
 
 Planned, not yet written (the pre-birth frontier — prospective references to these
 are *dormant*, not dead links, per DOC_STRATEGY §4): `registers/ATTIC.md`; the
-tutorial track (`docs/tutorial/`).
+tutorial track (`docs/tutorial/`); the glossary (`registers/GLOSSARY.md`).
 
 ## Part 2 — Reading paths
 

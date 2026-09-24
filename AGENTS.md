@@ -41,6 +41,7 @@ code implements blessed designs.
 | Documentation policy | `docs/notes/DOC_STRATEGY.md` | lifecycle, flags, canonicity |
 | Observability | `docs/notes/OBSERVABILITY_DESIGN.md` | kagami-ita: events, tracing, metrics, replay |
 | Corpus index | `docs/INDEX.md` | inventory + reading paths |
+| Glossary | `docs/registers/GLOSSARY.md` | term index; add entries same-change |
 
 ## Operational advisories (binding unless a canonical doc supersedes)
 
