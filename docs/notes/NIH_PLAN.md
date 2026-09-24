@@ -496,7 +496,10 @@ substrate APIs are only trustworthy once something on the peak stands on them.
 Recorded 2026-09-23 so they survive context switches; pick up after the design-mulling pause.
 
 1. Sketch the `sarutahiko-fields` + `sarutahiko-records` API surface (field definitions, row
-   combinators, JSON glue) as a design note.
+   combinators, JSON glue) as a design note. **Pre-decided 2026-09-24 (register 2.1):**
+   one internal representation — large-anon, exclusively; vinyl exists only as
+   third-party convenience adapters at package seams; no forking of the large-* family
+   (private-interface access only, docrecords-equivalents live above the foundation).
 2. Start Phase 0: multi-package `cabal.project` plus Tier-0 package stubs.
 3. Draft the MCP conformance test plan (spec examples → row-typed fixtures) to nail Phase-1
    exit criteria.
