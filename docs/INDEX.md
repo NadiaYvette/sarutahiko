@@ -16,6 +16,7 @@ and are checked by the script net (§5).
 | `notes/NIH_PLAN.md` | plan | draft | cross-cutting | — |
 | `notes/DOC_STRATEGY.md` | strategy | seed | cross-cutting | — |
 | `notes/INFRASTRUCTURE.md` | strategy | draft (blessed as start) | cross-cutting | — |
+| `notes/DESIGN_REVIEW.md` | review | draft | cross-cutting | — |
 | `notes/EFFECT_CATALOG_DESIGN.md` | design | draft | substrate | — |
 | `notes/FIELDS_RECORDS_DESIGN.md` | design | draft | substrate | — |
 | `notes/YAMAARASHI_DESIGN.md` | design | draft | streaming | — |
@@ -60,4 +61,5 @@ table); until then, the law inventories live in `notes/EFFECT_CATALOG_DESIGN.md`
 in tier order (substrate → streaming → database → memory → model) → the specs
 (hokora, instruments) → the registers (check before every dependency and every
 provider integration) → `notes/DOC_STRATEGY.md` + `notes/INFRASTRUCTURE.md` (how the
-corpus and the toolchain themselves are governed).
+corpus and the toolchain themselves are governed) → `notes/DESIGN_REVIEW.md` (synthesis
+and audit across all tiers before Tier-0 code).
