@@ -90,15 +90,63 @@ DOC_STRATEGY canonical per domain (notes carry the narrative); **naming** — th
 registry; **tutorials** — canonical for orientation facts only, always deferring to
 canonical sources for technical claims (with links, per policy).
 
-## 2. Single-source-of-truth and drift
+## 2. Single-source-of-truth and drift — PARTIALLY DECIDED 2026-09-24 (assessment half)
 
 Planned duplications already exist: laws (catalog note ↔ haddock ↔ property tests),
 quirks (CODEC_QUIRKS ↔ fixtures ↔ codec haddocks), naming (registry ↔ READMEs ↔ cabal
 synopses), decisions (INFRASTRUCTURE ↔ CI config ↔ cabal commons). Any fact written
-twice drifts. *Policy needed:* per duplication class — which copy is authoritative;
-whether secondary copies are generated or test-checked (e.g. law IDs referenced by
-property tests; haddock links to note sections); and the repair procedure when a check
-catches divergence.
+twice drifts. Canonicity per duplication class was fixed in §1; the open halves are
+the *repair procedure* and §4's rot mechanics (note/code precedence). The assessment
+half is now decided:
+
+**The doc-drift judge (blessed component).** An LLM-powered assessment instrument,
+added to the component list (Noh name to be chosen at package-planning time), that
+finds drift, inaccuracy, and as-yet-unidentified documentation rot across the whole
+corpus — explicitly whole-codebase searches, not PR-scoped review.
+
+*SaaS PR-reviewers dismissed (recorded rationale).* CodeRabbit/Qodo/Greptile/
+Copilot-review are PR-lifecycle-scoped: they review diffs at merge time. Our problem
+is corpus-wide sweeps to find drift nobody has filed — as-yet-unidentified drift
+between notes and code, not just review of a diff that mentions both. SaaS tools
+therefore do not reach the actual requirement; they remain noted (see survey) for
+possible PR-time convenience later, but are not the mechanism.
+
+*Programmed pre-filtering to bound LLM invocation burden.* The corpus is
+machine-anchorable by design — laws have IDs (L1–L4, C1–C6, E1–E6, S1–S6), quirks have
+IDs, exit criteria are enumerated, obligations are per-row, canonicity is decided per
+fact class (§1). The judge therefore works in stages: deterministic programming first
+(extract anchorable claims; verify link targets exist; check code symbols named in
+notes exist in the implementing packages; check quirk/law IDs referenced by tests
+match the registers) — the cheap, exhaustive, zero-LLM net; LLM invocations then
+concentrate on the residue (semantic drift a program cannot see: prose describing
+behavior the code no longer has, stale rationales, inaccurate explanations). Most
+tasks should be covered by the programmatic net; broader, less-structured LLM scans
+run occasionally (nightly/weekly cadence) over the remainder.
+
+*Fallible-oracle consensus.* Each LLM is treated as an individually fallible but
+mostly-reliable oracle: findings pass on **consensus** (multiple models agreeing);
+**any single veto triggers a more intensive review** (targeted re-examination with
+more context, possibly more models) and potential revision. Multi-model by policy —
+at least two distinct providers, disagreement escalates, never auto-repairs.
+
+*Authority unchanged (§8):* the judge flags; the maintainer adjudicates and blesses
+repairs. Findings land as rows in the experiment-record store (kakegoe §2.5 pattern —
+doc-drift findings are measurements). *Trajectory:* start external (harness or
+headless agentic CLI), then dogfood — the sarutahiko agent core running doc-drift
+checks as effect programs is the intended Phase-2 self-application.
+
+*Tooling survey (the classes considered):*
+
+| Class | Examples | Assessment |
+|---|---|---|
+| SaaS AI PR-reviewers | CodeRabbit, Qodo Merge (OSS, self-hostable Action), Greptile, Copilot review | **Dismissed as the mechanism**: PR-diff-scoped, not corpus-sweep-scoped; noted for possible PR-time convenience later; local-model option matters anyway for §9 exposure of named cross-ecosystem analysis |
+| LLM-as-judge eval frameworks | promptfoo (declarative YAML pipelines, any provider, assertions, CI-native), DeepEval (pytest-style, faithfulness/hallucination metrics), RAGAS (groundedness) | **The flexible core** — build the judge as a versioned eval suite with structured verdicts |
+| Headless agentic CLIs | rubric-driven whole-corpus passes (the session's own tooling class) | Most flexible for our unusual shape; homegrown cost |
+| Direct provider APIs / local models | provider APIs; ollama/vLLM local | The substrate under the above two; local models relevant for exposure-sensitive subsets (§9) |
+
+**Choice: class 2/3 harness (promptfoo-style or headless agentic) with
+programmatic pre-filtering, multi-oracle consensus with veto-triggered intensive
+review, findings→row store, advisory authority.** Repair procedure remains open.
 
 ## 3. Lifecycle and authority
 
@@ -189,3 +237,4 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | Seed created: §1–§11 recorded as open issues; policy decisions to be logged here as they land. |
 | 2026-09-24 | §1 decided: three audiences, three genres — tutorials for arrivals; verbose, math-and-link-rich Haddock for API consumers (SVG figures from checked-in DSL sources; external citations and repo links as policy); design corpus + LaTeX whitepaper distillation (telix genre: lualatex/biber, `.bib` corpus, grounded-in-code) for maintainers. Canonicity fixed per fact class: laws→haddock, quirks→CODEC_QUIRKS, decisions→registers, naming→registry. |
 | 2026-09-24 | §1 amended: tutorials upgraded to scaled-textbook with enlightenment-forcing exercises (AI-assisted answering expected; explanation is the deliverable) and machine-authorship as explicit policy — volumes on command, human effort spent on curation/challenge/blessing. Whitepaper apparatus donors named: telix (pipeline shape) + nadie (imakeidx/truexindy named indices with UTF-8 collation, multilingual babel with per-script fonts — Japanese required for Noh vocabulary, biblatex autocite, minted); apparatus designed in from the template's first commit, never retrofitted (the nadie retrofit failure is the cautionary example). |
+| 2026-09-24 | §2 partially decided (assessment half): the doc-drift judge blessed as a component — corpus-wide LLM assessment with programmatic pre-filtering (ID/symbol/link nets bound the invocation burden), fallible-oracle consensus (≥2 providers; any veto triggers intensive review), findings to the row store, advisory authority. SaaS PR-reviewers dismissed as the mechanism (PR-diff-scoped vs our as-yet-unidentified-drift sweeps) with rationale and survey recorded. Repair procedure still open. |
