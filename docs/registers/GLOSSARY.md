@@ -23,6 +23,7 @@ link targets. First-use rule in prose (§7): kanji + romaji + gloss.
 - **capability row** — the effect row as a compile-time grant set (`Granted :<: es`). → `../notes/EFFECT_CATALOG_DESIGN.md`
 - **`SomeRow`** — the existentially packaged row carried by row-emitting effects (`Log`, `EventBus`, `HookDispatch`). → `../notes/EFFECT_CATALOG_DESIGN.md`
 - **PVP-for-signatures** — additive evolution policy for GADT effect signatures (new signatures + reinterpretation + deprecation windows). → `../notes/EFFECT_CATALOG_DESIGN.md`
+- **typed message** — user-facing text as message constructors (data), rendered per-locale at the presentation edge; no display-string literals in core code. → `../notes/DOC_STRATEGY.md` §6
 - **envelope** — the versioned, append-only event wrapper generalized from the memory log; row-decomposed so envelope-without-payload is a valid summary unit. → `../notes/OBSERVABILITY_DESIGN.md` §3
 - **cursor / stepper** — existentially packaged, `m`-parameterized traversal handles exposed by signatures instead of streams. → `../notes/HASHIGAKARI_DESIGN.md` §3.4
 

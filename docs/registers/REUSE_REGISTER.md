@@ -256,6 +256,13 @@ space; count-min or similar judged per the register when demand arrives.
 - **hakyll** (site generator; cloned locally): adopt when the tutorial track needs
   navigation/search — replaces the pandoc script for site rendering only; the
   projection doctrine and script net are unchanged. Trigger: tutorial track begins.
+- **katip / co-log / polysemy-log** (structured/composable logging): not posed as
+  dependencies — kagami-ita's `Log` signature plus the row-typed envelope
+  (OBSERVABILITY_DESIGN K1–K3) subsumes their designs (co-log's composable `LogAction`
+  ≈ interpreter composition; katip's structured sinks ≈ interpreter sinks; the
+  polysemy-log effect shape ≈ the catalog's `Log`). Recorded as nearest-neighbor
+  reference designs so "why not just use katip?" stays answered. Trigger: any adoption
+  pressure lands here first.
 - **kiroku / shibuya / keiro / kioku** (keiro stack): interop-first contact strategy
   (NIH_PLAN); reuse-or-reimplement is not currently posed — hashigakari reads/writes
   their formats; deeper integration decisions wait for the contact spike.

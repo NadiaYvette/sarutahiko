@@ -363,5 +363,5 @@ package exists; the skeleton pins intent, not versions.)
    before (no code, no CI).
 3. CI enablement timing: with the first real package (Phase 0), not with docs-only
    commits.
-4. Radicle CI note: none (push-only by design); revisit only if Radicle gains a
-   hosted-CI story worth the register's attention.
+4. ~~Radicle CI note.~~ Decided: none — push-only by design; revisit only if Radicle
+   gains a hosted-CI story worth the register's attention.

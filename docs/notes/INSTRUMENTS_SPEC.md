@@ -214,4 +214,5 @@ benchmark ledger as tooling lines.
 3. Synthetic generator catalog v1 (which task shapes?) — propose: mirror the hokora
    shapes plus one long-session shape (kanban-like) and one retrieval-heavy shape;
    grows on demand.
-4. Noh naming blessing for `kakegoe` (or confirmation of the neutral working name).
+4. ~~Noh naming blessing for `kakegoe` (or confirmation of the neutral working name).~~
+   Blessed 2026-09-24: `kakegoe` (NIH_PLAN §6.1).

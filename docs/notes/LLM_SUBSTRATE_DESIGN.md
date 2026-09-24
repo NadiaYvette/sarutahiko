@@ -172,15 +172,9 @@ usage events.
 
 ## 6. Open items
 
-1. **Codec quirk inventory v1** (the new §1's first deliverable): auth header styles;
-   SSE event taxonomies and their row encodings (Anthropic's typed event stream vs
-   OpenAI's delta objects vs Gemini's `alt=sse`/`alt=json` dual mode with
-   `usageMetadata` per chunk and `finishReason` terminators); tool-call delta shapes;
-   method-in-path dispatch (Gemini's `models/{model}:generateContent` verb-in-URL
-   pattern vs path-clean bodies); usage-report placement (stream tail vs separate
-   event vs per-chunk); retry-relevant response headers. Built against recorded
-   provider transcripts as golden fixtures; louter's Gemini streaming tests are the
-   seed fixtures for the third family.
+1. ~~**Codec quirk inventory v1**~~ — resolved: `registers/CODEC_QUIRKS.md` (2026-09-24),
+   whose rows carry the auth-header/SSE-taxonomy/usage-placement survey; louter's Gemini
+   streaming tests remain the seed fixtures for the third family.
 2. **Transcript format** (kakegoe §6.2): request/response/event rows recorded per
    turn, versioned like corpora; lands with the mock package — now also serving as
    the codecs' golden-fixture format.
@@ -191,5 +185,5 @@ usage events.
    (claude -p / codex exec) or an OpenAI-compatible codec against a localhost host
    (ollama/vLLM); confirm stderr/exit-code mapping into `ErrorCategory` for the CLI
    path at implementation. Either exercises the full stack.
-5. **Naming:** bless `utai` (or choose otherwise) before the first real package ships;
-   `utaibon`/memory-engine remains reserved alongside.
+5. ~~**Naming:** bless `utai` (or choose otherwise)~~ — blessed 2026-09-24: `utai`
+   (NIH_PLAN §6.1); `utaibon` remains reserved for the memory engine.
