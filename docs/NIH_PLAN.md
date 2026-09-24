@@ -574,7 +574,9 @@ kami at the threshold). One deliberate exception: `yamaarashi` (山嵐, "porcupi
 streaming-stack family as a nod to porcupine itself, kept in Roman letters for packaging.
 The database access library is `hashigakari` (橋掛かり), the bridge onto the stage — apt
 for the library that carries rows between the database and the application (and beams are
-involved); the four hashira 柱 are held in reserve as a fallback name. Registered 2026-09-24
+involved); the four hashira 柱 are held in reserve as a fallback name. The documentation corpus is
+governed by `DOC_STRATEGY.md` (seeded 2026-09-24 with the issue space; policy decisions
+logged there as they land). Registered 2026-09-24
 as candidates (mappings proposed, pending maintainer blessing): **utaibon** (謡本, the
 vocal libretto — the words the performance follows) → the memory/context engine, resolving
 that note's naming placeholder; **katatsuke** (型付, choreography notation) → reserved for
