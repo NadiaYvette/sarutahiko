@@ -11,17 +11,32 @@ with reasoning and revisit triggers, so tooling questions are answered once.
 
 ---
 
-## 1. Toolchain policy
+## 1. Toolchain policy (amended 2026-09-24: hypermodern)
 
-- **Build: cabal; compiler: GHC 9.12.4 via ghcup** — matching the keiro ecosystem's
-  pinned compiler and the arena's `with-compiler: ghc-9.12.4`.
-- **Language edition: GHC2024** (keiro/baikai use it; `sarutahiko.cabal`'s commons bump
-  from GHC2021 on first code). The catalog's GADT/row style assumes it.
-- **Reproducibility:** a checked-in `cabal.project.freeze` per support matrix line;
-  `cabal.project` lists local packages explicitly as the tree grows.
-- **Support window (aspiration, CI-tested):** GHC 9.10 and 9.12; one major version back
-  minimum, dropped when the ecosystem's dependencies force it (the register records the
-  drop). Nix flakes remain optional per-repo (baikai-style), never program-mandatory.
+- **Stance: hypermodern, by explicit maintainer decision.** Track the latest stable
+  toolchain — GHC 9.14 and cabal 3.18.x at the time of writing — and spend **no effort
+  on backward compatibility with elder toolchains** (this amends the drafted 9.10+
+  support window; the draft's single-back-version aspiration is dropped). The theme of
+  the project — re-grounding coverage in the most advanced design principles — is
+  inconsistent with dragging elder-compiler legs.
+- **Language edition: GHC2024** (`sarutahiko.cabal`'s commons bump from GHC2021 lands
+  with the first Tier-0 code). The catalog's GADT/row style assumes it.
+- **Language features:** the maintainer's working set — `BlockArguments`,
+  `LambdaCase`, `ScopedTypeVariables`, and `PartialTypeSignatures` within the
+  development process. `ScopedTypeVariables` (and `LambdaCase`) ride in the GHC2024
+  baseline; `BlockArguments` and `PartialTypeSignatures` are explicit opt-ins in the
+  commons, the latter governed by `-Wpartial-type-signatures` so unresolved holes
+  surface before shipping (dev convenience, not shipped sloppiness). The style leans
+  on new-GHC features as they stabilize (e.g. or-patterns when the pinned GHC ships
+  them) — the commons are the single place feature flags live.
+- **Reproducibility:** a checked-in `cabal.project.freeze` against the pinned
+  compiler; `cabal.project` lists local packages explicitly as the tree grows.
+- **Support window: latest stable, period.** CI runs the single pinned compiler (no
+  back-compat matrix legs). The forward-ported large-* stack is ours, so latest-GHC
+  compatibility is maintainable by construction. Revisit trigger: a critical
+  dependency lacking latest-GHC support ⇒ temporary pin-back (recorded here, never a
+  fork); ghcup makes the pin a one-line change. Nix flakes remain optional per-repo
+  (baikai-style), never program-mandatory.
 
 ## 2. Formatting — fourmolu
 
@@ -93,7 +108,8 @@ Four layers, with enforcement:
 - Host: GitHub Actions (the four mirrors + Radicle stay push-only; running CI on four
   hosts buys nothing). Reference workflow: typed-protocols' `haskell.yml` (IOG's
   setup-haskell actions; dependabot already in their tree — copy the shape).
-- **Matrix:** GHC {9.10, 9.12} × {core test suites, dual-effect parity suites}.
+- **Matrix:** single leg — the pinned latest-stable GHC (per §1's hypermodern
+  stance) × {core test suites, dual-effect parity suites}.
 - **Jobs:** lint (fourmolu --check, cabal-fmt --check, hlint, cabal check, weeder once
   packages exist), custom lints (SQL-lint, parity lint, layer lint), docs
   (`cabal haddock`), test matrix, **nightly benchmarks** writing to the ledger
@@ -171,8 +187,9 @@ package exists; the skeleton pins intent, not versions.)
 
 1. Maintainer review of items 1–6 (toolchain, fourmolu, lint set, warning set,
    tasty+hedgehog, docs strategy) — blessed as a start; amendments expected.
-2. `sarutahiko.cabal` commons bump to GHC2024 + warning additions — lands with the
-   first Tier-0 code, not before (no code, no CI).
+2. `sarutahiko.cabal` commons bump to GHC2024 + feature opt-ins (BlockArguments,
+   PartialTypeSignatures) + warning additions — lands with the first Tier-0 code, not
+   before (no code, no CI).
 3. CI enablement timing: with the first real package (Phase 0), not with docs-only
    commits.
 4. Radicle CI note: none (push-only by design); revisit only if Radicle gains a
