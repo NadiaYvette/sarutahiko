@@ -273,10 +273,47 @@ space; count-min or similar judged per the register when demand arrives.
   projection if wanted); `RenderMessage site msg` site-coupling (ours: a rendering
   capability in the effect row, serving TUI/log/HTTP surfaces alike); languages as
   bare `[Text]` (ours: typed language tags, BCP-47 via text-icu at the edge); and
-  `Text`-only rendering with no plural/ICU support (ours: per-(locale, sink) rendering,
-  text-icu MessageFormat when real locale work demands it). Reference: `~/src/yesod`
+  `Text`-only rendering with no plural/ICU support (ours: per-(locale, sink) rendering;
+  ICU plural/select via the shim-or-pure decision of row 2.22 — text-icu does *not*
+  bind MessageFormat, an assumption corrected on review 2026-09-24). The future
+  shakespeare-derived i18n package is **designated a derived work of shakespeare**
+  per the §9 credit convention (pattern adopted, implementation rewritten) — queued
+  for CREDITS.md at the remediation commit. Reference: `~/src/yesod`
   (publication-pending), `Text.Shakespeare.I18N`.
   Trigger: first real surface ships user-facing strings (Phase 3).
+
+### 2.22 text-icu (ICU4C bindings) — REUSED as the locale primitive layer (with three recorded caveats)
+ICU is the reference implementation of Unicode services — collation, normalization,
+segmentation, case mapping, charset conversion/detection, regex, number/date
+formatting, all backed by CLDR data. Reimplementing it fails Q1/Q2/Q3 outright (no
+embedded vocabulary, pure protocol/data layer); the only design-class question is
+API shape, and text-icu's thin FFI layer is exactly the kind of surface we
+row-describe at the edge. **The three caveats, reviewed 2026-09-24:**
+
+1. **Non-deterministic cleanup.** ICU handles live in `ForeignPtr`s finalized by GC —
+   release is not prompt or deterministic. Our interpreters wrap ICU opens in the
+   catalog's `Resource` scope (deterministic, bracketed) rather than trusting
+   finalizers; text-icu's API permits this where handles are first-class (collators,
+   break iterators) and is used value-style elsewhere.
+2. **The locale-services layer is missing.** ICU4C's `MessageFormat`, `PluralRules`,
+   `ListFormatter`, and the modern locale matcher are *not bound* by text-icu. When
+   real locale work begins, the choice is a small FFI shim over `u_formatMessage`-era
+   APIs or a pure-Haskell MessageFormat implementation (parser + plural selectors —
+   plausibly a codec-bag-shaped NIH candidate; CLDR plural data as a checked-in
+   projection). Decided at demand time per the register.
+3. **CLDR/ICU-version variance.** Behavior (plural rules, collation tailoring, date
+   patterns) varies with the system ICU version, and text-icu links system ICU via
+   pkg-config. Doctrine contains this: locale rendering lives at the presentation
+   edge, so metrics and experiment records never route through it (reproducibility of
+   the ledger is unaffected); CI pins the ICU version where golden fixtures of
+   rendered output exist. Corollary: locale-rendered text is never a *protocol*
+   artifact.
+
+Maintenance note: text-icu now lives under the haskell GitHub organization and was
+last released 0.8.x (2024) — alive, slow-moving; transliteration split into the
+`text-icu-translit` subpackage. Adoption timing: with the first real surface needing
+collation/date/number rendering beyond the ASCII minimum (Phase 3), or with the
+i18n package (2.21) whichever comes first.
 - **kiroku / shibuya / keiro / kioku** (keiro stack): interop-first contact strategy
   (NIH_PLAN); reuse-or-reimplement is not currently posed — hashigakari reads/writes
   their formats; deeper integration decisions wait for the contact spike.
