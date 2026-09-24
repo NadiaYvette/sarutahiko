@@ -218,13 +218,24 @@ a documentation server.
 Still open under this section: contributor rules beyond the maintainer (§8 covers
 authority; PR mechanics await collaborators).
 
-## 4. The rot problem — design ahead of code
+## 4. The rot problem — design ahead of code — PARTIALLY DECIDED 2026-09-24
 
 The program's procedure is *designs flow down the mountain, stone flows up*: most notes
 describe unbuilt systems. Failure mode: a blessed note silently diverging from the code
-that eventually implements it. *Policy needed:* the "implemented" marker (who stamps
-it, when); whether blessed notes are load-bearing (must be updated in the same PR as
-behavior changes) or advisory; and the precedence rule when note and code disagree.
+that eventually implements it.
+
+**Decided:** the rot vector folds into the doc-drift judge's scope — the drift
+examination grows to include the design documents themselves, so there is one judge,
+one anchor graph, one finding store, not two regimes (assessment: notes ↔ code,
+notes ↔ notes, haddock ↔ both). The implemented marker and precedence rule, however,
+are lifecycle matters (§3) and are decided there: `implemented` is stamped at the
+implementing change (partial stamps permitted), and precedence is — **code wins at
+runtime, the note must be corrected regardless** (a behavior change without a note
+correction is an incomplete change; advisory status is not granted to blessed notes).
+AGENTS.md carries this to AI assistants as advisory rule 2.
+
+**Open:** mechanics of the stamp (bot vs agent vs maintainer commit convention) and
+whether `implemented` needs sub-stamps per package for multi-package designs.
 
 ## 5. Structure and discoverability
 
