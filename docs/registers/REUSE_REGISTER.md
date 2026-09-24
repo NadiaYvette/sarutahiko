@@ -248,6 +248,14 @@ space; count-min or similar judged per the register when demand arrives.
   members; Q1 almost always fails for their nominal wrappers (the wrappers are the
   layer), transport exemption covers none of them — but each gets its own row when its
   demand arrives, per the doc.
+- **lhs2tex** (literate-Haskell → LaTeX): adopt-with-upstreaming when whitepaper or
+  book work begins — enhance for the multi-source master-document assembly that
+  DOC_STRATEGY §6 names as the literate-Haskell obstacle, depending on kosmikus'
+  availability/situation (the brittany precedent: reuse with upstream-relationship
+  class). Judge with the book aspiration when it becomes real.
+- **hakyll** (site generator; cloned locally): adopt when the tutorial track needs
+  navigation/search — replaces the pandoc script for site rendering only; the
+  projection doctrine and script net are unchanged. Trigger: tutorial track begins.
 - **kiroku / shibuya / keiro / kioku** (keiro stack): interop-first contact strategy
   (NIH_PLAN); reuse-or-reimplement is not currently posed — hashigakari reads/writes
   their formats; deeper integration decisions wait for the contact spike.

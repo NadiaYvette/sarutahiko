@@ -1,6 +1,7 @@
 # The Documentation Strategy
 
-Status: SEED · v0.1 · 2026-09-24 — the issue space recorded before policy decisions;
+Status: POLICY · v1.0 · 2026-09-24 — all issue sections (§1–§11) decided; see the
+decision log. Maintenance amendments continue in place under the same rules.
 each section becomes a policy decision with rationale as the maintainer and agent work
 through them. Companion to `INFRASTRUCTURE.md` §6 (which holds the tooling slice:
 Haddock enforcement, the four layers) — this document owns the *policy*.
@@ -477,22 +478,40 @@ principles"). Verbatim quoted transcripts (the Gemini conversation records) are
 marking them as unedited third-party-voiced history — our tone policy governs our
 voice, not the archive.
 
-## 10. Boundaries with adjacent artifacts
+## 10. Boundaries with adjacent artifacts — DECIDED (2026-09-24)
 
-*Policy needed:* CHANGELOGs (PVP-tied — decided in INFRASTRUCTURE §6.3, cross-referenced
-here); ADR correspondence (our design notes *are* architecture decision records, richer
-than the ADR format — name that and decline foreign formats); TODOs/trackers (notes
-currently carry open items in trailing sections — keep, or does a tracker own them?);
-the benchmark ledger (row-typed store, separate artifact); corpora/fixture
-documentation (owned by kakegoe).
+**CHANGELOGs:** owned by INFRASTRUCTURE §6.3 (PVP-tied); no separate policy here.
 
-## 11. The measurement interaction
+**ADR correspondence:** declined as a foreign format — the design notes *are* the
+architecture decision records, richer than ADRs (rationale, challenge history,
+implemented-maps, flags); the decision-log rows supply the numbered-immutable-decision
+essence ADRs capture. External ADR tooling would duplicate at lower fidelity.
 
-LOC budgets (hokora ≤2k) and the maintenance-burden thesis: documentation is real
-maintenance burden too, but counting it against core-LOC budgets would distort the
-comparison. *Policy needed:* docs live outside LOC budgets — and the documentation
-*intensity* of the program (rationale living in prose, code small) should be a visible
-number, because it is part of the answer-to-Nadeem argument rather than a hidden cost.
+**Benchmark ledger:** home fixed by INFRASTRUCTURE §11 — a row-typed experiment store
+per INSTRUMENTS_SPEC §2.5; never ad-hoc files.
+
+**Corpora/fixture documentation:** owned by kakegoe (INSTRUMENTS_SPEC §2.4, the
+scrub-manifest rule).
+
+**TODOs/trackers — notes own them, with a sync projection.** The notes' trailing
+open-item sections are canonical: they are §4's prospective-reference inventory,
+mirror-neutral, and machine-anchorable by the judge. Implementing a parked item closes
+it in the same change (the stamp protocol). A **mechanical one-directional sync** of
+open items to issues on the primary mirror is adopted as a convenience projection when
+collaborators or issue-based workflows arrive — the tracker is never canon; the sync
+target is recorded at adoption time.
+
+## 11. The measurement interaction — DECIDED (2026-09-24)
+
+Documentation lives **outside LOC budgets**: core-LOC comparisons (hokora ≤2k, the
+maintenance-burden thesis) count code only — counting prose against them would distort
+the comparison and punish the corpus's rationale-first method. But documentation
+**intensity is a visible number**: the script net computes a docs-words/core-LOC ratio
+(markdown corpus + haddock word count over ledger core-LOC) per package and
+corpus-wide, as a nightly ledger row beside the benchmarks. The number is descriptive,
+not gated — no budget bounds it — because the intensity is part of the keiro-comparison
+thesis, not a hidden cost: rationale living in prose, code small, and the trade shown
+in public.
 
 ## 12. Decision log
 
@@ -511,5 +530,5 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 | 2026-09-24 | §9 decided: everything public; formal references (full names; "keiro-comparison thesis" replaces the familiar framing; maintainer welcomes direct feedback from Nadeem Bitar); local paths replaced by publicly usable references (URLs/Hackage; publication-pending markers for the maintainer's own repos, enforced by the judge's link-checker); prominent credit as derivation sources — including by rejection — via CREDITS.md; license fields on reuse rows, LICENSES/ for reused code; tone about-face in our voice (respectful engineering register, criticism of designs not people, charged phrases rewritten; verbatim transcripts preserved as marked archive records). Audit sweep found no secrets; no extraction needed. |
 | 2026-09-24 | §9 amended: derivation credit granted as a deliberate choice, not merely where license obligations attach — influence credit is independent of code use. |
 | 2026-09-24 | §5 decided: directories now — `docs/notes/`, `docs/registers/`, `docs/imports/` (verbatim third-party material incl. the Hermes inventory and diagrams), `docs/transcripts/` (conversation archives; freely renamable, title = origin, filename = topic, provenance headers on the renamed Gemini transcripts); hybrid index (`docs/INDEX.md`: generated inventory table + hand-curated reading paths, script net beneath the judge); no archive directory (index's Archived section is the archive); tier as index metadata only; cross-references two-layer — ID citations canonical, relative links convenience, enforced by a zero-LLM script net under the judge's semantic layer. |
-| 2026-09-24 | §7 amended: assistant-context budgets — AGENTS.md as an explicit ~4 KB pointer file (index into selectively loadable canonical docs), header-blocks-first rule for canonical documents, row-decomposed envelopes (envelope-without-payload as summary unit); empirical trigger: cogito:3b truncating a 32 KB assembled context (the consumer, not the corpus, was the limiter). |
+| 2026-09-24 | §10+§11 decided: §10 — CHANGELOGs cross-referenced to INFRASTRUCTURE §6.3; ADR format declined (notes are the richer records; decision-log rows supply the numbered-decision essence); ledger home and corpus docs by cross-reference; TODOs owned canonically by notes' open-item sections with a one-directional mechanical sync to issues on the primary mirror as a convenience projection adopted when collaborators arrive. §11 — docs outside LOC budgets; documentation intensity (docs-words/core-LOC) a nightly descriptive ledger row, visible because it is part of the keiro-comparison thesis. With these, all issue sections are decided — the strategy graduates from seed to policy (v1.0). |
 | 2026-09-24 | Backlog item 11 written: `OBSERVABILITY_DESIGN.md` (**kagami-ita** 鏡板, blessed; alternates mawari-butai / hanamiko / mie reserved) — the interpreter edge as the sole instrumentation point (K1–K4: instrumentation is an interpreter concern; dual interfaces with an observer-effect parity law; row-typed envelope events generalized from the memory log; zero-cost-when-absent capability grants); metrics as reductions over the event stream via mergeable quantile sketches (reuse row 2.20: the maintainer's t-digest as owner class, Greenwald–Khanna, Q-digest); replay-based serviceability via the kakegoe recording interpreters; scrub-manifest-gated privacy posture; small-context accommodation (§7 corollaries); open questions O1–O7 (retention defaults, span shape, metrics exposure, recorder home, sampling, envelope home, high-cardinality top-k). |
