@@ -17,6 +17,7 @@ and are checked by the script net (§5).
 | `notes/DOC_STRATEGY.md` | strategy | seed | cross-cutting | — |
 | `notes/INFRASTRUCTURE.md` | strategy | draft (blessed as start) | cross-cutting | — |
 | `notes/EFFECT_CATALOG_DESIGN.md` | design | draft | substrate | — |
+| `notes/FIELDS_RECORDS_DESIGN.md` | design | draft | substrate | — |
 | `notes/YAMAARASHI_DESIGN.md` | design | draft | streaming | — |
 | `notes/HASHIGAKARI_DESIGN.md` | design | draft | database | — |
 | `notes/MEMORY_ENGINE_DESIGN.md` | design | draft | memory | — |

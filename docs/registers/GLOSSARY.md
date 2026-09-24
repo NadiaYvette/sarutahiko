@@ -33,6 +33,7 @@ link targets. First-use rule in prose (§7): kanji + romaji + gloss.
 - **hashigakari** (橋掛かり) — the database access library; the bridge onto the stage. → `../notes/HASHIGAKARI_DESIGN.md`
 - **utaibon** (謡本) — the memory/context engine; the libretto the performance follows. → `../notes/MEMORY_ENGINE_DESIGN.md`
 - **spine v0.2** — the core log fields always present; the one least-reversible decision above the substrate. → `../notes/MEMORY_ENGINE_DESIGN.md` §3.1
+- **row-evolution standard** — the program-wide versioning rules (E1–E7): authoritative tagging, additive-by-default with for-older provisions, the two-phase lossy path, upgrades as views over immutable bytes, derived provenance. → `../notes/FIELDS_RECORDS_DESIGN.md` §1
 - **PolicyEffect** — policy decisions as a typed effect (cache safety, salience, compression); never sampled. → `../notes/MEMORY_ENGINE_DESIGN.md` §5.1.4
 - **utai** (謡) — the LLM layer; *vox calculi*. → `../notes/LLM_SUBSTRATE_DESIGN.md`
 - **kakegoe** (掛け声) — the policy-experiment instruments; the calls coordinating the ensemble. → `../notes/INSTRUMENTS_SPEC.md`

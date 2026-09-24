@@ -502,7 +502,10 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    maintainer's fork (the `large-records-interfaces` monorepo, forking being the
    mechanism that grants private-interface access for analogue packages), canonical
    for the program, with selective upstreaming of public-surface improvements.
-   **In-note decision order (2026-09-24):** the row-evolution standard is written
+   **Drafted 2026-09-24: `FIELDS_RECORDS_DESIGN.md`** — §1, the row-evolution
+   standard (E1–E7, the provenance derivation, the CA/CD contracts, conformance
+   machinery, the memory engine mapped as specialization), is written for review;
+   §2–§7 follow the blessed in-note order. **In-note decision order (2026-09-24):** the row-evolution standard is written
    first — demand-pulled by the memory engine's envelope (the least-reversible
    decision above the substrate) — and is *requirements-emitting*: it fixes the
    absence-representation and default-attachment contracts the functor family must
