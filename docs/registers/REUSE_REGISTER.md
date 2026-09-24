@@ -57,15 +57,18 @@ recorded 2026-09-24 (pre-deciding the Tier-0 note's structural questions):**
 
 1. **One internal representation: large-anon, exclusively.** Vinyl interop exists for
    *third-party users' convenience only* — compatibility interfaces at package seams
-   (the `large-records-interfaces` monorepo's bridge pattern), never an internal second
-   representation. The Tier-0 note's two-representation question is resolved at the
-   root: conversions happen at seams; `SomeRow` and all internal rows are large-anon.
-2. **No forking of large-records/large-anon/large-generics.** Upstream modifications
-   are limited to *access to private interfaces* as needed to implement docrecords-
-   equivalents and analogues internally (the family's generics machinery already does
-   HKD-style things; the exact split of what large-anon provides natively vs what
-   `sarutahiko-records` builds atop it is precisely backlog item 1's §5 functor-family
-   survey). Equivalents live in our packages, above the foundation, not in a fork of it.
+   (the fork's bridge pattern), never an internal second representation. The Tier-0
+   note's two-representation question is resolved at the root: conversions happen at
+   seams; `SomeRow` and all internal rows are large-anon.
+2. **The foundation is the maintainer's fork.** Forking the large-records ecosystem
+   (the `large-records-interfaces` monorepo) was the necessary mechanism to build new
+   package analogues atop private large-anon/large-generics interfaces — the beam
+   bridges exist this way already, and docrecords-equivalents land there too. The
+   fork is canonical *for the program*; its public-surface improvements are
+   selectively upstreamed as PRs where they don't depend on private interfaces, and
+   upstream releases are merged as convenient. The exact split of what large-anon
+   provides natively vs what the fork's analogues build atop it is backlog item 1's
+   functor-family survey.
 
 ### 2.2 effectful + polysemy (effect runtimes) — REUSE, with dual-interface rule
 Our executables run effectful; every library ships neutral signature packages with both

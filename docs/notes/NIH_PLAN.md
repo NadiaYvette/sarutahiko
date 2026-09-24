@@ -498,8 +498,10 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
 1. Sketch the `sarutahiko-fields` + `sarutahiko-records` API surface (field definitions, row
    combinators, JSON glue) as a design note. **Pre-decided 2026-09-24 (register 2.1):**
    one internal representation — large-anon, exclusively; vinyl exists only as
-   third-party convenience adapters at package seams; no forking of the large-* family
-   (private-interface access only, docrecords-equivalents live above the foundation).
+   third-party convenience adapters at package seams; the record foundation is the
+   maintainer's fork (the `large-records-interfaces` monorepo, forking being the
+   mechanism that grants private-interface access for analogue packages), canonical
+   for the program, with selective upstreaming of public-surface improvements.
 2. Start Phase 0: multi-package `cabal.project` plus Tier-0 package stubs.
 3. Draft the MCP conformance test plan (spec examples → row-typed fixtures) to nail Phase-1
    exit criteria.
