@@ -543,8 +543,11 @@ as candidates (mappings proposed, pending maintainer blessing): **utaibon** (謡
 vocal libretto — the words the performance follows) → the memory/context engine, resolving
 that note's naming placeholder; **katatsuke** (型付, choreography notation) → reserved for
 the future workflow/turn-choreography runtime (keiro-analog); **tetsuke** (手付, percussion
-score) → the scheduler/heartbeat/timeout service; **nohkan** (能管, flute; its score is
-管付 kan-tsuke) → the event bus (cueing and signaling). Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
+score) → the scheduler/heartbeat/timeout service; **kantsuke** (管付, the nohkan flute's
+score — the cueing notation) → the event bus (cueing and signaling); **nohkan** (能管, the
+flute instrument itself) → held in reserve. (Corrections 2026-09-24: 謡本 is utaibon, not
+katatsuke; the flute score is kantsuke, the instrument nohkan — maintainer's terms
+corrected in registry.) Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
 the unseen handlers that move props on and off the stage (maps naturally to process
 supervision/harness/runner roles). Reserve Noh terms deliberately and check for collisions
 with existing repos before naming new packages; candidate future mappings (to be confirmed
