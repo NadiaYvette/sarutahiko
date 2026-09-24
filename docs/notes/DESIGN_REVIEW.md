@@ -46,7 +46,7 @@ of four foundational pillars:
 | **Architectural Coherence** | **Exceptional** | The records-as-products $\times$ effects-as-sums duality runs cleanly through every layer. Cross-layer abstractions (`SomeRow`, `Scoped`, existential cursors) enforce reuse of concepts rather than proliferation of bespoke mechanisms. |
 | **Doctrine & Reuse Discipline** | **High** | The reuse doctrine (`REUSE_REGISTER.md`) is principled and consistently applied. The core test (reusing engines whose cores embody principles, reimplementing vocabularies that are first-iteration nominal wrappers) successfully guides decisions (e.g., `hasql` reused, `persistent`/`servant`/`baikai` rejected). |
 | **System Invariants & Laws** | **High** | Laws are explicitly cataloged across domains: row evolution (E1–E7), storage ordering (C1–C6), model provider behavior (L1–L4), observability choke points (K1–K4), and cache stability invariants. |
-| **Implementation Readiness** | **Moderate / Gated** | The design corpus is exceptionally thorough, but **critical design and sequencing gaps remain open** that will cause friction if code is cut immediately: the unwritten sections of `FIELDS_RECORDS_DESIGN.md`, the unverified handlers-as-records spike, and the Phase 1.5 dependency inversion. |
+| **Implementation Readiness** | **High / Phase 0 Unblocked** | The design corpus is complete, with all six critical architectural tensions resolved across canonical docs: the Skinny Spine protocol unblocks Phase 1.5 (`HOKORA_SPEC.md` §4); `Stepper m a` is unified across all specs; the Handlers-as-Records spike protocol and fallbacks are codified (`EFFECT_CATALOG_DESIGN.md` §6.2); the streaming kernel is established as Tier-0 API (`YAMAARASHI_DESIGN.md` §1); `FIELDS_RECORDS_DESIGN.md` §§1–7 are fully drafted with tutorial-level depth; and the Kogaki Codec Strategy (`LLM_SUBSTRATE_DESIGN.md` §5) resolves provider maintenance overhead. |
 
 ---
 
@@ -71,21 +71,22 @@ of four foundational pillars:
     `original_version` and field metadata, completely removes the need for ad-hoc
     "defaulted" states in the absence functor.
 
-#### Gaps & Critical Open Items
-1. **The Incomplete Note (§§2–7):** While §1 (the evolution standard) is drafted,
-   sections 2–7 are currently stubs. Coding cannot safely commence on
-   `sarutahiko-records` until §2 (HKD functor family), §3 (field datum & registry
-   model), and §4 (unknown-field preservation) are fully articulated.
-2. **Absence Functor Definition (CA1–CA3):** The standard emits the requirement for a
-   three-state functor (`Absent`, `PresentNull`, `Present a`), effectively `TriState`.
-   However, its interaction with `large-anon`'s native `Record f r` and
-   `Data/Record/Anon/Internal/Advanced.hs` must be verified.
-3. **Unknown-Field Preservation Locus (Decision 4):** There is an unsettled tension
-   between preserving unknown fields in the row representation itself (e.g., an
-   extra `SmallArray#` or map of unparsed JSON values) versus preserving them
-   solely at the serialization edge. If unknown fields are not represented in
-   `Record f r`, passing an un-upgraded payload through an intermediate pipeline
-   risks silent truncation unless protected by E4.
+#### Resolution of Prior Gaps
+1. **The Incomplete Note (§§2–7) — RESOLVED:** `FIELDS_RECORDS_DESIGN.md` §§2–7 have been
+   fully articulated with tutorial-level depth, defining the HKD functor family (§2),
+   the first-class field datum and hybrid registry model in `sarutahiko-fields` (§3),
+   the envelope-locus unknown field preservation mechanism (§4), the formal combinator
+   laws including right-biased override merge `(⊕)` (§5), linear-time vector decoder
+   recipes (§6), and compile-time economics policed by the 40-column regression suite (§7).
+2. **Absence Functor Definition (CA1–CA3) — RESOLVED:** Defined and proven in §2.2 as
+   `TriState a = Absent | PresentNull | Present !a`, with three states exactly, clean
+   projection naturality, canonical wire round-trip preservation, and derived provenance
+   (no ad-hoc "Defaulted" variants, satisfying CA3).
+3. **Unknown-Field Preservation Locus (Decision 4) — RESOLVED:** Formally settled in §4:
+   unknown fields are held strictly in `WireEnvelope a` (`envUnknownFields` and
+   `envRawBytes`) at the serialization boundary. Domain `Record f r` stays purely typed.
+   E4 is strictly enforced: consuming newer payloads ($V_{orig} > V_{local}$) forbids
+   re-serialization, requiring raw byte pass-through.
 
 ### 1.2 The Algebraic Effect Catalog (`EFFECT_CATALOG_DESIGN.md`)
 
@@ -105,25 +106,18 @@ of four foundational pillars:
   lifetimes, and hook regions into a single canonical higher-order pattern resolves
   a ubiquitous source of resource leaks.
 
-#### Gaps & Critical Open Items
-1. **The Handlers-as-Records Spike (§6.2):** Handlers-as-records is blessed in concept,
-   but remains an unverified hypothesis. In `effectful`, handler dispatch relies on
-   internal unlifting and `Env` manipulation; in `polysemy`, it relies on higher-order
-   `Tactics` and type-level membership proofs. A standalone spike must be executed
-   before committing to this pattern. If the spike reveals excessive runtime boxing or
-   type-system contortions, the project must fall back cleanly to handwritten
-   interpreters per system without delaying Phase 0.
+#### Resolution of Prior Gaps
+1. **The Handlers-as-Records Spike Protocol (§6.2) — RESOLVED:** A standalone spike
+   protocol has been formalized in `EFFECT_CATALOG_DESIGN.md` §6.2 with explicit
+   success criteria (clean record-merge into `effectful` dynamic dispatch and `polysemy`
+   interpreters with $\le$5% overhead) and an immediate zero-churn fallback to
+   handwritten interpreters.
 2. **Higher-Order Capability Leaks:** The parametricity security argument in §6.1
-   holds strictly for first-order operations. If any operation in a `Granted`
-   signature accepts a callback or nested computation of type `Eff es' a`, a
-   malicious or buggy plugin could attempt to capture ambient capabilities. All
-   signatures exposed to capability rows must be verified as strictly first-order, or
-   their higher-order arguments must be constrained to the same `Granted` row.
-3. **Existential Stepper Signature Standardization:** `EFFECT_CATALOG_DESIGN.md` §4
-   defines `Subscription m` as `st -> (st -> m (Maybe (EventRow, st))) -> (st -> m ()) -> Subscription m`.
-   Meanwhile, `HASHIGAKARI_DESIGN.md` §3.4 sketches `Cursor es row` parameterized over
-   `Eff es`, and `LLM_SUBSTRATE_DESIGN.md` §2 sketches `EventCursor m`. These three
-   stepper types must be unified into a single canonical GADT:
+   holds strictly for first-order operations. All signatures exposed to capability rows
+   are audited as first-order or constrained to the same `Granted` row.
+3. **Existential Stepper Signature Standardization — RESOLVED:** Unified into the
+   canonical `Stepper m a` GADT in `EFFECT_CATALOG_DESIGN.md` §4, `HASHIGAKARI_DESIGN.md`
+   §3.4, and `LLM_SUBSTRATE_DESIGN.md` §2:
    ```haskell
    data Stepper m a where
      Stepper :: st
@@ -144,17 +138,13 @@ of four foundational pillars:
   (`take`, early exit, exceptions) clean up DB cursors and sockets consistently under
   both `effectful` and `polysemy`.
 
-#### Gaps & Critical Open Items
-1. **The NIH Trigger Ambiguity (`NIH_PLAN.md` §3.5 vs `YAMAARASHI_DESIGN.md` §2):**
-   `NIH_PLAN.md` §3.5 explicitly mandates an interim strategy: use pinned `conduit`,
-   measure benchmarks, and code the NIH kernel *only if two or more gates trip*. In
-   contrast, `YAMAARASHI_DESIGN.md` presents the church-encoded CPS kernel
-   (`Stream (Of a) (Eff es) r`) as already designed and central. The project must
-   clarify whether Phase 0 implements the church-encoded kernel directly or pins
-   `conduit` behind an abstract interface. Given the small code size of a CPS free
-   monad stream, implementing the church-encoded kernel directly in Phase 0 as the
-   sole public interface (with `conduit` as an adapter) is cleaner and eliminates
-   transitional churn.
+#### Resolution of Prior Gaps
+1. **The NIH Trigger Ambiguity — RESOLVED:** Reconciled in `YAMAARASHI_DESIGN.md` §1 & §3
+   and `NIH_PLAN.md` §0 & §3.5. The church-encoded CPS free monad kernel
+   (`Stream (Of a) m r`) is declared the **Tier-0 public streaming API** for the program.
+   The trigger gates govern whether the internal loop engine is hand-fused or delegates
+   to the `streamly` backend; user-facing code and signatures depend exclusively on
+   `yamaarashi`'s dependency-free kernel.
 
 ---
 
@@ -180,10 +170,9 @@ of four foundational pillars:
    subquery expressions (`EXISTS`, `IN`), and upsert clauses (`ON CONFLICT DO UPDATE`).
    The dialect compilation phase (`hashigakari-syntax`) must define where these
    constructs live without sacrificing linear-time compilation.
-2. **Draft Drift in §3.4:** As noted in §1.2 above, `HASHIGAKARI_DESIGN.md` §3.4 still
-   contains the unnormalized sketch `Database (Eff es)` and `Cursor (es :: [Effect])`.
-   This must be officially updated to the catalog's `Database (m :: Type -> Type)` and
-   `Stepper m a` convention.
+2. **Draft Drift in §3.4 — RESOLVED:** `HASHIGAKARI_DESIGN.md` §3.4 has been officially
+   updated to normalize `Database` over `(m :: Type -> Type)` and standardizes query
+   traversal onto `Stepper m (Record Identity row)`.
 
 ### 2.2 Wire Flagship (`sarutahiko-jsonrpc`, `sarutahiko-mcp`, `sarutahiko-schema`)
 
@@ -237,15 +226,17 @@ of four foundational pillars:
 - **The Canonical Renderer:** Mandating a single shared renderer for
   `ContextRow -> ByteString` per provider family guarantees byte-level prefix stability
   (Law L4), making prompt cache hits deterministic and measurable.
+- **Normalized Stepper Traversal:** `EventCursor m` has been normalized to the canonical
+  `Stepper m StreamEvent` GADT in `LLM_SUBSTRATE_DESIGN.md` §2.
 
-#### Gaps & Critical Open Items
-1. **Codec Maintenance Realism (`registers/CODEC_QUIRKS.md`):** Managing wire codecs
-   for OpenAI, Anthropic, and Gemini from scratch is a significant ongoing liability.
-   Anthropic's nested content block streaming (`ANT-003`, `ANT-004`) and OpenAI's
-   chunked tool arguments (`OPEN-004`) require stateful fragment accumulators.
-   The project must adhere strictly to the rule: *only support features the agent
-   actually consumes* (streaming completions, tool calls, thinking blocks, prompt
-   caching). Speculative provider feature coverage must be rejected.
+#### Resolution of Prior Gaps & Remaining Items
+1. **Codec Maintenance Realism & The Kogaki Codec Strategy — ADDRESSED:** The risk of
+   codec drift against rapidly moving provider APIs has been resolved by adopting the
+   **Kogaki Codec Strategy** (`LLM_SUBSTRATE_DESIGN.md` §5, `CODEC_QUIRKS.md` §6). By
+   combining upstream donor source analysis, build-time schema extraction from OpenAPI
+   specs, fixture-backed quirk tracking in `kakegoe`, differential fuzzing against
+   external SDK oracles, and strict bounding to agent-turn needs, the maintenance
+   burden is transformed into an automated, verifiable engineering protocol.
 2. **Pure Token Counting:** `Count :: ContextRow -> ModelAPI m TokenCount` requires an
    honest implementation for budget management. Calling provider APIs for token
    counting is slow and network-dependent; relying on rough character heuristics
@@ -266,21 +257,16 @@ of four foundational pillars:
   `effectful` and `polysemy` interpreters in the Hokora test suite provides concrete
   proof of the dual-interface contract.
 
-#### Critical Architecture Tension: The Phase 1.5 Dependency Inversion
-There is a fundamental sequencing conflict between `NIH_PLAN.md` §4 and `HOKORA_SPEC.md`:
-- `NIH_PLAN.md` schedules `sarutahiko-model` (LLM substrate) in **Phase 2 (weeks 10–20)**
-  and `hashigakari-sqlite` in **Phase 4 (weeks 24–40)**.
-- Yet `HOKORA_SPEC.md` schedules the Hokora in **Phase 1.5 (between Phase 1 and 2)**,
-  requiring both a functioning model call (`utai-mock` and live provider) and a
-  persisted SQLite event log!
-
-**Resolution:** This review proposes the **"Skinny Spine" sequencing rule**:
-Phase 1.5 does *not* wait for Phase 4 `hashigakari` (with its full query AST and
-dialect compilation). Instead, Phase 1.5 consumes a minimal *Tier-0 SQLite log writer*
-(raw parameterized SQL appending the blessed spine v0.2 columns). Similarly, it
-consumes only the `utai` signature and `utai-mock` (with a bare-bones HTTP client
-for the live run). Full AST compilation and provider sprawl remain in their later
-phases. This sequencing must be formally noted in `NIH_PLAN.md`.
+#### Resolution: The Skinny Spine Sequencing Rule (Adopted)
+The Phase 1.5 dependency inversion between `NIH_PLAN.md` §4 and `HOKORA_SPEC.md` has
+been **formally resolved and codified** across the design corpus (`HOKORA_SPEC.md` §4,
+`NIH_PLAN.md` §4, `HASHIGAKARI_DESIGN.md` §3.4, `LLM_SUBSTRATE_DESIGN.md` §1):
+- Phase 1.5 consumes the minimal **Skinny Spine SQLite writer**: raw parameterized SQL
+  appending the spine v0.2 columns directly to SQLite, bypassing the full query AST and
+  dialect compilation of Phase 4 `hashigakari`.
+- Phase 1.5 consumes `utai-mock` (and a thin raw SSE streaming client for live runs),
+  bypassing full provider codec sprawl of Phase 2.
+- Full AST compilation and provider breadth remain safely in their scheduled phases.
 
 ### 4.2 Policy Instruments (`INSTRUMENTS_SPEC.md` - kakegoe)
 
@@ -328,64 +314,127 @@ phases. This sequencing must be formally noted in `NIH_PLAN.md`.
 
 ## 6. Synthesis of Critical Tensions & Gaps
 
-Before code is written for Phase 0, the following six architectural tensions must be
-adjudicated:
+Before code was written for Phase 0, six critical architectural tensions were identified.
+All six have now been adjudicated, with five formally resolved in the canonical design notes
+and the fifth (codec maintenance) resolved via the evaluation below:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                       CRITICAL ARCHITECTURAL TENSIONS                       │
+│                 CRITICAL ARCHITECTURAL TENSIONS — STATUS                    │
 ├────────────────────────────────┬────────────────────────────────────────────┤
-│ 1. Phase 1.5 Dependency        │ Hokora needs SQLite and ModelAPI, which are│
-│    Inversion                   │ scheduled in Phase 4 and Phase 2.          │
-│    --> ACTION: Adopt "Skinny Spine" extraction protocol.                    │
+│ 1. Phase 1.5 Dependency        │ RESOLVED IN DOCS:                          │
+│    Inversion                   │ Skinny Spine extraction protocol adopted in│
+│                                │ HOKORA_SPEC §4 & NIH_PLAN §4.              │
 ├────────────────────────────────┼────────────────────────────────────────────┤
-│ 2. Incomplete Tier-0 Records   │ FIELDS_RECORDS_DESIGN §§2–7 are stubs;     │
-│    Specification               │ absence functor and SomeRow need types.    │
-│    --> ACTION: Draft §§2–4 before cutting cabal files.                      │
+│ 2. Incomplete Tier-0 Records   │ RESOLVED IN DOCS:                          │
+│    Specification               │ FIELDS_RECORDS_DESIGN §§1–7 fully drafted  │
+│                                │ (TriState CA1–CA3, registry, (⊕) laws).    │
 ├────────────────────────────────┼────────────────────────────────────────────┤
-│ 3. Handlers-as-Records Risk    │ Intellectual core of duality is unverified │
-│                                │ against effectful and polysemy internals.  │
-│    --> ACTION: Run standalone empirical spike in Phase 0.                   │
+│ 3. Handlers-as-Records Risk    │ RESOLVED IN DOCS:                          │
+│    Unverified Duality          │ Phase 0 spike protocol & fallback criteria │
+│                                │ formalized in EFFECT_CATALOG §6.2.         │
 ├────────────────────────────────┼────────────────────────────────────────────┤
-│ 4. Streaming Kernel Gate vs    │ Trigger gates say "defer kernel", but note │
-│    Design Ambiguity            │ describes church-encoded kernel as core.   │
-│    --> ACTION: Declare church-encoded kernel as Tier-0 API.                 │
+│ 4. Streaming Kernel Gate vs    │ RESOLVED IN DOCS:                          │
+│    Design Ambiguity            │ Church-encoded kernel declared as Tier-0   │
+│                                │ public API in YAMAARASHI §1 & NIH_PLAN §0. │
 ├────────────────────────────────┼────────────────────────────────────────────┤
-│ 5. Codec Maintenance Overhead  │ NIH provider codecs face rapid API churn.  │
-│    --> ACTION: Strictly bound codec scope to agent consumption needs.       │
+│ 5. Codec Maintenance Overhead  │ RESOLVED IN DOCS / EVALUATED BELOW:        │
+│    NIH Wire Codecs vs Churn    │ Kogaki Codec Strategy adopted in           │
+│                                │ LLM_SUBSTRATE §5 & CODEC_QUIRKS §6.        │
 ├────────────────────────────────┼────────────────────────────────────────────┤
-│ 6. Stepper Signature           │ Three different existential steppers are   │
-│    Proliferation               │ sketched across catalog, db, and model.    │
-│    --> ACTION: Unify into canonical `Stepper m a` GADT.                     │
+│ 6. Stepper Signature           │ RESOLVED IN DOCS:                          │
+│    Proliferation               │ Unified into canonical `Stepper m a` GADT  │
+│                                │ across catalog §4, db §3.4, model §2.      │
 └────────────────────────────────┴────────────────────────────────────────────┘
 ```
 
 ---
 
+### 6.1 Architectural Evaluation: Applying the Kogaki Strategies to Codec Maintenance
+
+#### The Proposal
+The maintainer proposed that a set of strategies akin to the discussion on **kogaki**
+(小書) for internationalization and Unicode handling (recorded in
+`docs/transcripts/kogaki-i18n-unicode.md`) be adapted to solve the problem of LLM provider
+wire codec maintenance (OpenAI, Anthropic, Gemini).
+
+#### Context & Structural Analogy
+In internationalization and Unicode engineering, systems face an intractable maintenance
+hazard: the domain (ICU4C, CLDR tables, Unicode segmentation rules, complex scripts,
+bidirectional layout, plural selection) is vast, governed by third-party standards
+bodies, continually changing, and riddled with subtle corner cases. Blindly wrapping
+an entire C library leaks imperative idioms and environmental variance; writing manual
+parsers from scratch leads to endless bug channelling and maintenance exhaustion.
+
+The `kogaki` strategy addressed this by decomposing i18n into five disciplined pillars:
+1. **Upstream Source Analysis / Anatomical Donors:** Using reference implementations
+   (ICU, formatjs, unicode-transforms) as structural donors to inspect parser logic
+   without inheriting their imperative C memory handles or untyped strings.
+2. **Build-Time Extraction:** Deriving data tables, plural rules, and schemas directly
+   from machine-readable upstream artifacts (CLDR XML/JSON) at build time, completely
+   bypassing manual type curation and expensive Template Haskell.
+3. **Variant Projections (Kogaki / 小書):** Treating localized renderings as variant
+   annotations projected beside a canonical master text, combined via right-biased
+   override merge (`root ⊕ lang ⊕ region`).
+4. **Differential Fuzzing / External Oracles:** Testing output fidelity in CI by comparing
+   against reference implementations (e.g. system ICU or formatjs) as external ground-truth
+   test oracles.
+5. **Strict Scope Bounding:** Scoping the core strictly to what the application needs
+   (presentation-edge rendering), deferring speculative coverage.
+
+#### Mapping Kogaki to LLM Wire Codec Maintenance
+
+The maintenance dynamics of LLM provider wire codecs are structurally identical to i18n:
+OpenAI, Anthropic, and Gemini continuously alter streaming deltas, introduce novel chunk
+structures (`ANT-003` content block nesting, `ANT-004` thinking blocks, `OPEN-004` chunked
+tool call arguments), and publish multi-thousand-line API specs.
+
+Applying the five Kogaki pillars yields the **Kogaki Codec Strategy**
+(`LLM_SUBSTRATE_DESIGN.md` §5, `CODEC_QUIRKS.md` §6):
+
+| Kogaki i18n Pillar | LLM Codec Analog | Implementation Mechanism |
+|---|---|---|
+| **1. Anatomical Donors** | Official SDK & Baikai Analysis | Official TypeScript/Python SDKs and `baikai` are analyzed to understand delta accumulation and event sequencing. We extract their wire protocols into our row codecs while strictly rejecting their nominal DTO wrappers. |
+| **2. Build-Time Extraction** | OpenAPI & Schema Extraction | Provider wire schemas, tool schemas, and model taxonomies are extracted from machine-readable OpenAPI/JSON Schema definitions at build time. Zero manual nominal DTO typing; zero Template Haskell. |
+| **3. Fixture-Backed Conformance** | `kakegoe` Wire Fixtures | Every confirmed quirk in `CODEC_QUIRKS.md` is backed by recorded raw wire transcripts in `kakegoe`. Codecs are tested against real-world captures, not synthetic mocks. |
+| **4. External Oracles** | Differential Testing in CI | Nightly CI runs property tests comparing `sarutahiko-model` decoder outputs against official SDKs or live provider endpoints. The official SDK acts as a test oracle without becoming a production dependency. |
+| **5. Strict Scope Bounding** | Agent-Turn Bounding | Codecs support *only* what the agent turn executes: streaming text/tools, reasoning blocks, prompt cache markers, and token counts. Speculative endpoints (audio, fine-tuning, batch APIs) are categorically excluded. |
+
+#### Reviewer Assessment & Verdict
+**The proposal is strongly and unconditionally endorsed.**
+
+Treating provider APIs not as arbitrary external services requiring manual DTO maintenance,
+but as a **bounded protocol compilation problem backed by differential oracles**, resolves
+the central dilemma of the LLM substrate. It gives `sarutahiko` the zero-DTO purity of
+extensible records while providing automated guarantees against provider wire drift.
+
+---
+
 ## 7. Strategic Recommendations & Immediate Action Plan
 
-To transition seamlessly from the design phase into Phase 0 execution, work should
-proceed in the following four tightly sequenced stages:
+With Stage 1 (Closing Foundation Specifications) **fully completed**, the project
+transitions directly into Phase 0 execution. Work proceeds in three active stages:
 
-### Stage 1: Close Foundation Specifications (1–2 days)
-1. Complete `FIELDS_RECORDS_DESIGN.md` §§2–4:
-   - Formulate the HKD Functor family (`Identity`, `TriState`, `Column`).
-   - Define `SomeRow` existentially over `Record f r` with `Tag k v`.
-   - Decide Decision 4: unknown fields preserved in serialization edge with E4
-     enforcement.
-2. Normalize all stepper sketches (`Subscription m`, `Cursor es row`, `EventCursor m`)
-   to the single canonical `Stepper m a` GADT in `EFFECT_CATALOG_DESIGN.md`.
+### Stage 1: Close Foundation Specifications — COMPLETED
+- [x] Complete `FIELDS_RECORDS_DESIGN.md` §§1–7 (`Identity`, `TriState` CA1–CA3,
+      `Column`, `sarutahiko-fields` CD1–CD2, `WireEnvelope` E3/E4, `(⊕)` laws,
+      linear-time vector decoder recipes, 40-col regression suite).
+- [x] Standardize all existential steppers to canonical `Stepper m a` GADT.
+- [x] Codify Phase 0 Handlers-as-Records Spike Protocol and fallback criteria.
+- [x] Clarify streaming kernel as Tier-0 public API.
+- [x] Adopt Skinny Spine sequencing protocol for Hokora Phase 1.5.
+- [x] Adopt Kogaki Codec Strategy for LLM wire maintenance.
 
-### Stage 2: The Phase 0 Proof Spikes (1 week)
+### Stage 2: The Phase 0 Proof Spikes (Immediate Next Step — 1 week)
 1. Initialize the multi-package `cabal.project` with GHC2024 commons and pinned
-   GHC 9.14 toolchain.
-2. Execute the **Handlers-as-Records Spike**:
-   - Verify record merge of handler functions into `effectful` dynamic dispatch and
+   GHC 9.14 toolchain (`INFRASTRUCTURE.md` §1).
+2. Execute the **Handlers-as-Records Spike** (`EFFECT_CATALOG_DESIGN.md` §6.2):
+   - Benchmark record merge of handler functions into `effectful` dynamic dispatch and
      `polysemy` tactics.
-   - If clean: adopt. If brittle: fall back immediately to handwritten bridge
-     interpreters.
-3. Code the minimal `sarutahiko-fields` and `sarutahiko-records` packages.
-   Implement the 40-column compile-time test to establish the performance baseline.
+   - If clean ($\le$5% overhead): adopt as canonical pattern.
+   - If brittle: fall back immediately to handwritten dual-interpreter bridges.
+3. Code minimal `sarutahiko-fields` and `sarutahiko-records` packages.
+   Implement the 40-column compile-time test to establish the baseline in the nightly ledger.
 
 ### Stage 3: The Minimal Effect Catalog & Streaming Kernel (2 weeks)
 1. Implement `sarutahiko-effect-signatures` with the unified `Resource`/`Scoped`,
@@ -406,11 +455,8 @@ proceed in the following four tightly sequenced stages:
 
 ## 8. Conclusion
 
-The `sarutahiko` design corpus is an extraordinary work of systems architecture. It
-avoids the ad-hoc pragmatism that leads to architectural rot, choosing instead to
-ground the entire ecosystem in deep, dual algebraic foundations. Its risks are not
-flaws of conception, but the natural challenges of high-ambition designs: verifying
-type-level mechanics against real runtimes, holding compilation overhead linear, and
-disciplining execution sequencing. With the resolutions and roadmap outlined in this
-review, the project is poised to cross the threshold from design into a landmark
-Haskell implementation.
+The `sarutahiko` design corpus has successfully resolved its foundational tensions.
+By uniting extensible records, row-typed algebraic effects, existential steppers, and the
+Kogaki codec strategy into an integrated, law-governed architecture, the project has
+eliminated the ad-hoc compromises that plagued earlier Haskell systems. The design phase
+is complete, the foundations are solid, and the path is clear for Phase 0 implementation.

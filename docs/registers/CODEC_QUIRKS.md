@@ -80,18 +80,34 @@ ollama, vLLM, LM Studio). The family is de-facto standard, but the quirks are mo
 | X-002 | **Error categories should be decided by status+category-enum first, message text last**; message-pattern matching is the fallback for unstructured cases only (ANT-010) | keeps `isRetryable` honest across hosts that reword messages |
 | X-003 | **Every family can silently truncate** (`length`/`MAX_TOKENS`) — truncation is a *result*, not an error | `StopReason` row carries it; memory engine's budget accounting reads it |
 
-## 6. Growth procedure
+## 6. Growth procedure and the Kogaki Codec Strategy
 
-- A quirk enters this table when: (a) a recorded transcript shows a wire fact the codec
-  must handle, (b) provider docs state a behavior, or (c) a bug's root cause is a wire
-  assumption. Each row gets ID, status, one-line obligation; obligations referencing
-  laws (L1–L3) must say which.
-- Golden fixtures: every CONFIRMED row should be backed by a transcript fixture in the
-  kakegoe corpus format (INSTRUMENTS_SPEC §1.3); the fixture set is the codec's
-  conformance suite. Rows without fixtures are the "verify next" queue.
-- Review cadence: at each Phase exit (and on any provider API version bump), re-run
-  fixtures, triage new transcript surprises into rows, and re-check the revisitation
-  triggers in REUSE_REGISTER 2.14.
-- Promotions: SUSPECTED → REPORTED (secondary source) → CONFIRMED (fixture recorded).
-  Demotions happen when a provider fixes behavior — the row gains a "fixed as of" note
-  rather than being deleted (history is append-only, even in docs).
+Quirk tracking is governed by the **kogaki strategy** (transposed from the pure-Haskell
+internationalisation methodology in `registers/REUSE_REGISTER.md` 2.22 and
+`docs/transcripts/kogaki-i18n-unicode.md`):
+
+1. **Source Analysis of Upstream Donors:** When providers modify streaming event
+   structures, we inspect the official reference implementations (`anthropic-sdk-python`,
+   `openai-python`, `google-genai`, `baikai`) to discover parser invariants and
+   fragment assembly logic without adopting their nominal DTO hierarchies.
+2. **Build-Time Extraction Thesis:** Wire schemas, parameter descriptors, and model
+   taxonomies are extracted from checked-in machine-readable upstream specifications
+   (OpenAPI specs, JSON Schema catalogs) at build time, avoiding manual transcription
+   and Template Haskell fragility.
+3. **Fixture-Backed Quirk Rows:** Every CONFIRMED row in this register is backed by a
+   concrete recorded wire transcript (raw SSE bytes, chunked JSON deltas) stored in the
+   `kakegoe` corpus. A quirk is never speculative; it is witnessed by bytes.
+4. **Differential Fuzzing Against Live Oracles:** Scheduled CI jobs run identical test
+   prompts through both our pure codecs and official provider SDKs / live APIs, flagging
+   wire drift before it impacts agent turns.
+5. **Strict Scope Bounding:** Codec maintenance is restricted to features actively
+   consumed by the agent turn program (streaming text, tool arguments, reasoning deltas,
+   prompt caching markers, usage roll-ups). Speculative endpoints are rejected.
+6. **Promotion & History:**
+   - A quirk enters this table when: (a) a recorded transcript shows a wire fact the
+     codec must handle, (b) provider docs state a behavior, or (c) a bug's root cause is
+     a wire assumption.
+   - Status transitions: `SUSPECTED` → `REPORTED` (secondary source) → `CONFIRMED`
+     (fixture recorded in tree).
+   - Demotions: When a provider fixes behavior, the row gains a "fixed as of <date>"
+     note rather than being deleted (living register history is append-only).

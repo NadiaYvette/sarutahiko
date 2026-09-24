@@ -93,27 +93,34 @@ Every entry consists of five things:
 
 Two structural rules run through the whole catalog:
 
-- **Cursors, not streams.** Signatures never expose stream types (that would invert the
-  dependency on `yamaarashi`) and never parameterize over a concrete `Eff` row (that would
-  break neutrality). They expose existential steppers parameterized by `m`:
+- **Cursors, not streams: canonical `Stepper m a`.** Signatures never expose stream
+  types (that would invert the dependency on `yamaarashi`) and never parameterize over a
+  concrete `Eff` row (that would break neutrality). All sequential traversal handles
+  across the catalog, database, and model layers are unified under one canonical
+  existential stepper GADT parameterized by `m`:
+
+  ```haskell
+  data Stepper m a where
+    Stepper :: st
+            -> (st -> m (Maybe (a, st)))   -- step: Nothing = exhaustion / terminal reached
+            -> (st -> m ())               -- close: deterministic teardown
+            -> Stepper m a
+  ```
+
+  Example signature usage:
 
   ```haskell
   data SessionStore (m :: Type -> Type) :: Type -> Type where
     Append    :: EventRow -> SessionStore m EventId
     ReadRange :: EventId -> EventId -> SessionStore m [EventRow]
-    Subscribe :: SessionStore m (Subscription m)
+    Subscribe :: SessionStore m (Stepper m EventRow)
     Current   :: SessionStore m EventId
-
-  data Subscription m where
-    Subscription :: st
-                 -> (st -> m (Maybe (EventRow, st)))   -- step
-                 -> (st -> m ())                       -- close
-                 -> Subscription m
   ```
 
-  The stream kernel unfolds cursors into `Stream`s; the `Resource` effect guarantees
-  `close` on short-circuit. (This rule normalizes the sketches in `HASHIGAKARI_DESIGN.md`
-  §3.4, which reference `Eff es` directly.)
+  The `yamaarashi` stream kernel unfolds any `Stepper m a` into `Stream (Of a) m ()`; the
+  `Resource`/`Scoped` effect guarantees that `close` runs on stream short-circuit or error.
+  This GADT unifies the former `Subscription m` in this catalog, the `Cursor` stepper
+  in `HASHIGAKARI_DESIGN.md` §3.4, and `EventCursor m` in `LLM_SUBSTRATE_DESIGN.md` §2.
 - **`SomeRow` for row-carrying effects.** `Log`, `EventBus`, and `HookDispatch` carry
   record *values*. If the row appeared in the program's type, every log call would change
   the ambient constraints. Call sites therefore build a concrete row and pass an
@@ -146,7 +153,7 @@ per bridge by design and held honest by the parity testkit.
 | `Clock` | now, sleep, deadline | timeouts = `Clock` + `Resource` |
 | `Process` | spawn (stdio), wait, kill | Resource-bracketed; the Phase-1 minimal subset (MCP children) |
 | `Supervise` | restart trees, deadline-kill, child-env hygiene | shibuya-class layering; composes `Process`, never grows it |
-| `FileSystem` | read/write/glob, `Watch` (a `Subscription`) | — |
+| `FileSystem` | read/write/glob, `Watch` (a `Stepper m FileEvent`) | — |
 | `Database` | Query, Stream (cursor), Execute, Transaction | per `HASHIGAKARI_DESIGN.md` §3.4, normalized to `m` |
 | `SessionStore` | Append, ReadRange, Subscribe, Current | the memory engine's entire I/O surface; reducers stay pure |
 | `ModelAPI` | complete, stream (row events), embed, count | baikai-analog; function-calling schemas as row descriptors |
@@ -208,10 +215,29 @@ with conflict detection) exactly like data rows. The dual-interface promise then
 almost nothing: the same fragment set, two mechanical materializations (effectful handlers,
 polysemy interpreters).
 
-**Status/boundary.** Blessed. Requires a spike against both systems' native handler shapes
-(effectful's dynamic handlers vs polysemy's `Tactic`/membership style) before the bridge
-packages are written; if a system's native shape resists, fall back to hand-written
-interpreters per system with the record formulation retained as documentation of intent.
+**Status/boundary.** Blessed as design intent, subject to the **Phase 0 Handlers-as-Records
+Spike Protocol**. The spike evaluates whether row composition of handlers is viable
+against both systems' native internal representation:
+
+1. **`effectful` Target:** Dynamic handlers wrap operations in an unlifted environment
+   (`interpret :: (∀ es' a. sig (Eff es') a -> Eff es a) -> Eff (sig : es) b -> Eff es b`).
+   The spike tests whether a record of handler functions `Record (HandlerEff es) sigs`
+   can be folded into a composed handler without per-call dictionary boxing or dynamic
+   type lookup overhead.
+2. **`polysemy` Target:** Higher-order operations use `Tactics` and `Weaving`. The spike
+   tests whether record fields can cleanly instantiate `interpretH` while preserving
+   higher-order state distribution.
+3. **Evaluation Criteria:**
+   - *Ergonomics:* Does `h1 ⊕ h2` (record merge) produce an interpreter without manual
+     type annotations at call sites?
+   - *Performance:* Does GHC's optimizer inline the record projections, matching the
+     microbenchmark throughput of handwritten interpreters?
+   - *Totality:* Does omitting a handler for a signature in the row produce a clear,
+     localized compile-time `TypeError`?
+4. **Fallback Path:** If either system's internal machinery resists clean record
+   composition, **fall back immediately to handwritten interpreters per system**
+   (`runFileSystemEffectful`, `runFileSystemPolysemy`). Handlers-as-records is then
+   retained as documentation of the duality rather than blocking bridge implementation.
 
 ### 6.3 `Scoped` unification
 

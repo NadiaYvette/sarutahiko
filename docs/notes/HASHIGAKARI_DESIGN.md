@@ -105,36 +105,40 @@ JOIN that would duplicate a field name is a compile error, not a runtime surpris
 
 ### 3.4 Execution
 
-- **Effects.** One signature, two interpreters:
+- **Effects.** One signature, normalized to `m` per catalog rules:
 
   ```haskell
-  data Database :: Effect where
-    Query    :: Query dialect params row -> Record Identity params
-             -> Database (Eff es) (Maybe (Record Identity row))   -- single row
-    Stream   :: Query dialect params row -> Record Identity params
-             -> Database (Eff es) (Cursor es row)                 -- memory-constant
-    Execute  :: Query dialect params ('["rowsAffected" ':= Int]) -> … -> Database (Eff es) Int
-    Transaction :: (∀ es'. Database :> es' => Eff es' a) -> Database (Eff es) a
+  data Database (m :: Type -> Type) :: Type -> Type where
+    Query       :: Query dialect params row -> Record Identity params
+                -> Database m (Maybe (Record Identity row))             -- single row
+    Stream      :: Query dialect params row -> Record Identity params
+                -> Database m (Stepper m (Record Identity row))         -- memory-constant
+    Execute     :: Query dialect params ('["rowsAffected" ':= Int])
+                -> Record Identity params
+                -> Database m Int
+    Transaction :: m a -> Database m a                                  -- Scoped specialization
   ```
 
-  (signature sketch; exact GADT refined at implementation)
-
-- **Existential cursors.** Backend state hides in the GADT stepper (plan §3.5):
+- **Canonical Steppers.** Backend state hides in the canonical `Stepper m a` GADT
+  (defined in `EFFECT_CATALOG_DESIGN.md` §4):
 
   ```haskell
-  data Cursor (es :: [Effect]) (row :: Row Type) where
-    Cursor :: st
-           -> (st -> Eff es (Maybe (Record Identity row, st)))  -- step
-           -> (st -> Eff es ())                                 -- close
-           -> Cursor es row
+  -- Stepper m (Record Identity row) unfolds into yamaarashi streams
   ```
 
   Postgres: `DECLARE … CURSOR` + `FETCH FORWARD n` inside the transaction scope;
-  SQLite: the `sqlite3_stmt` pointer + `sqlite3_step`. `Cursor` unfolds into a
-  `yamaarashi` stream; `Resource` finalization guarantees `close` on short-circuit —
-  the linear/bracketed guarantee from the source doc, realized through the effect row
-  rather than linearity pragmas in v1 (a `-XLinearTypes` refinement is a stretch goal,
-  keeping v1 compatible with both effect systems).
+  SQLite: the `sqlite3_stmt` pointer + `sqlite3_step`. `Stepper` unfolds into a
+  `yamaarashi` stream; `Resource`/`Scoped` finalization guarantees `close` on
+  short-circuit — the linear/bracketed guarantee from the source doc, realized through
+  the effect row.
+
+- **Sequencing Note (The Phase 1.5 Skinny Spine Protocol):** Full `hashigakari`
+  (relational AST, dialect compilation, hasql execution, migrations) lands in Phase 4.
+  However, the Phase 1.5 Hokora slice requires persisting events to SQLite with the
+  blessed spine v0.2. Under the **Skinny Spine protocol** (`NIH_PLAN.md` §4,
+  `HOKORA_SPEC.md` §4), a minimal, self-contained SQLite append writer using direct
+  `sqlite3_step` parameter binding is pulled forward to Phase 1.5, allowing Hokora to
+  run without waiting for Phase 4 AST machinery.
 
 - **Transactions.** `Transaction` scopes are the only place cursors may live (Postgres
   semantics); the effect interpreter enforces nesting rules; session/pool management is an

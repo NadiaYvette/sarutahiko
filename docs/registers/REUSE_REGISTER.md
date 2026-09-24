@@ -188,7 +188,11 @@ L2 usage monoids, L3 option honesty, categorized errors); its registry evolution
 validates handlers-as-records. Revisit triggers: a provider family whose codec cost is
 provably disproportionate (recorded transcripts will tell), or an upstream baikai
 development we'd rather contribute to than duplicate (e.g. a row-native renaissance —
-unlikely, but the register keeps the door labeled).
+unlikely, but the register keeps the door labeled). Codec maintenance across upstream
+provider drift is disciplined by the **kogaki strategy** (`LLM_SUBSTRATE_DESIGN.md` §5,
+`registers/CODEC_QUIRKS.md` §6): build-time extraction from checked-in API specs,
+conformance against recorded wire transcripts, and differential fuzzing against live
+oracles in CI, strictly bounded to agent-turn needs.
 
 ### 2.15 The `openai` Hackage SDK — NOT REUSED (doubly displaced)
 Servant-generated client bindings; displaced by the codec decision (2.14) and the servant

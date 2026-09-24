@@ -62,24 +62,40 @@ each step exercises:
    the executable runs under effectful; the test suite additionally runs the *same turn
    program* under the polysemy interpreters (the cheapest real proof of the dual-interface
    claim that exists).
-3. **`ModelAPI`.** One streaming completion. Real provider for the live run; the catalog's
-   **mock model interpreter** for tests — the sanctioned kind of mock, because the mock is
-   itself a catalog interpreter obeying the same laws, not a skipped layer.
+3. **`ModelAPI` (Skinny Spine slice).** One streaming completion. Real provider for the
+   live run (via minimal HTTP or local CLI `Process`); the catalog's **mock model
+   interpreter** (`utai-mock`) for tests — the sanctioned kind of mock, because the mock
+   is itself a catalog interpreter obeying the same laws, not a skipped layer. Full
+   multi-provider expansion remains in Phase 2.
 4. **Tools via MCP subprocess.** The deliberate hard part: the tool lives in a *separate
    process* speaking MCP over stdio — real JSON-RPC framing through yamaarashi, session
    states in the distilled typed-protocols pattern (initialize handshake, tools/call).
    An in-process fake tool exists for unit tests only; the slice's *point* is the real
    subprocess path. *Exercises:* `Process` spawn + Resource-bracketed teardown, yamaarashi
    framing, the session GADT, `Tools` dispatch.
-5. **Session log (hashigakari-sqlite).** Every step appends events with the blessed spine
-   (§5 below for exact rows): `(kind, schemaV)` in spine columns, payloads as `SomePayload`
-   via the witness registry, `(session, seq)` cursors per the ordering contract,
-   single-writer. *Exercises:* MEMORY_ENGINE_DESIGN §3.1, §3.4, §3.4a in the first program
-   that uses them.
+5. **Session log (Skinny Spine SQLite writer).** Every step appends events with the blessed
+   spine (§5 below for exact rows): `(kind, schemaV)` in spine columns, payloads as
+   `SomePayload` via the witness registry, `(session, seq)` cursors per the ordering
+   contract, single-writer. *Sequencing guarantee:* Hokora does *not* depend on Phase 4's
+   relational AST or dialect compilation; it consumes a minimal direct-sqlite append writer
+   implementing the `SessionStore` signature for spine v0.2 rows.
 6. **Reducer + summary.** One pure fold — the conversation-tail reducer in miniature —
    walks the session's events; the executable prints event count, token accounting, and
    the final message. *Exercises:* the SomeRow read path, fail-closed filtering, and the
    replay property (delete derived state, replay, identical summary).
+
+### 4.1 The Skinny Spine Protocol
+
+The Hokora is built in Phase 1.5, preceding the full agent core (Phase 2) and the full data
+tier (Phase 4). To prevent this vertical slice from blocking on later phases, the
+**Skinny Spine protocol** formalizes what is pulled forward versus what is deferred:
+
+| Subsystem | Pulled forward into Phase 1.5 | Deferred to canonical phase |
+|---|---|---|
+| **Model** | `ModelAPI` signature GADT + `utai-mock` + minimal HTTP streaming client | Full provider catalog, offline codegen, embeddings endpoint (Phase 2) |
+| **Store** | Minimal `direct-sqlite` append writer + cursor for spine v0.2 rows | Relational query AST, dialect ceilings, `hashigakari-hasql`, migrations (Phase 4) |
+| **Agent** | Single-turn interpreted ReAct loop value in `Eff es` | Full turn loop, plugin discovery, shell-hook consent files, session resume (Phase 2) |
+| **Steppers** | Canonical `Stepper m a` unfolding into `yamaarashi` streams | Extended concurrency strategies, multi-consumer fanout (Phase 3/4) |
 
 ## 5. The exact event rows
 

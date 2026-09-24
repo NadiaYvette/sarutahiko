@@ -67,6 +67,14 @@ Dependency rule: `flow → yamaarashi → {conduit, streamly}` adapters; everyth
 signatures (`sarutahiko-effect-signatures`), never a concrete effect system. Adapters are
 optional extras; the kernel has zero streaming-library dependencies.
 
+**Reconciliation with `NIH_PLAN.md` §3.5:** The church-encoded CPS free-monad stream
+kernel (`Stream (Of a) m r`) *is* the Tier-0 public API across the entire program from
+day one. What `NIH_PLAN.md` §3.5's trigger gates govern is *not* whether this clean kernel
+exists (it is coded in Phase 0 as the abstract, dependency-free public contract), but
+whether we write custom low-level high-throughput loop machinery or embed `streamly` as
+the fused execution backend behind the kernel, using `conduit` adapters at byte
+boundaries. This eliminates API churn while preserving benchmark-driven execution choices.
+
 ## 2. Kernel design
 
 ### 2.1 The type

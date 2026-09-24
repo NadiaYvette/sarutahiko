@@ -64,30 +64,31 @@ blessed design).
 | `utai-local` | Local-CLI providers (claude -p, codex exec) as a `Process`-signature interpreter. |
 | `utai-mock` | Deterministic mock (scripted responses) and **transcript-serving** interpreter (kakegoe's replays; the testkit pattern). |
 
-Codec quirks, auth variants, and provider drift are owned by the two codec packages
-and tracked against recorded provider transcripts (kakegoe corpora double as golden
-fixtures). Because the codecs are protocol-bag members, they inherit the bag's
-conformance discipline; because there are two, vendor sprawl stays bounded — new
-"vendors" are model-catalog rows, not new code paths.
+**Sequencing Note (The Phase 1.5 Skinny Spine Protocol):** Full `sarutahiko-model`
+and multi-provider codecs land in Phase 2. However, the Phase 1.5 Hokora vertical slice
+requires executing a model completion. Under the **Skinny Spine protocol**
+(`NIH_PLAN.md` §4, `HOKORA_SPEC.md` §4), the neutral `ModelAPI` signature and the
+deterministic `utai-mock` interpreter (alongside a bare-bones HTTP client or local CLI
+call for the live run) are pulled forward to Phase 1.5. Full provider catalog
+expansion and offline codegen remain in Phase 2.
 
 ## 2. The `ModelAPI` signature
 
-Per catalog rules: GADT over `m`, cursors not streams, laws stated, scope exclusions
-explicit.
+Per catalog rules: GADT over `m`, canonical `Stepper m a` handles (not stream types,
+not bespoke cursor GADTs), laws stated, scope exclusions explicit.
 
 ```haskell
 data ModelAPI (m :: Type -> Type) :: Type -> Type where
   Complete :: CompletionReq -> ModelAPI m CompletionResp
-  Stream   :: CompletionReq -> ModelAPI m (EventCursor m)
+  Stream   :: CompletionReq -> ModelAPI m (Stepper m StreamEvent)
   Embed    :: EmbedReq -> ModelAPI m EmbedResp          -- v1.5; backend availability open
   Count    :: ContextRow -> ModelAPI m TokenCount       -- budget accounting (pure-ish; may consult a tokenizer)
-
-data EventCursor m where                       -- exactly-one-terminator invariant (baikai's law, adopted)
-  EventCursor :: st
-              -> (st -> m (Maybe (StreamEvent, st)))    -- Nothing = terminator consumed
-              -> (st -> m ())
-              -> EventCursor m
 ```
+
+`Stream` yields the canonical `Stepper m StreamEvent` (defined in
+`EFFECT_CATALOG_DESIGN.md` §4), which unfolds into `yamaarashi` element streams and
+is finalized under `Resource`/`Scoped`. The former bespoke `EventCursor m` is unified
+into this standard.
 
 Laws (additions to the catalog's generic ones; provenance = confirmed against baikai's
 first iteration):
@@ -159,7 +160,55 @@ usage events.
   retention per options (demotion recorded), or the memory engine's cache economics
   silently evaporate. L3 makes the demotion visible; the turn program surfaces it.
 
-## 5. Concurrency, profiles, secrets
+## 5. The Kogaki Codec Strategy (Maintenance via Extraction, Fixtures, and Oracles)
+
+The central objection to writing provider codecs from scratch (the "codec maintenance
+problem", `DESIGN_REVIEW.md` §6 Tension 5) is that external model provider wire APIs drift,
+add subtle streaming nuances, and change chunking conventions across releases.
+Under the **kogaki strategy** (transposed from the internationalisation and Unicode
+methodology of `registers/REUSE_REGISTER.md` 2.22 and `docs/transcripts/kogaki-i18n-unicode.md`),
+this burden is managed by a principled five-part discipline rather than ongoing ad-hoc
+triage:
+
+1. **Upstream Source Analysis (Reference Donors):**
+   Rather than adopting third-party SDKs as nominal dependencies (which violates the
+   zero-DTO principle and brings large dependency graphs), we treat official and
+   established libraries (`baikai`, the official Python/TypeScript SDKs, `louter` for Gemini)
+   as *reference donors*. We inspect their internal delta-assembly logic, SSE chunking
+   heuristics, and error classification algorithms (using our source-analysis tools
+   like `organ-bank` and `frankenstein` where foreign C/Rust/Python source analysis is
+   warranted) to extract semantic ground truth directly into our pure row decoders.
+2. **The Build-Time Extraction Thesis:**
+   Provider wire schemas, model catalogs, and capability descriptors are not hand-transcribed
+   into nominal boilerplate. Following the extraction thesis, machine-readable upstream
+   artifacts (OpenAPI specifications, JSON Schema declarations, provider model inventories)
+   are checked in as data files, and typed row definitions (`sarutahiko-fields`) and
+   decoder dictionaries are extracted at build time. Build-time codegen keeps artifacts
+   hermetic, inspectable, and immune to Template Haskell compiler fragility.
+3. **Recorded Transcripts as Hermetic Golden Fixtures:**
+   Provider wire behavior is verified not against speculative synthetic mocks, but
+   against **recorded wire transcripts** (raw SSE byte streams, chunked tool call fragments,
+   multi-block thinking deltas, usage trailers) captured from real provider interactions
+   and checked into `kakegoe` corpora. Every quirk row in `registers/CODEC_QUIRKS.md` is
+   backed by a concrete transcript fixture. If a provider changes chunk placement, the
+   fixture captures it and property tests flag the divergence immediately.
+4. **Differential Fuzzing Against External Oracles:**
+   In scheduled/nightly CI runs, the pure Haskell codecs and the canonical renderer are
+   tested against live provider endpoints (or local ollama/vLLM instances) as external
+   oracles. Differential tests verify that our request serializer produces byte/semantic
+   equivalence with the provider's expectations and that our streaming parser accepts
+   real-time provider events without dropped fields or malformed state.
+5. **Strict Scope Bounding (Phased Scope):**
+   Vendor sprawl is strictly bounded by the agent core's actual demand. We reject
+   speculative API coverage (audio streaming, file upload batches, fine-tuning APIs).
+   The codecs encode *only* what the turn program consumes:
+   - Chat completions and streaming text/tool deltas.
+   - Tool calling schema generation and chunk assembly (`OPEN-004`, `ANT-004`).
+   - Thinking/reasoning block preservation (`OPEN-006`, `ANT-007`).
+   - Explicit prompt-cache control markers (`ANT-006`).
+   - Disjoint monoidal usage accounting (`L2`).
+
+## 6. Concurrency, profiles, secrets
 
 - Interpreters are row-polymorphic over profile scope: the resolved credential handle
   and `Model` travel with the request (Hermes' explicit-profile rule — never frozen at
@@ -167,10 +216,11 @@ usage events.
   (TLS-manager caching per host) is an interpreter concern done per-profile.
 - Usage/cost roll-ups are emitted as session events (memory engine vocabulary), so the
   cost ledger is a derived projection, and kakegoe replays carry realistic accounting.
-- Streaming concurrency: `EventCursor` steppers unfold into yamaarashi streams; the
-  turn program consumes them like any cursor; cancellation via `Resource` teardown.
+- Streaming concurrency: canonical `Stepper m StreamEvent` steppers unfold into
+  yamaarashi streams; the turn program consumes them like any cursor; cancellation
+  via `Resource`/`Scoped` teardown.
 
-## 6. Open items
+## 7. Open items
 
 1. ~~**Codec quirk inventory v1**~~ — resolved: `registers/CODEC_QUIRKS.md` (2026-09-24),
    whose rows carry the auth-header/SSE-taxonomy/usage-placement survey; louter's Gemini

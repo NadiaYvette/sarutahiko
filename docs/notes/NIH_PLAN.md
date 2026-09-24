@@ -30,7 +30,7 @@ Sources consolidated by this plan:
 | Effect system for our executables | **effectful** | Executables use effectful; primop-backed Reader/State, fast, dynamic effect rows. |
 | Effect interface packages | **Dual: effectful + polysemy** | Every support library ships an effects-interface package (effect-signature GADTs + per-system interpreters) so downstream users on either system can adopt. Signatures live in neutral core packages; interpreters live in per-system bridge packages. |
 | First flagship | **Wire layer (JSON-RPC 2.0 + MCP)** | Proves records + effects on a real protocol, unblocks tool/MCP ecosystem work. |
-| Streaming basis | **Deferred pending research gates** | See §3.5: evaluation matrix, candidate flaws, explicit NIH trigger conditions. The wire layer (first flagship) is independent of this decision — it needs only byte-chunk parsing over an abstract stream. |
+| Streaming basis | **Kernel API + Backends** | The church-encoded CPS free-monad kernel (`yamaarashi`) is the Tier-0 public API; `streamly` and `conduit` serve as backends/adapters. NIH trigger gates (§3.5) govern whether we write custom low-level loop engines or embed streamly. |
 
 ## 1. Thesis
 
@@ -285,9 +285,16 @@ mode-indexed GADT states, render loop as a yamaarashi stream of frames.
 ### 3.3 Wire contracts
 - `sarutahiko-jsonrpc` is dialect-agnostic; MCP and LSP are thin row-vocabularies over it.
 - Transports (stdio framing, SSE, Streamable HTTP) are byte→row pipelines in `yamaarashi`
-  terms — the wire flagship does not need the §3.5 decision to land.
+  terms — the wire flagship rides the Tier-0 church-encoded stream kernel.
 - Wire-compat test suites are built from spec examples (MCP pinned version, JSON-RPC 2.0
   errata) and run against upstream implementations for interop confidence.
+- **The Kogaki Codec Strategy:** Provider codecs (`utai-*`) and wire codecs are
+  maintained under the **kogaki strategy** (transposed from `registers/REUSE_REGISTER.md` 2.22
+  and `docs/transcripts/kogaki-i18n-unicode.md`): build-time extraction of typed row
+  vocabularies from checked-in machine-readable specs, hermetic test suites backed by
+  real recorded wire transcripts (`registers/CODEC_QUIRKS.md`), differential fuzzing
+  against external SDK/live oracles in CI, and strict scope bounding to the agent turn
+  loop's actual needs.
 
 ### 3.4 Hermes invariants carried over
 1. Prompt-cache safety: additive hook payloads only; no mid-conversation toolset swaps;
@@ -318,11 +325,16 @@ Candidates evaluated:
 | **porcupine (forward port)** | ArrowFlow task-DAG semantics: declarative pipeline graphs, task-level parallelism, docrecords/record-soup lineage matches the record basis. | Oriented to task graphs and `$_` location trees, not element-level byte streams; unwieldy as the *transport* layer; better as a layer *above* element streams for DAG orchestration. | Use for orchestration/DAG layer, not the element-stream kernel. |
 | **NIH kernel** | Exact control: effect-integrated `Stream (es :: [Effect]) a`, linear finalization, zero dependency churn; existential steppers unify DB cursors and transports. | Must reimplement framing, parsers, concurrency; ongoing maintenance; risk of subtle resource bugs. | Only if gates below trip. |
 
-**Decision gates (NIH trigger conditions).** Commit to coding the NIH `yamaarashi` kernel only
-if, during Tier-1 bring-up on an *interim* basis (conduit, pinned):
+**Decision gates (NIH execution engine trigger conditions).** The church-encoded CPS
+free-monad kernel (`Stream (Of a) m r`, `YAMAARASHI_DESIGN.md` §2) is coded in Phase 0 as
+the program's abstract, dependency-free public streaming API. The decision gates below
+govern *not* whether this clean kernel type exists, but whether we code our own bespoke,
+high-throughput fused loop engines or embed **streamly pinned behind the `yamaarashi`
+kernel** as the element-stream execution backend, with **conduit adapters** for byte
+boundaries and **porcupine's ArrowFlow semantics** re-homed as `yamaarashi-flow` atop the
+kernel:
 1. Early-exit finalization of effectful streams proves unsafe or unergonomic under conduit's
-   bracket model when combined with effect rows (i.e., we cannot guarantee cursor/socket
-   closure without contortions);
+   bracket model when combined with effect rows;
 2. Per-element overhead measurably harms the SSE/stdio transport budget (established by
    benchmark against streamly, using `composewell/streaming-benchmarks` methodology);
 3. The dual effect-interface contract (§0) cannot be expressed cleanly because the stream type
@@ -330,16 +342,12 @@ if, during Tier-1 bring-up on an *interim* basis (conduit, pinned):
 4. Version churn forces repeated breakage (two or more forced major migrations within a
    release cycle).
 
-Otherwise: **streamly pinned behind the `yamaarashi` kernel** as the element-stream basis, with
-**conduit adapters** where ecosystem interop demands it, and **porcupine's ArrowFlow semantics**
-re-homed as the DAG/orchestration layer (`yamaarashi-flow`) atop the kernel. Re-decide at the
-Tier-2 milestone with the benchmark data in hand.
-
-DB cursors are decoupled from this choice by design: the existential `DBCursor` stepper
-(GADT holding backend state + step + close) unfolds into whichever stream kernel wins, and
-linear/bracketed consumption guarantees cleanup regardless of backend (Postgres
-`DECLARE/FETCH` vs SQLite `sqlite3_step`). The database library itself is designed in
-`HASHIGAKARI_DESIGN.md`.
+DB cursors and sequential traversal handles are decoupled from this choice by design:
+the canonical `Stepper m a` (defined in `EFFECT_CATALOG_DESIGN.md` §4, unifying DB cursors,
+subscriptions, and event streams) unfolds into whichever stream backend runs, and
+linear/bracketed consumption via `Resource`/`Scoped` guarantees cleanup regardless of
+backend (Postgres `DECLARE/FETCH` vs SQLite `sqlite3_step`). The database library itself is
+designed in `HASHIGAKARI_DESIGN.md`.
 
 **Addendum (kernel + backends option).** The candidates above need not be mutually
 exclusive. A church-encoded (CPS) free-monad kernel — `Stream (Of a) (Eff es) a`, polymorphic
@@ -410,10 +418,9 @@ Neither replaces the other; the contract is:
 ### Phase 0 — Foundation (weeks 1–6)
 - `sarutahiko-fields`, `sarutahiko-records` (row JSON + TriState + envelope preservation).
 - `sarutahiko-effect-signatures` + both interpreter packages; CI matrix runs every library
-  test against *both* effect systems.
-- Streaming interim = conduit pinned while the `yamaarashi` kernel is designed (its design
-  already lives in `YAMAARASHI_DESIGN.md`); benchmark harness stood up early
-  (streaming-benchmarks methodology) so §3.5 gates are decided on data.
+  test against *both* effect systems; Handlers-as-Records Spike Protocol executed.
+- `yamaarashi` church-encoded CPS free-monad kernel (`Stream (Of a) m r`) coded as Tier-0
+  public streaming API; conduit adapters provide framing; streaming benchmarks set baseline.
 - Exit: rows round-trip JSON; a demo effectful+polysemy program shares one signature package.
 
 ### Phase 1 — Wire flagship (weeks 5–12, overlaps Phase 0 tail)
@@ -428,19 +435,19 @@ Neither replaces the other; the contract is:
   layer (shibuya-class) stays deferred to the runtime-services layer.
 
 ### Phase 1.5 — the hokora (祠) — vertical validation slice
-
-A small shrine on the peak, built early to prove the mountain holds: a kuroko-scale tracer
-bullet through *every* layer in one executable — one-shot CLI → interpreted ReAct turn (one
-model call, one MCP tool over yamaarashi stdio transport) → session events appended to a
-hashigakari-sqlite row log → one pure reducer → printed summary. Excluding substrate
-packages, budget ≤2k LOC, measured. This is the first quantitative datum for the
-keiro-comparison thesis (kuroko ≈1k LOC on vinyl/persistent; the hokora is the same claim on
-our substrate, with wire conformance and a real store). It validates the effect-signature
-catalog against a real consumer before Phase 2 hardens it — the walking-skeleton argument:
-substrate APIs are only trustworthy once something on the peak stands on them.
+- The walking skeleton through every layer in one executable (budget ≤2k LOC).
+- **The Skinny Spine Protocol (`HOKORA_SPEC.md` §4.1):** Unblocks Phase 1.5 without waiting
+  for Phase 2 (models) or Phase 4 (database DSL). Pulls forward the neutral `ModelAPI`
+  signature with `utai-mock` (and minimal live HTTP streaming client) and a minimal,
+  direct-sqlite append writer for spine v0.2 session events.
+- Validates the effect-signature catalog and canonical `Stepper m a` in a real executable.
+- Exit: `hokora "prompt"` runs a ReAct turn, invokes an MCP subprocess tool, logs events to
+  SQLite, runs the conversation-tail reducer, and passes dual-effect parity tests.
 
 ### Phase 2 — Agent core (weeks 10–20)
-- `sarutahiko-agent`, `-session`, `-config`, `-hooks`, `-plugins`, `-model`.
+- `sarutahiko-agent`, `-session`, `-config`, `-hooks`, `-plugins`, `-model` (utai).
+- Builds upon the minimal `ModelAPI` and turn program proven in Phase 1.5, expanding into
+  the full multi-provider catalog under the Kogaki Codec Strategy.
 - Hermes invariants (§3.4) enforced by construction where possible: additive payloads via row
   extension; fail-closed hook deadlines in the effect runtime.
 - CLI with table-driven registry; one-shot mode.
@@ -458,6 +465,8 @@ substrate APIs are only trustworthy once something on the peak stands on them.
 ### Phase 4 — Data tier (weeks 24–40)
 - `hashigakari-core` AST + dialect compilation; `-hasql` streaming execution of anonymous
   records; `-sqlite`; `-patch`; `-schema` (see `HASHIGAKARI_DESIGN.md`).
+- Extends the minimal SQLite spine writer proven in Phase 1.5 into the full `hashigakari`
+  relational AST, dialect compilation, and hasql streaming execution.
 - `hashigakari-beam` (`beam-large-anon`) published as a standalone Hackage bridge.
 - `yamaarashi-flow`: porcupine re-homed over `Eff es` with row-typed chunks (§3.6),
   including the cache-invalidation policy for non-deterministic (LLM-backed) tasks;
@@ -502,16 +511,9 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    maintainer's fork (the `large-records-interfaces` monorepo, forking being the
    mechanism that grants private-interface access for analogue packages), canonical
    for the program, with selective upstreaming of public-surface improvements.
-   **Drafted 2026-09-24: `FIELDS_RECORDS_DESIGN.md`** — §1, the row-evolution
-   standard (E1–E7, the provenance derivation, the CA/CD contracts, conformance
-   machinery, the memory engine mapped as specialization), is written for review;
-   §2–§7 follow the blessed in-note order. **In-note decision order (2026-09-24):** the row-evolution standard is written
-   first — demand-pulled by the memory engine's envelope (the least-reversible
-   decision above the substrate) — and is *requirements-emitting*: it fixes the
-   absence-representation and default-attachment contracts the functor family must
-   satisfy; the HKD functor family then lands as its own blessing against that
-   written contract (vocabulary deferred rather than blessed prematurely); the field
-   datum/registry decision comes last, scoped by the others.
+   **Drafted 2026-09-24: `FIELDS_RECORDS_DESIGN.md`** — §1 (the row-evolution
+   standard E1–E7) and §§2–7 (HKD functor family, field datum, unknown-field preservation,
+   combinators, decoders, compile-time economics) are drafted in full for maintainer review.
 2. Start Phase 0: multi-package `cabal.project` plus Tier-0 package stubs.
 3. Draft the MCP conformance test plan (spec examples → row-typed fixtures) to nail Phase-1
    exit criteria.
@@ -519,25 +521,25 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
    run the §3.5 gates/benchmarks (see §3.5 addendum).
 5. **Effect-signature catalog design note** (highest design-need; precedes Tier-0 code):
    now written — see `EFFECT_CATALOG_DESIGN.md` (catalog rules, the fourteen signatures,
-   and the blessed improvements: capability rows, handlers-as-records, `Scoped` unification,
-   `SomeRow` packaging, PVP-for-signatures policy, law testkit). Original summary: the
-   full GADT catalog — `Resource`/`Scoped`, `Spawn` (minimal subset), `Log`, `SessionStore`,
-   `ModelAPI`, `HookDispatch`, `StreamingDB` — their laws, handler discipline, and the
-   dual-interpreter package layout rules. The load-bearing abstraction; errors here
-   propagate to every layer. Catalog-wide rules it must fix: signatures expose existential
-   steppers/cursors parameterized by `m`, never stream types or concrete `Eff` rows
-   (normalizes HASHIGAKARI_DESIGN §3.4); row-carrying effects (`Log`, `EventBus`,
-   `HookDispatch`) receive existentially packaged `SomeRow`s so call sites stay
-   constraint-clean; scoped regions (transaction/bracket/cursor/hook-handler) unify under
-   one `Scoped` pattern; the package ships a reference free-monad runtime for law tests
-   while production senders/interpreters live in the bridges, held honest by a parity
-   testkit. Open design questions to adjudicate: (i) effect row as capability set — plugins
+   the canonical `Stepper m a` GADT unifying all sequential traversal handles, and the
+   blessed improvements: capability rows, handlers-as-records with Phase 0 spike protocol,
+   `Scoped` unification, `SomeRow` packaging, PVP-for-signatures policy, law testkit).
+   Original summary: the full GADT catalog — `Resource`/`Scoped`, `Spawn` (minimal subset),
+   `Log`, `SessionStore`, `ModelAPI`, `HookDispatch`, `StreamingDB` — their laws, handler
+   discipline, and the dual-interpreter package layout rules. The load-bearing abstraction;
+   errors here propagate to every layer. Catalog-wide rules it fixes: signatures expose
+   canonical `Stepper m a` handles parameterized by `m`, never stream types or concrete
+   `Eff` rows (normalizes HASHIGAKARI_DESIGN §3.4 and utai); row-carrying effects (`Log`,
+   `EventBus`, `HookDispatch`) receive existentially packaged `SomeRow`s so call sites
+   stay constraint-clean; scoped regions (transaction/bracket/cursor/hook-handler) unify
+   under one `Scoped` pattern; the package ships a reference free-monad runtime for law
+   tests while production senders/interpreters live in the bridges, held honest by a parity
+   testkit. Open design questions adjudicated: (i) effect row as capability set — plugins
    receive `forall es. Granted :<: es => Eff es ()`, making grants parametric/compile-time
-   instead of Hermes-style runtime allowlists (escape/continuation soundness needs care);
-   (ii) handlers as extensible records (interpreters built by record merge — duality made
-   executable; needs a spike against both systems' native handler shapes); (iii) PVP-for-
-   signatures policy (GADT constructors are breaking; additive evolution via new signatures
-   + reinterpretation + deprecation windows, mirroring Hermes' additive-payload discipline);
+   instead of Hermes-style runtime allowlists; (ii) handlers as extensible records evaluated
+   via the Phase 0 spike protocol with explicit fallback to handwritten interpreters;
+   (iii) PVP-for-signatures policy (additive evolution via new small signatures +
+   reinterpretation + deprecation windows).
 6. **MCP session GADT design note** — the deciding artifact for the typed-protocols (a) vs
    (c) choice: symmetric-peer handling, unknown-method escape state, whether the distilled
    pattern suffices or the 1.2.x framework (with lookahead) earns its weight.
@@ -552,11 +554,9 @@ Recorded 2026-09-23 so they survive context switches; pick up after the design-m
 8. **LLM substrate design note** — now written as **utai**: see `LLM_SUBSTRATE_DESIGN.md`
    (v0.2 decision: provider APIs are codec-bag members — two row-codecs, OpenAI-compatible
    + Anthropic, local CLIs via `Process`, baikai as reference/donor; the `ModelAPI`
-   signature with laws L1–L4 including transport-level prefix stability; the canonical
-   renderer with per-family×version golden tests; profiles/secrets/usage-as-events).
-   Original summary: provider effect with row-typed SSE events, function-calling schemas
-   as row descriptors (shared with MCP `inputSchema`), secrets/profile scope,
-   token/context accounting feeding the cache rules.
+   signature with laws L1–L4, canonical `Stepper m StreamEvent`, and the **Kogaki Codec
+   Strategy** for maintenance via build-time extraction, recorded transcript fixtures,
+   and external CI oracles).
 9. **Hokora slice spec** (the Phase-1.5 tracer bullet): exact event rows, turn program, and
    the LOC measurement protocol.
 12. **i18n ecosystem design note** (raised 2026-09-24; the NIH-i18n decision of
