@@ -549,7 +549,13 @@ that note's naming placeholder; **katatsuke** (型付, choreography notation) �
 the future workflow/turn-choreography runtime (keiro-analog); **tetsuke** (手付, percussion
 score) → the scheduler/heartbeat/timeout service; **kantsuke** (管付, the nohkan flute's
 score — the cueing notation) → the event bus (cueing and signaling); **nohkan** (能管, the
-flute instrument itself) → held in reserve. (Corrections 2026-09-24: 謡本 is utaibon, not
+flute instrument itself) → held in reserve. **Blessed 2026-09-24: kakegoe (掛け声)** — the
+drummers' calls coordinating the 四拍子 (shibyōshi) ensemble — names the
+policy-experiment instruments package (`kakegoe`, `kakegoe-gen`; formerly the working
+name `sarutahiko-instruments`), with the maintainer's rationale: kakegoe name *the
+coordination* of the ensemble, not the instruments themselves, which is faithful to what
+that package is (the English gloss "instruments" slips a little; the Japanese title is
+the true name). (Corrections 2026-09-24: 謡本 is utaibon, not
 katatsuke; the flute score is kantsuke, the instrument nohkan — maintainer's terms
 corrected in registry.) Existing usage to respect: `~/src/kuroko/` — the stagehands, i.e.
 the unseen handlers that move props on and off the stage (maps naturally to process

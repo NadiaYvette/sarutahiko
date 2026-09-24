@@ -5,9 +5,13 @@ Related: `MEMORY_ENGINE_DESIGN.md` §8 (the empirical protocol this operationali
 §5.1.4 (PolicyEffect — policies as decision-producers), `EFFECT_CATALOG_DESIGN.md`
 (model interpreters, law testkit), `HOKORA_SPEC.md` (instruments seed, LOC protocol),
 `NIH_PLAN.md` §4 (benchmark ledger)
-Naming: working name `sarutahiko-instruments`; candidate Noh registration —
-**kakegoe** (掛け声, the drummers' calls that mark the rhythm) — pending blessing,
-per §6.1 convention.
+Naming: **kakegoe** (掛け声) — blessed 2026-09-24 as the package title. Kakegoe are the
+drummers' calls that coordinate the 四拍子 (shibyōshi, the four-beat coordination of
+stick, drum, flute, and voice in Noh) — i.e. *how the ensemble is coordinated*, not the
+instruments themselves. That is the faithful description of this package: it coordinates
+the system's rhythm (experiments, metrics, seeds) rather than being an instrument. The
+one-word English gloss "instruments" slips a little semantically; the Japanese title is
+carried as the true name (maintainer's rationale, recorded verbatim in spirit).
 
 ---
 
@@ -167,8 +171,8 @@ between runs of the same experiment.
 
 | Package | Contains |
 |---|---|
-| `sarutahiko-instruments` | cache simulator, replay harness, metric formulas, experiment-record store access, corpus loaders. Depends on: effect-signatures, memory rows, `sarutahiko-model`'s canonical renderer. |
-| `sarutahiko-instruments-gen` | the synthetic corpus generators (separated so the measurement core has no generator dependencies) |
+| `kakegoe` | cache simulator, replay harness, metric formulas, experiment-record store access, corpus loaders. Depends on: effect-signatures, memory rows, `sarutahiko-model`'s canonical renderer. |
+| `kakegoe-gen` | the synthetic corpus generators (separated so the measurement core has no generator dependencies) |
 
 Checkers are *corpus data* (pure functions shipped with corpora), not a package.
 
