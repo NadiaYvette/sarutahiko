@@ -60,6 +60,7 @@ blessed design).
 | `utai` | The `ModelAPI` signature (GADT, per catalog rules), the request/response/event row vocabulary, tool-schema descriptors (shared with `sarutahiko-schema`/MCP), the **canonical renderer**, laws, the model-catalog rows (hand-maintained v1; offline-codegen from provider docs later, per the ledger rule). Zero provider dependencies; zero effect-system dependencies. |
 | `utai-openai` | The OpenAI-compatible codec (chat completions + SSE streaming + embeddings endpoint): one de-facto standard covering DeepSeek, OpenRouter, Together, ollama, vLLM, …. |
 | `utai-anthropic` | The Anthropic messages codec (event taxonomy, cache-control, thinking surface). |
+| `utai-gemini` | The Google Gemini generateContent codec — third family; reference: louter (`~/src/louter/`, incl. its `GEMINI_STREAMING_FORMATS.md` and tests). |
 | `utai-local` | Local-CLI providers (claude -p, codex exec) as a `Process`-signature interpreter. |
 | `utai-mock` | Deterministic mock (scripted responses) and **transcript-serving** interpreter (kakegoe's replays; the testkit pattern). |
 
@@ -173,9 +174,13 @@ usage events.
 
 1. **Codec quirk inventory v1** (the new §1's first deliverable): auth header styles;
    SSE event taxonomies and their row encodings (Anthropic's typed event stream vs
-   OpenAI's delta objects); tool-call delta shapes; usage-report placement (stream
-   tail vs separate event); retry-relevant response headers. Built against recorded
-   provider transcripts as golden fixtures.
+   OpenAI's delta objects vs Gemini's `alt=sse`/`alt=json` dual mode with
+   `usageMetadata` per chunk and `finishReason` terminators); tool-call delta shapes;
+   method-in-path dispatch (Gemini's `models/{model}:generateContent` verb-in-URL
+   pattern vs path-clean bodies); usage-report placement (stream tail vs separate
+   event vs per-chunk); retry-relevant response headers. Built against recorded
+   provider transcripts as golden fixtures; louter's Gemini streaming tests are the
+   seed fixtures for the third family.
 2. **Transcript format** (kakegoe §6.2): request/response/event rows recorded per
    turn, versioned like corpora; lands with the mock package — now also serving as
    the codecs' golden-fixture format.

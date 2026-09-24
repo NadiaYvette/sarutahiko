@@ -200,6 +200,26 @@ core exists. Wire-level contact with Hermes itself arrives with the Phase-1 MCP 
 Full replacement of the top layers (memory, workflow, supervision) is the last contact, not
 the first — the plan's layer order already matches this gradient.
 
+**Cross-REPL interop products (strategy).** Contact via IPC/networking protocols counts as
+reuse of the *other* stack — we reuse their interface, they reuse our components — and it
+puts components to use before the complete stack exists. The products, by bundle:
+
+1. **MCP servers (the wire flagship's payoff).** Every capability we expose as an MCP
+   server is consumable on day one by Hermes, Claude Code, Zed, and any MCP host —
+   Phase-1 exit already requires speaking MCP stdio against Hermes/Claude Code as client;
+   server-mode is the same code path flipped.
+2. **Hermes plugin shell.** A thin plugin (Python wrapper or shell hooks, per their
+   plugin rules — never touching their core) that drives our CLI/executable from inside
+   Hermes; kuroko-scale glue, kept in a separate repo since it targets their runtime.
+3. **Skills and agent definitions.** Skills are documents; publishing skills that teach
+   other assistants to drive our CLI costs almost nothing and rides their ecosystems.
+4. **ACP adapter** (Phase 3): editor-side interop with Zed-class clients.
+
+Bundles move inter-reliant by design: (a) wire+effect substrate (everything needs it),
+(b) the MCP-server bundle (tools usable everywhere, needs (a)), (c) the agent core
+(REPL-independent behavior, needs (a)+(b)). The hokora is deliberately the minimal
+(a)+(b) slice — the first cross-REPL-usable artifact.
+
 #### The maintenance-burden thesis and the kuroko precedent
 
 The program is, explicitly, an answer to Nadeem Bitar's stack: the claim is that the same
