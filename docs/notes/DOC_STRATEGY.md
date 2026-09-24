@@ -171,7 +171,10 @@ citing both the finding row and the accepting change SHA. Repairs touching *bles
 content get no new gate — they ride §3/§4's existing gates (blessing protocol, review
 gate) as already decided. **Cadence is batched, not per-finding**: sweep → triage → one
 batched repair change per cycle, matching the batched-push policy (INFRASTRUCTURE §12),
-so repair churn and push churn get the same answer.
+so repair churn and push churn get the same answer. Maintainer's rationale: the
+codebase will be large, and this is how machines empower humans to oversee it
+effectively — the §8 authority pattern (AI-drafted, human-blessed) applied to repair,
+so human attention scales with adjudication, not with commit volume.
 
 ## 3. Lifecycle and authority — DECIDED 2026-09-24 (states, invalidity flags, dead documents)
 
