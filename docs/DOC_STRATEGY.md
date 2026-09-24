@@ -21,10 +21,21 @@ The document is itself the first exemplar of the lifecycle rules it will define.
 
 All three audiences get purpose-built documents, with canonicity per fact class:
 
-**Arrivals → tutorials.** An orientation layer (the mountain metaphor, the map, reading
-order, first runnable example) written as a tutorial track, distinct from the design
-notes (which assume the context tutorials establish). Home: `docs/tutorial/` (or a
-handbook-style root README pointing into it); grows as phases land, seeded by NIH_PLAN.
+**Arrivals → tutorials: a scaled textbook, machine-authored.** Not mere orientation
+pages: a *textbook scaled to the project* — chapters with worked code examples that run
+against the real packages, and **exercises designed in the maths-textbook tradition**:
+problems whose *solutions still force enlightenment* — answers (including AI-assisted
+ones) demand enough surrounding explanation that understanding the solution is itself
+the exercise. Concretely: exercises carry solution sections written as explanations,
+with the worked code in the tutorial's own runnable examples directory; AI-assisted
+answering is expected and embraced — the exercise design makes the explanation, not the
+answer, the deliverable. **Machine leverage is explicit policy:** the program has
+AI authorship available at will (the maintainer commands volumes); documentation
+intensity is therefore *not* bounded by human writing time — tutorials, design
+manifestos, and **tremendous, highly explanatory API tomes** (not terse references)
+are all in scope, with the human effort going to curation, challenges, and blessing
+per §8's authority policy. Home: `docs/tutorial/` with a runnable examples directory
+per chapter; grows as phases land.
 
 **API consumers → verbose Haddock, deliberately richer than ecosystem convention.**
 Policy points, per the maintainer:
@@ -59,6 +70,18 @@ paper itself (records-as-products × effects-as-sums × the code-volume ledger w
 kuroko/hokora measurements) — written when the hokora gives it its measurement.
 Position in the map: the whitepaper is the *distillation* of the notes for the widest
 maintainer/researcher audience; it cites notes and code rather than replacing them.
+**Apparatus donors:** the maintainer's earlier LaTeX projects illustrate mechanisms to
+lift. From `telix-whitepaper`: the pipeline shape, multi-part sources, bib corpus, glossary.
+From the nadie journal series (`~/src/nadie-v0.6.0/` et al.): **multiple named indices
+via `imakeidx` + `truexindy`** with per-index UTF-8 collation and language modules
+(nadie runs seven: artists/bigots/events/concepts/places/media/persons — ours would be
+e.g. concepts/packages/protocols/laws/kami/Noh-terms), **multilingual `babel` setup with
+per-script font fallbacks** (nadie carries fourteen languages; ours needs at minimum
+English + Japanese for the Noh vocabulary — kanji rendering in the whitepaper is a
+requirement, not a nicety), biblatex `autocite` conventions, and `minted` for code
+listings. The nadie series also stands as the cautionary example the maintainer intends:
+retrofitting indices into an existing LaTeX project foundered; lesson — apparatus is
+designed in from the whitepaper template's first commit, never retrofitted.
 
 Canonicity per fact class (resolving the open question): **laws** — haddock canonical
 (notes carry the design rationale for them); **wire quirks** — CODEC_QUIRKS canonical
@@ -165,3 +188,4 @@ number, because it is part of the answer-to-Nadeem argument rather than a hidden
 |---|---|
 | 2026-09-24 | Seed created: §1–§11 recorded as open issues; policy decisions to be logged here as they land. |
 | 2026-09-24 | §1 decided: three audiences, three genres — tutorials for arrivals; verbose, math-and-link-rich Haddock for API consumers (SVG figures from checked-in DSL sources; external citations and repo links as policy); design corpus + LaTeX whitepaper distillation (telix genre: lualatex/biber, `.bib` corpus, grounded-in-code) for maintainers. Canonicity fixed per fact class: laws→haddock, quirks→CODEC_QUIRKS, decisions→registers, naming→registry. |
+| 2026-09-24 | §1 amended: tutorials upgraded to scaled-textbook with enlightenment-forcing exercises (AI-assisted answering expected; explanation is the deliverable) and machine-authorship as explicit policy — volumes on command, human effort spent on curation/challenge/blessing. Whitepaper apparatus donors named: telix (pipeline shape) + nadie (imakeidx/truexindy named indices with UTF-8 collation, multilingual babel with per-script fonts — Japanese required for Noh vocabulary, biblatex autocite, minted); apparatus designed in from the template's first commit, never retrofitted (the nadie retrofit failure is the cautionary example). |
