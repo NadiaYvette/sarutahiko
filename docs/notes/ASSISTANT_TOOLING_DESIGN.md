@@ -353,3 +353,156 @@ A major operational challenge is supporting multiple AI coding assistants simult
    Developers running `sarutahiko` locally can mount developer plugins (such as `tricorder-mcp`
    from `~/src/tricorder/`) in their private assistant configurations to accelerate feedback
    loops, without imposing any build-time or runtime dependencies on the `sarutahiko` core codebase.
+
+---
+
+## 7. The REPL Configuration Plan & Comparative Evaluation: Is Off-the-Shelf "Better Than Nothing"?
+
+A central question in standing up AI coding assistant infrastructure is whether deploying
+off-the-shelf Context Engine and Memory Provider plugins is genuinely an improvement over
+having **nothing at all** in those roles, especially when developing a strict, type-driven
+Haskell ecosystem like `sarutahiko`.
+
+The evaluation below analyzes the two components independently, followed by the concrete
+REPL configuration plan incorporating Tweag's `tricorder`.
+
+### 7.1 Evaluation: Off-the-Shelf Context Engines vs. "Nothing At All"
+
+#### What "Nothing At All" Looks Like
+In an AI coding assistant REPL, having "no context engine" means raw, unmanaged linear
+message accumulation: every user turn, assistant thought, tool call, compiler diagnostic,
+and file view is appended monotonically to the conversation array.
+
+In practice, running with no context engine triggers four distinct failure modes:
+1. **Hard Context Exhaustion (Crash):** A 200,000-token context window is consumed rapidly
+   during active development (a few multi-file edits and compiler build logs fill 100k+
+   tokens in 15–20 turns). Once the ceiling is reached, the model provider returns a fatal
+   HTTP 400 `context_length_exceeded` error, abruptly terminating the session.
+2. **Attention Collapse ("Lost in the Middle"):** Beyond ~50k tokens of raw terminal transcripts
+   and file contents, model reasoning degrades significantly. Invariants and architectural
+   rules defined in early turns are drowned out by subsequent noise.
+3. **Quadratic Cost Explosion:** If the conversation history is never compacted, every subsequent
+   turn re-transmits the entire 100k+ token history. Even with prompt cache read discounts,
+   cumulative API token costs balloon quadratically.
+4. **Naive FIFO Truncation:** Primitive REPLs that lack a real context engine fall back to
+   blind first-in-first-out eviction—dropping the earliest messages to make room. This is
+   fatal because it silently evicts the user's initial instructions, project invariants, and
+   architectural constraints.
+
+#### The Verdict: Is an Off-the-Shelf Context Engine Better Than Nothing?
+**YES, CATEGORICALLY AND EMPHATICALLY.**
+
+Even the simplest off-the-shelf sliding-window or summarization context engine (such as the
+built-in compactors in Antigravity or Claude Code, or Continue's context providers):
+- **Summarizes Completed Work:** Compresses resolved debugging cycles into compact executive
+  summaries (`<CONTEXT_SUMMARY>`), slashing token volume by 70–90%.
+- **Evicts Intermediate Tool Artifacts:** Discards raw 500-line GHC build dumps and obsolete diffs
+  from earlier turns while retaining the high-level outcome ("Build succeeded at commit X").
+- **Preserves Cache Invariants:** Maintains stable prefix alignment, ensuring that prompt caches
+  remain warm across turns.
+- **Prevents Hard Failures:** Enables indefinitely long development sessions without hitting
+  abrupt API context crashes.
+
+**Recommendation:** For `sarutahiko`, always utilize the REPL harness's native context
+compactor / sliding-window context engine. Never disable it.
+
+---
+
+### 7.2 Evaluation: Off-the-Shelf Memory Providers vs. "Nothing At All"
+
+Unlike context engines, the evaluation of external memory providers is sharply bifurcated
+by the underlying retrieval mechanism:
+
+| Memory Provider Mechanism | Examples | Verdict for `sarutahiko` | Rationale & Token Economics |
+|---|---|---|---|
+| **Vector Embedding Retrieval** | Chroma, Qdrant, SQLite-vec, LanceDB | **OFTEN WORSE THAN NOTHING** | Semantic blindness in exact type systems: injects noisy, hallucinated snippets; wastes 1,000+ tokens/turn. |
+| **Entity / Knowledge Graph** | `@modelcontextprotocol/server-memory` | **MODERATELY BETTER THAN NOTHING** | Retains persistent operational metadata across sessions without re-prompting; minor concurrency caveats. |
+| **Git-Tracked Living Registers** | `docs/registers/*.md`, `AGENTS.md` | **THE GOLD STANDARD (BEST)** | 100% deterministic, branch-synchronous, human-auditable, zero-hallucination, zero daemons. |
+
+#### 1. Why Vector Embedding Memory is Often Worse Than Nothing
+Vector memory providers chunk text into arbitrary 300–500 token windows, generate dense
+embeddings, and inject top-$k$ nearest neighbors based on cosine similarity. In a type-driven,
+effect-typed Haskell codebase, this approach fails dramatically:
+1. **Syntactic Confusion:** In advanced Haskell (`large-anon`, row-typed effects, Polysemy/Effectful
+   dual interpreters), terms like `Record`, `Row`, `Effect`, or `Field` appear in dozens of
+   unrelated contexts. Vector search matches on vocabulary rather than type-theoretic semantics,
+   frequently injecting outdated, irrelevant, or subtly incompatible code chunks into the prompt.
+2. **Hallucination Injection:** Because the model treats retrieved context as authoritative ground
+   truth, injecting a stale code snippet from a discarded scratchpad causes the assistant to
+   hallucinate non-existent types or superseded APIs.
+3. **Token Overhead with Negative Value:** Injecting 3–5 retrieved chunks consumes 1,000–2,000
+   tokens per turn. Paying tokens to make the model *less* accurate is the worst possible trade-off.
+4. **Superior Deterministic Alternative:** An exact symbol lookup via `hasktags` (`tags`) costs
+   $<15$ tokens and returns the exact file and line number with 100% precision.
+
+#### 2. Why Entity / Knowledge Graph Memory is Moderately Useful
+Entity memory MCP servers (e.g. `@modelcontextprotocol/server-memory`) store discrete relational
+triples: `(sarutahiko, compiler_version, GHC 9.12/9.14)`, `(sarutahiko, commit_trailers, RFC 2822 Assisted-by)`.
+- This avoids re-prompting the assistant on permanent repository conventions when starting fresh
+  sessions.
+- However, it requires active curation (the agent must decide when to call `create_entities`),
+  and parallel subagents can encounter concurrency conflicts when writing to the backing JSON store.
+
+#### 3. Why In-Tree Curated Registers Win
+The architectural decision in `sarutahiko` is that **Git itself is the canonical long-term memory**:
+- Living registers ([`REUSE_REGISTER.md`](../registers/REUSE_REGISTER.md), [`CODEC_QUIRKS.md`](../registers/CODEC_QUIRKS.md), [`GLOSSARY.md`](../registers/GLOSSARY.md))
+  and orientation files ([`AGENTS.md`](../../AGENTS.md), [`INDEX.md`](../INDEX.md)) evolve synchronously with the codebase.
+- A branch switch updates the memory instantly, eliminating the cross-branch contamination
+  endemic to external databases.
+- The assistant accesses this memory via **progressive disclosure**: reading [`INDEX.md`](../INDEX.md) (~20 tokens)
+  to locate the relevant note, then viewing the exact section on demand.
+
+---
+
+### 7.3 The Active REPL Configuration Plan: Step-by-Step
+
+Based on this evaluation, the concrete configuration plan for AI coding assistant REPLs in
+`sarutahiko` is structured as follows:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       ACTIVE REPL CONFIGURATION PLAN                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Working Memory:       Native sliding-window context compactor (MANDATORY)  │
+│  Long-Term Memory:     Curated in-tree registers in docs/registers/ (T1)    │
+│  Diagnostics Daemon:   Tweag's tricorder background daemon (T3 optional)    │
+│  MCP Bridge:           tricorder-mcp via .mcp.json / .agents/mcp.json       │
+│  Symbol Indexing:      hasktags generated via bin/generate-tags (T1)        │
+│  Structural Search:    ast-grep (sg) for AST pattern audits (T2)            │
+│  Contamination Guard:  Zero mandatory daemons; Tier 0 POSIX always builds   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Step 1: Symbol Navigation (Tier 1 Baseline)
+- Run `./bin/generate-tags` to build the `./tags` symbol index.
+- Assistants use [`.agents/skills/code-navigation/SKILL.md`](../../.agents/skills/code-navigation/SKILL.md) to look up symbol definitions in
+  $<15$ tokens instead of multi-file grep or full module reads.
+
+#### Step 2: Background Diagnostics via Tweag's Tricorder (Tier 3 Acceleration)
+- **Binary Setup:** Ensure `tricorder-mcp` is located in `~/.local/bin/` (or via Nix/Cabal).
+- **Workspace MCP Registration:** Expose `tricorder-mcp` via `.mcp.json` at the project root:
+  ```json
+  {
+    "mcpServers": {
+      "tricorder": {
+        "command": "tricorder-mcp"
+      }
+    }
+  }
+  ```
+- **Agent Skill Activation:** [`.agents/skills/tricorder/SKILL.md`](../../.agents/skills/tricorder/SKILL.md) informs the assistant how to
+  query build diagnostics via MCP (`status`, `test_results`, `source`) or CLI fallback
+  (`tricorder status --json`).
+- **Token Impact:** Slashes compilation verification turns from ~2,500 tokens (raw `cabal build`)
+  down to $<50$ tokens of structured JSON errors/warnings.
+
+#### Step 3: Context Compaction Configuration
+- Ensure the REPL harness's context compaction is active (e.g. threshold set at 75–80% of window).
+- Instruct the assistant to summarize completed task packets into git commit messages and
+  hand off minimal executive context between milestones.
+
+#### Step 4: Zero-Friction Contributor Opt-Out
+- All assistant-specific files (`tags`, `TAGS`, `.mcp.json`, `.agents/`) are non-intrusive.
+- Any developer who clones `sarutahiko` without `ast-grep`, `hasktags`, or `tricorder` can
+  run `cabal build all` and `cabal test all` without errors or warnings.
+

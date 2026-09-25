@@ -42,6 +42,7 @@ code implements blessed designs.
 | Observability | `docs/notes/OBSERVABILITY_DESIGN.md` | kagami-ita: events, tracing, metrics, replay |
 | Kogaki / Codecs | `docs/notes/KOGAKI_DESIGN.md` | Unicode/i18n, LLM & protocol codecs, oracles |
 | Corpus index | `docs/INDEX.md` | inventory + reading paths |
+| Assistant tooling | `docs/notes/ASSISTANT_TOOLING_DESIGN.md` | REPL config, code intel, degradation |
 | Glossary | `docs/registers/GLOSSARY.md` | term index; add entries same-change |
 
 ## Operational advisories (binding unless a canonical doc supersedes)
