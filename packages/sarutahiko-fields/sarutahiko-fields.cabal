@@ -23,9 +23,25 @@ common commons
 
 library
     import:           commons
-    exposed-modules:  Sarutahiko.Fields
+    exposed-modules:
+        Sarutahiko.Fields
+        Sarutahiko.Fields.Datum
+        Sarutahiko.Fields.Witness
+        Sarutahiko.Fields.Registry
     build-depends:
         base >= 4.20 && < 5,
         text >= 2.1,
+        containers >= 0.6,
         kogaki-core >= 0.1
     hs-source-dirs:   src
+
+test-suite test
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        text >= 2.1,
+        containers >= 0.6,
+        sarutahiko-fields

@@ -12,6 +12,10 @@ optional-packages:
     ../large-records-interfaces/large-anon
     ../large-records-interfaces/large-generics
     ../large-records-interfaces/large-records
+    ../large-records-interfaces/typelet
+    ../effectful/effectful-core
+    ../effectful/effectful
+    ../polysemy
     -- Optional external worktrees (uncomment as needed):
     -- ../beam/beam-backend-bench/beam-backend-bench.cabal
     -- ../beam/beam-core/beam-core.cabal

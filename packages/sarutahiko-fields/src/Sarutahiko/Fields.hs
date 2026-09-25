@@ -1,16 +1,20 @@
 -- |
 -- Module      : Sarutahiko.Fields
--- Description : First-class field datums and registry
+-- Description : First-class field datums and field registry
+--
+-- Top-level entry point for the 'sarutahiko-fields' package, implementing
+-- contracts CD1–CD2 from FIELDS_RECORDS_DESIGN.md §3.
 module Sarutahiko.Fields
-  ( -- * Field Datum
-    Field (..)
+  ( -- * Field Datums
+    module Sarutahiko.Fields.Datum
+
+    -- * Field Witnesses
+  , module Sarutahiko.Fields.Witness
+
+    -- * Field Registry
+  , module Sarutahiko.Fields.Registry
   ) where
 
-import Data.Text (Text)
-import GHC.TypeLits (Symbol)
-
--- | First-class field datum representing a known schema key.
-data Field (k :: Symbol) a = Field
-  { fieldName :: !Text
-  , fieldDoc  :: !Text
-  } deriving stock (Eq, Show)
+import Sarutahiko.Fields.Datum
+import Sarutahiko.Fields.Registry
+import Sarutahiko.Fields.Witness
