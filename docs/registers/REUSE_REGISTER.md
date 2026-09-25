@@ -411,9 +411,17 @@ the ASCII minimum (Phase 3), or with the i18n package (2.21) whichever comes fir
   without a case unless the kakegoe dashboards want pretty terminal rendering,
   at which point it is re-judged as a cosmetic dependency (transport-class). Trigger:
   dashboard development (Phase 3).
-- **kiroku / shibuya / keiro / kioku** (keiro stack): interop-first contact strategy
-  (NIH_PLAN); reuse-or-reimplement is not currently posed — hashigakari reads/writes
-  their formats; deeper integration decisions wait for the contact spike.
+- **kiroku / shibuya / keiro / kioku / shikumi / keiki** (Nadeem Bitar agent stack):
+  Interop-first contact strategy (NIH_PLAN). Specific roles:
+  1. `shikumi` (`Shikumi.Compaction`): Direct donor and algorithmic reference for sliding-window
+     context compaction (`reserveTokens`, `compactTail`) over `effectful`. Reusable with minor
+     modifications (adapting nominal message records to `sarutahiko-records`).
+  2. `kioku` (agent memory): Hybrid recall blueprint combining FTS (BM25) and vector similarity via
+     Reciprocal Rank Fusion (RRF), recency decay, and L0->L1->L2 distillation. Algorithmically
+     reused for `utaibon` with SQLite FTS5 backend.
+  3. `keiki` (pure event-sourcing transducer): Out-of-the-box pure Haskell state machine core for
+     turn and session replay without database dependencies.
+  Trigger: Phase 1.5 Hokora (SQLite spine) and Phase 2 Utaibon memory engine.
 - **megaparsec / attoparsec / happy / tree-sitter** (parser combinators & GLR generators):
   Standard Hackage parser combinator libraries are closed monad transformers parsing
   into nominal ADTs. They resist algebraic effect interleaving (`Eff es`), cannot

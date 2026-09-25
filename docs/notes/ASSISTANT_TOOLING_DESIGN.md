@@ -506,3 +506,120 @@ Based on this evaluation, the concrete configuration plan for AI coding assistan
 - Any developer who clones `sarutahiko` without `ast-grep`, `hasktags`, or `tricorder` can
   run `cabal build all` and `cabal test all` without errors or warnings.
 
+---
+
+## 8. Advanced Search Systems & Nadeem Bitar's Stack: Hybrid Recall, Shikumi, and Kioku
+
+As a codebase expands to dozens of packages, naive search mechanisms fail along two opposite axes:
+1. **Unranked Text Scans (`grep`):** Return hundreds of lines across dependencies, overwhelming
+   the context window with noise.
+2. **Dense Vector Embeddings:** Lack exact symbol precision, matching on superficial textual
+   similarity and injecting stale or hallucinated code fragments into exact type signatures.
+
+To achieve robust, token-efficient intelligence at scale, `sarutahiko` synthesizes lessons from
+Nadeem Bitar's Haskell ecosystem (`shikumi`, `kioku`, `keiki`, `baikai`, `settei`) alongside
+our multi-tier AST navigation.
+
+### 8.1 Evaluating Nadeem Bitar's Ecosystem for Context Engine & Memory Provider
+
+Nadeem Bitar's (`shinzui`) suite of Haskell packages represents the most advanced prior art
+in typed, event-sourced agent infrastructure in the Haskell ecosystem. Their usability for
+`sarutahiko`'s Context Engine and Memory Provider is evaluated below:
+
+#### 1. Context Engine: `shikumi` (`Shikumi.Compaction`) — **HIGHLY USABLE (Minor Modification)**
+- **What it does:** `Shikumi.Compaction` provides typed sliding-window context compression:
+  - `overflowThreshold`: Computes the exact token budget where compaction must trigger based on
+    the model's advertised context window and a reserve buffer (default 16,384 tokens).
+  - `usageExceedsWindow`: Detects when provider-reported prompt usage crosses the threshold.
+  - `compactTail`: Preserves the most recent $N$ items verbatim (default 4 turns) while folding
+    the older tail into an LLM-synthesized executive summary.
+- **Architectural Match:** `shikumi` runs natively on `effectful` (`Eff es`), directly matching
+  `sarutahiko-effect-effectful`.
+- **Adaptation Needed:** `shikumi` defines nominal message types (`AssistantContent`, `TextContent`).
+  Adapting it to `sarutahiko` involves bridging these frames into row-typed anonymous records
+  (`Record f r` via `sarutahiko-records`), ensuring that compaction frames obey our open row schemas.
+- **Verdict:** `Shikumi.Compaction` is an exceptional donor/reference implementation for
+  `sarutahiko`'s in-tree Context Engine.
+
+#### 2. Memory Provider: `kioku` (記憶) — **USABLE (Architectural Blueprint / Backend Adapter Needed)**
+- **What it does:** `kioku` is a full event-sourced agent memory and session library in Haskell:
+  - **Durable Memories:** Fact, preference, constraint, pattern, and instruction storage.
+  - **Hybrid Recall:** Fuses PostgreSQL full-text search (BM25 lexical ranking) with `pgvector`
+    semantic similarity using **Reciprocal Rank Fusion (RRF)** (`Kioku.Recall.fuseRecallCandidates`,
+    `rrfTerm`), modulated by recency decay and character budgets (`applyCharacterBudgets`).
+  - **Distillation Pipeline:** Progressively distills raw turn evidence (L0) into memory atoms (L1),
+    scenes (L2), and persona summaries (L3).
+- **Usability Out-of-the-Box:**
+  - If a PostgreSQL + `pgvector` instance is available, `kioku` works **out-of-the-box** as an
+    external memory service.
+  - For `sarutahiko`'s standalone/embedded posture (which targets a zero-daemon embedded **SQLite**
+    engine in Phase 1.5 Hokora), `kioku`'s database layer (`kiroku-store` / Postgres) cannot be
+    directly embedded without running a Postgres daemon.
+- **Adaptation Needed (Relatively Minor):**
+  - Extract `kioku`'s **pure algorithmic core** (`Kioku.Recall` RRF scoring, candidate blending,
+    decay functions, and distillation models).
+  - Substitute the PostgreSQL backend with an embedded SQLite backend using SQLite `FTS5` for
+    lexical search and `sqlite-vec` (or simple in-process cosine similarity) for embeddings.
+- **Verdict:** `kioku`'s hybrid recall and distillation pipeline is the blessed design blueprint
+  for `utaibon` ([`MEMORY_ENGINE_DESIGN.md`](../notes/MEMORY_ENGINE_DESIGN.md)).
+
+#### 3. Pure State Machine Core: `keiki` (継起) — **OUT-OF-THE-BOX REUSABLE**
+- **What it does:** A zero-database, pure Haskell library modeling event sourcing, workflows,
+  and durable execution as **symbolic-register finite-state transducers**.
+- **Usability:** 100% pure Haskell with no external infrastructure dependencies. Can model the
+  agent's conversation state machine and turn transitions with guaranteed replayability (RPL-1).
+
+#### 4. Provider Transport & Codecs: `baikai` (媒介) — **REFERENCE & TEST ORACLE**
+- **What it does:** Multi-provider LLM transport (Claude, OpenAI, Ollama, CLI subprocesses like
+  `claude -p` / `codex exec`), streaming via `streamly`, token cost accounting, and categorised errors.
+- **Role in `sarutahiko`:** Judged in [`REUSE_REGISTER.md`](../registers/REUSE_REGISTER.md) §2.14 as
+  a reference implementation and test oracle for Tier 3 Model Substrate.
+
+---
+
+### 8.2 The Search Extension Architecture: Towards Hybrid Recall
+
+To prevent both the token floods of naive text search and the hallucinations of naive vector search,
+`sarutahiko` defines a 3-layer search expansion roadmap:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       ADVANCED CODE SEARCH ARCHITECTURE                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Layer 1: Deterministic Symbol Indexing  (hasktags, tags jumping)           │
+│           - Zero false positives, <15 tokens, instant jump to definition.   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Layer 2: Structural AST Search          (ast-grep, tree-sitter, tsquery)   │
+│           - Pattern-matches syntax trees, ignoring whitespace/comments.     │
+│           - Slices GADT effect signatures, row records, and interpreters.   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Layer 3: Hybrid Lexical + Semantic RRF  (FTS5 + Embeddings via kioku)     │
+│           - Fuses exact keyword matches (BM25) with semantic intent.        │
+│           - Reciprocal Rank Fusion ensures exact symbols never get lost.    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Deterministic Symbols First (Tier 1):** Definitions are resolved exclusively via `tags`.
+2. **Syntactic Outlines Second (Tier 2):** When auditing architectures or finding all handlers,
+   `ast-grep` queries the Concrete Syntax Tree directly.
+3. **Hybrid Recall for Long-Term Memory (Tier 2/3):** Adopts `kioku`'s RRF formulation to blend
+   sparse lexical search (FTS5) with dense embeddings, ensuring that queries for exact identifiers
+   (`RecordConstraints`) receive rank 1 while still allowing conceptual natural language queries.
+
+---
+
+### 8.3 Complementary LSP Tooling: LaTeX with `texlab` (`~/src/texlab/`)
+
+`texlab` is a cross-platform Language Server Protocol server for LaTeX written in Rust.
+
+- **Role in `sarutahiko`:** While the primary codebase documentation is GitHub Flavored Markdown
+  (`docs/notes/*.md`), any formal academic papers, monographs, or TikZ architectural diagrams
+  typeset in LaTeX (e.g. `docs/papers/`) can leverage `texlab` for semantic completion, citation
+  jumps, hover documentation, and syntax diagnostics.
+- **Build & Activation:**
+  ```bash
+  cargo build --release --manifest-path=/home/nyc/src/texlab/Cargo.toml
+  ```
+  Once compiled, `texlab` can be registered in project LSP or MCP bridges for LaTeX authoring.
+
+
