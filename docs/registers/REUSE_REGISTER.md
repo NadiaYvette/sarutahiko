@@ -430,3 +430,15 @@ the ASCII minimum (Phase 3), or with the i18n package (2.21) whichever comes fir
   we NIH a row-typed, effect-oriented Earley chart parser alongside Wagner–Graham
   incremental GLR parsing, taking grammars as written (Predict/Scan/Complete) and
   annotating parse items directly with anonymous records. Trigger: Tier 4 code intelligence.
+- **contextful** (Inferensys; cloned locally): CLI-first local context engine combining SQLite
+  FTS5 (BM25 lexical ranking), web-tree-sitter AST chunking, and token-budgeted context packs.
+  Direct architectural reference and operational bootstrapping tool for agent codebase search.
+  Not linked into core Cabal packages; invoked via out-of-process CLI/MCP. Trigger: Tier 4
+  code intelligence & assistant configuration.
+- **sqlite-vec / sqlite-ecosystem** (Alex Garcia; cloned locally): Minimal loadable SQLite extension
+  providing `vec0` virtual tables for vector similarity search, alongside `sqlite-http` and related
+  modular C extensions. Core architectural proof for `utaibon`: proves that vector embeddings do
+  not require external vector database daemons (Chroma/Qdrant) or PostgreSQL (`pgvector`), but can
+  be loaded directly into the local `utaibon.sqlite3` database file alongside SQLite FTS5.
+  Trigger: Phase 2 Utaibon memory engine & Phase 1.5 Hokora SQLite spine.
+

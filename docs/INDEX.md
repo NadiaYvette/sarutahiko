@@ -41,6 +41,8 @@ and are checked by the script net (§5).
 | `transcripts/kogaki-i18n-unicode.md` | transcript | archive | cross-cutting (i18n/kogaki recon) | — |
 | `transcripts/noh-writing-motifs.md` | transcript | archive | cross-cutting (naming recon) | — |
 | `transcripts/web-style-guides.md` | transcript | archive | cross-cutting (style survey) | — |
+| `Reimplementing Tree-sitter and Ctags in Haskell.md` | study (transcript) | archive | cross-cutting (parsing, code intelligence) | — |
+
 
 Archived: none (the tombstone register, `registers/ATTIC.md`, will list dead
 documents here when any exist; superseded documents stay in place with successor

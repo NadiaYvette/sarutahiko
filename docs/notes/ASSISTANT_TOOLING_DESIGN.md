@@ -272,37 +272,101 @@ Tier 0: Vanilla POSIX Baseline (git, cabal, standard shell tools) [MANDATORY]
 
 ---
 
-## 5. Practical Guide for Newbies & Maintainers
+## 5. Practical Guide for Newbies & Maintainers: The `sarutahiko-tooling` Honorary Package
 
-### 5.1 Newbie Quickstart: Keeping Token Burn Minimal
-If you are running an AI coding assistant REPL on this codebase and want to minimize token costs:
+Per [`DOC_STRATEGY.md`](../notes/DOC_STRATEGY.md), the assistant configuration environment
+(`.agents/`, `.mcp.json`, and associated skills, rules, and scripts) is formally elevated
+to an **honorary package** within the repository: `sarutahiko-tooling`. While not a Cabal
+library distributed to Hackage, it possesses its own contracts, degradation hierarchy,
+lifecycle, and strict boundaries.
 
-1. **Generate the Symbol Tags:**
-   ```bash
-   ./bin/generate-tags
-   ```
-2. **Never Dump Full Modules:**
-   - Instead of asking the assistant to *"read all packages to find where Field is"*, ask:
-     *"Find where Field is defined using tags and show only the definition."*
-   - The assistant will query `tags` and view just lines 10–25 of `Sarutahiko/Fields.hs` (20 tokens vs 2,000 tokens).
-3. **Use Structural Search for Code Audits:**
-   ```bash
-   # Find all data type definitions across packages
-   sg -p 'data $NAME = $$$CONSTRUCTORS' packages/
-   ```
-4. **Use Autonomous Mode for Complete Task Packets:**
-   - Type `/goal` when starting a task packet (e.g. TP-0.2) so the assistant can write modules,
-     run compiler checks, and commit locally without back-and-forth prompting.
+### 5.1 Newbie Quickstart: Keeping Token Burn Minimal via the Bootstrapping Suite
 
-### 5.2 Maintainer Guide: Repository Hygiene & Progressive Disclosure
-1. **Keep `AGENTS.md` and `README.md` Lean:**  
-   Always obey the $\sim 4\text{ KB}$ budget in `AGENTS.md`. Add pointer links, never inline
-   large implementations.
-2. **Keep `.agents/skills/` Modular:**  
-   Write self-contained, single-purpose skills (`.agents/skills/<name>/SKILL.md`). The system
-   prompt only displays the 2-line description until activated.
-3. **Keep `tags` Ignored:**  
-   Ensure generated index files (`tags`, `TAGS`, `.ghc.environment.*`) remain strictly in `.gitignore`.
+If you are a newcomer or AI coding assistant running a REPL in this workspace, you have
+immediate access to our **bootstrapping toolchain** (leveraging Tweag's `tricorder`,
+Nadeem Bitar's `shikumi`, Contextful, and fast symbol indices):
+
+1. **Instant Compiler Checks via Tricorder (<50 tokens):**
+   - Instead of running `cabal build all` (which consumes 200–500 lines of terminal output
+     and ~2,500 tokens), query structured diagnostics:
+     ```bash
+     tricorder status --json
+     ```
+   - If `tricorder-mcp` is active in `.mcp.json`, call the MCP tool `status(wait: true)`.
+     The assistant receives only machine-readable errors/warnings with zero terminal clutter.
+
+2. **Never Dump Full Modules (The Progressive Disclosure Rule):**
+   - **Step 1 (Find):** Run `grep -w "^SymbolName" tags` (<15 tokens).
+   - **Step 2 (View):** Use `view_file` specifying `StartLine` and `EndLine` (±15 lines around
+     the symbol). Never read entire 500-line modules just to inspect a signature.
+
+3. **Structural Code Audits via `ast-grep`:**
+   - Use `sg` to search Concrete Syntax Trees directly without regex false positives:
+     ```bash
+     # Find all GADT effect signatures
+     sg -p 'data $NAME :: Effect where $$$CONSTRUCTORS' packages/
+
+     # Find all row-typed record definitions
+     sg -p 'type $NAME = Record $F $R' packages/
+     ```
+
+4. **Tracing & Replay via Nadeem's `shikumi`:**
+   - To inspect prompt assemblies, token usage, and tool executions from language-model runs:
+     ```bash
+     shikumi trace
+     ```
+   - To deterministically verify an execution without spending network tokens:
+     ```bash
+     shikumi replay <trace-id>
+     ```
+
+5. **Token-Budgeted Context Packs via `contextful`:**
+   - When researching cross-cutting features, query Contextful for an evidence pack bounded
+     by a strict token ceiling:
+     ```bash
+     cxf pack "effect handlers polysemy effectful" --max-tokens 1500
+     ```
+
+6. **The Inviolable Fallback (Tier 0 POSIX Baseline):**
+   - If any daemon, MCP server, or external binary fails or is absent:
+     ```bash
+     cabal build all
+     cabal test all
+     ```
+     The codebase *never* requires external daemons or specialized tooling to build and test.
+
+---
+
+### 5.2 Maintainer Guide: Repository Hygiene, Honorary Package Governance & Self-Hosting
+
+1. **Honorary Package Boundaries (`sarutahiko-tooling`):**
+   - All assistant tooling configurations reside in `.agents/`, `.mcp.json`, or user-local
+     directories (`~/.local/bin/`).
+   - **Zero Cabal Contamination:** Bootstrapping tools (`tricorder`, `shikumi`, `kioku`,
+     `contextful`) must **never** be injected into core `cabal.project` package dependencies.
+     They operate strictly out-of-process via stdio IPC / MCP bridges.
+
+2. **The Bootstrapping to Self-Hosting Transition Lifecycle:**
+   `sarutahiko` follows a staged self-hosting plan:
+   - **Stage 1 (Current Bootstrap):** External tools (`tricorder-mcp`, `shikumi`, `kioku-core`,
+     `contextful`, `hasktags`) provide immediate developer acceleration and token savings.
+   - **Stage 2 (Hokora Vertical Slice — Phase 1.5):** In-tree SQLite event spine, fail-closed
+     leases, and RPL-1 deterministic replay harness replace external session tracking.
+   - **Stage 3 (Full Self-Hosting — Phase 2 & 3):** `sarutahiko-mcp` (in-tree MCP server),
+     `utaibon` (in-tree event memory with embedded SQLite FTS5 + `sqlite-vec`), and
+     `sarutahiko-parse` (in-tree Earley chart parser) replace the bootstrapping suite entirely.
+
+3. **Living Registers as External Memory:**
+   - Maintain the single-point-of-truth invariant: when adding dependencies, consult
+     [`REUSE_REGISTER.md`](../registers/REUSE_REGISTER.md); when recording provider wire
+     peculiarities, update [`CODEC_QUIRKS.md`](../registers/CODEC_QUIRKS.md).
+   - Obey the ~4 KB budget in [`AGENTS.md`](../../AGENTS.md). Keep orientation files as pointers;
+     never duplicate canonical architectural text.
+
+4. **Tag & Index Hygiene:**
+   - Keep generated files (`tags`, `TAGS`, `.ghc.environment.*`, `dist-newstyle/`) strictly
+     in `.gitignore`.
+   - Run `./bin/generate-tags` whenever modules or signatures are added or renamed.
 
 ---
 
@@ -621,5 +685,101 @@ To prevent both the token floods of naive text search and the hallucinations of 
   cargo build --release --manifest-path=/home/nyc/src/texlab/Cargo.toml
   ```
   Once compiled, `texlab` can be registered in project LSP or MCP bridges for LaTeX authoring.
+
+---
+
+## 9. The Embedded SQLite Search & Bootstrapping Architecture: Contextful, Sqlite-Vec, and Arena Integration
+
+### 9.1 In-Process Monorepo (`typed-language-model-arena`) vs. Out-of-Process IPC (MCP/stdio)
+
+A recurring architectural question in agent systems is whether to link all libraries
+into a single monolithic binary or to run them as isolated child processes communicating
+via stdio pipes or JSON-RPC (MCP).
+
+The experience in `~/src/typed-language-model-arena/` provides crucial clarity:
+1. **The Role of In-Process Monorepo Linking:**  
+   In `typed-language-model-arena`, Nadeem Bitar's complete four-layer stack (`baikai`, `shikumi`,
+   `keiki`, `kiroku`, `keiro`, `kioku`) is successfully compiled and linked together under GHC 9.12.4.
+   This was **not** a fool's errand. It provides the **laboratory proof**:
+   - Zero-serialization, in-memory function calls between pure transducers (`keiki`) and effectful
+     LM programs (`shikumi`).
+   - End-to-end type safety across the entire event sourcing and memory pipeline.
+   - Immediate benchmarking of token usage and cache hits without IPC latency.
+2. **The Role of Out-of-Process IPC (MCP / Stdio Pipes):**  
+   Conversely, when integrating with AI coding assistant REPLs (Antigravity, Claude Code, Cursor),
+   **out-of-process IPC is mandatory at the harness boundary**:
+   - **Process Isolation:** If an external LLM request times out, throws an unhandled exception,
+     or crashes on a native C extension (e.g. pgvector or tree-sitter FFI), only the child process dies.
+     The parent REPL remains intact and can restart the worker.
+   - **Zero Dependency Contamination:** An out-of-process tool (such as `shikumi-cli` or `tricorder-mcp`)
+     runs in its own closure. It never forces its Cabal bounds (e.g. `containers`, `aeson`, `lens`)
+     onto `sarutahiko`'s pristine minimal core.
+   - **Hot Swapping & Self-Hosting:** The assistant can interact with `shikumi` today, and swap to
+     `sarutahiko-mcp` tomorrow without modifying the REPL runtime.
+
+**Conclusion:** We maintain in-process linking in `arena` for deep type-checked experiments, while
+exposing its capabilities to the REPL through out-of-process CLI commands and MCP servers.
+
+---
+
+### 9.2 Embedded SQLite Search: Contextful, FTS5 BM25, and Sqlite-Vec
+
+Two projects in the local environment—`~/src/contextful/` and `~/src/sqlite-vec/`—illuminate
+the ideal data architecture for embedded agent memory:
+
+#### 1. Contextful: FTS5 BM25 + Web-Tree-Sitter for Evidence Packs
+`contextful` (`~/src/contextful/`) demonstrates that effective codebase retrieval does not
+require whole-file ingestion. By pairing:
+- **SQLite FTS5:** Full-text search with BM25 lexical relevance scoring.
+- **Tree-Sitter AST Parsing:** Semantic chunking that aligns with function and type definitions
+  rather than arbitrary character counts.
+- **Token-Budgeted Packs:** Returning concise evidence slices bounded by an explicit token ceiling.
+
+#### 2. `sqlite-vec`: Zero-Daemon Vector Embeddings
+`sqlite-vec` (`~/src/sqlite-vec/`) and the broader `sqlite-ecosystem` prove that vector similarity
+search does **not** mandate running heavyweight external vector databases (such as Chroma,
+Qdrant, or Pinecone), nor does it require a PostgreSQL server with `pgvector`.
+- `sqlite-vec` compiles into a lightweight loadable extension (or statically embedded C file)
+  providing `vec0` virtual tables for float, int8, and binary embeddings.
+- **Architectural Impact for Utaibon & Hokora:** In Phase 1.5 Hokora and Phase 2 Utaibon,
+  `sarutahiko` can embed both lexical search (via built-in SQLite `FTS5`) and semantic embeddings
+  (via `sqlite-vec`) directly inside the local `utaibon.sqlite3` database. This delivers
+  `kioku`-grade hybrid recall (BM25 + vector similarity via Reciprocal Rank Fusion) in a
+  **single, zero-daemon, fully portable SQLite file**.
+
+---
+
+### 9.3 Native Haskell Tree-Sitter & Ctags (Wagner-Graham Incremental GLR Parsing)
+
+In [`docs/Reimplementing Tree-sitter and Ctags in Haskell.md`](../Reimplementing%20Tree-sitter%20and%20Ctags%20in%20Haskell.md), an extensive architectural study
+analyzes the mechanics of native Haskell syntax analysis:
+- **Wagner-Graham Incremental GLR Parsing:**
+  Standard parsers re-tokenize the entire file on every keystroke. Tree-sitter's brilliance
+  lies in incremental parsing: marking damaged nodes, shifting intact subtrees directly from
+  the old Concrete Syntax Tree in $O(1)$ time, and breaking open only damaged subtrees.
+- **Eliminating C FFI Bottlenecks:**
+  Standard Tree-sitter bindings rely on C FFI, which pins GHC runtime threads, forces cross-boundary
+  heap allocations, and complicates multi-threaded concurrency.
+- **The Sarutahiko Parse Blueprint (`sarutahiko-parse`):**
+  This study informs Tier 4 code intelligence: authoring an effect-oriented, row-typed Wagner-Graham
+  incremental GLR / Earley chart parser in pure Haskell. Until `sarutahiko-parse` matures, we
+  rely on Tier 1 `hasktags` and Tier 2 `ast-grep` (`sg`) as our zero-overhead operational bridges.
+
+---
+
+### 9.4 The Bootstrapping Stack Registry & Fallback Hierarchy
+
+The active assistant configuration (`sarutahiko-tooling`) harmonizes all local tools into
+a unified capability hierarchy:
+
+| Tool / Server | Source | Role in `sarutahiko` | Invocation Mechanism |
+|---|---|---|---|
+| **`tricorder-mcp`** | Tweag's `tricorder` (`~/.local/bin/tricorder-mcp`) | Background GHCi compiler diagnostics (<50 tokens). | MCP tool `status(wait: true)` via `.mcp.json`. |
+| **`hasktags`** | `/usr/bin/hasktags` (`./tags`) | Instant symbol definition lookup (<15 tokens). | `grep -w "^Symbol" tags` via `code-navigation` skill. |
+| **`ast-grep` (`sg`)** | `~/.cargo/bin/ast-grep` | Structural AST pattern matching and refactoring. | `sg -p '<pattern>' packages/` via `code-navigation`. |
+| **`shikumi-cli`** | Nadeem's `shikumi` (`~/.local/bin/shikumi`) | Hierarchical LM tracing, deterministic replay, and eval. | `shikumi trace`, `shikumi replay` via `shikumi` skill. |
+| **`contextful`** | `~/src/contextful/` | FTS5 BM25 search and token-budgeted context packs. | `cxf pack` via `contextful` skill. |
+| **Tier 0 POSIX** | `cabal`, `git`, standard shell | Inviolable baseline; guarantees clean builds without daemons. | `cabal build all`, `cabal test all`. |
+
 
 
