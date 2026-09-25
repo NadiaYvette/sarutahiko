@@ -36,11 +36,13 @@ sarutahiko/
 ├── cabal.project                          # Multi-package project configuration
 ├── cabal.project.freeze                   # Pinned dependency freeze file
 ├── packages/
+│   ├── kogaki-core/                       # Tier-0: Pervasive string, Unicode normalization & i18n
 │   ├── sarutahiko-fields/                 # Tier-0: First-class field datums & registry
 │   ├── sarutahiko-records/                # Tier-0: HKD, envelopes, combinators, codecs
+│   ├── sarutahiko-records-vinyl/          # Tier-0: Seam-only vinyl compatibility adapter
 │   ├── sarutahiko-effect-signatures/      # Tier-0.5: Neutral effect GADTs & Stepper m a
-│   ├── sarutahiko-effect-effectful/       # Tier-0.5: Effectful interpreter bridge
-│   ├── sarutahiko-effect-polysemy/        # Tier-0.5: Polysemy interpreter bridge
+│   ├── sarutahiko-effect-effectful/       # Tier-0.5: Effectful production interpreter bridge
+│   ├── sarutahiko-effect-polysemy/        # Tier-0.5: Polysemy seam compatibility bridge
 │   └── sarutahiko-effect-testkit/         # Tier-0.5: Parity testkit & law suites
 ```
 
@@ -49,6 +51,94 @@ Every package imports a shared `cabal.project` stanza:
 - **Default Language:** `GHC2024`
 - **Compiler Warnings:** `-Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Werror` (in CI)
 - **Record Foundation:** Local dependency on the canonical maintainer fork `large-records-interfaces` (`large-anon ^>= 0.3`).
+
+#### Component & Package Dependency Graph
+The internal architecture stratifies into strictly ordered tiers to prevent dependency leakage:
+
+```mermaid
+flowchart TD
+    subgraph External ["External Substrates"]
+        Base["base (GHC2024)"]
+        TextBS["text / bytestring / vector"]
+        LargeAnon["large-records-interfaces (large-anon)"]
+        Aeson["aeson / attoparsec"]
+        EffectfulLib["effectful-core"]
+        PolysemyLib["polysemy"]
+    end
+
+    subgraph Tier0 ["Tier 0: Foundational Records & Pervasive Strings"]
+        Kogaki["kogaki-core: IsString, Unicode, i18n, ICU"]
+        Fields["sarutahiko-fields: Field k a, Registry"]
+        Records["sarutahiko-records: Record f r, WireEnvelope, Codecs"]
+        VinylBridge["sarutahiko-records-vinyl: Seam Adapter"]
+    end
+
+    subgraph Tier05 ["Tier 0.5: Algebraic Effect Catalog"]
+        Sigs["sarutahiko-effect-signatures: Neutral GADTs, Stepper m a"]
+        EffBridge["sarutahiko-effect-effectful: Production Runtime"]
+        PolyBridge["sarutahiko-effect-polysemy: Seam Compatibility Bridge"]
+        TestKit["sarutahiko-effect-testkit: Dual Interpreter Parity"]
+    end
+
+    subgraph Phase1 ["Phase 1: Wire Flagship"]
+        WireCodecs["sarutahiko-wire: jsonrpc, schema, mcp"]
+        Proc["sarutahiko-process: Spawn / Resource"]
+    end
+
+    subgraph Phase15 ["Phase 1.5: Vertical Slice"]
+        Hokora["hokora: Walking Skeleton"]
+    end
+
+    Base --> Kogaki
+    TextBS --> Kogaki
+    Base --> Fields
+    Kogaki --> Fields
+    Fields --> Records
+    LargeAnon --> Records
+    Records --> VinylBridge
+
+    Records --> Sigs
+    Sigs --> EffBridge
+    EffectfulLib --> EffBridge
+    Sigs --> PolyBridge
+    PolysemyLib --> PolyBridge
+    EffBridge --> TestKit
+    PolyBridge --> TestKit
+
+    Records --> WireCodecs
+    Aeson --> WireCodecs
+    Sigs --> WireCodecs
+    WireCodecs --> Hokora
+    EffBridge --> Hokora
+    Proc --> Hokora
+```
+
+#### Package Sequencing & Stratification Principles
+
+1. **The Pervasive String/i18n Substrate (`kogaki-core`):**
+   Strings in an agent ecosystem (prompts, tool calls, JSON keys, log envelopes, terminal text)
+   are pervasive. Rather than treating internationalization as a late-stage application concern,
+   `kogaki-core` sits immediately above `base:Data.String(IsString(..))` and `text`. It establishes
+   NFC/NFD normalization, grapheme-cluster indexing, and locale message catalogs at the bedrock.
+   Every field name in `sarutahiko-fields` and every error envelope in `sarutahiko-records` is
+   grounded in this canonical text representation.
+
+2. **Codecs Stratification (Preventing Upstream Inundation):**
+   Adequacy for real-world agent protocols requires pulling in extensive format and protocol codecs
+   (`aeson`, `attoparsec`, `scientific`, CBOR, SSE, JSON-RPC, MCP). These codecs are strictly
+   sequenced into Phase 1 (`sarutahiko-jsonrpc`, `sarutahiko-schema`, `sarutahiko-mcp`). Tier 0
+   (`sarutahiko-records`) defines generic vector decoders and `WireEnvelope` combinators, but
+   remains unpolluted by high-churn network protocol schemas.
+
+3. **The Vinyl Compatibility Strategy for Polysemy:**
+   The architectural posture established for records governs our effect runtime integration:
+   - **Internal Ground Truth:** `large-anon` is the sole internal record representation, and
+     `sarutahiko-effect-effectful` is our primary high-performance production runtime.
+   - **Compatibility at the Seams:** `vinyl` is supported strictly via `sarutahiko-records-vinyl`
+     for third parties. Mirroring this, `sarutahiko-effect-polysemy` is an external/seam compatibility
+     target. It projects our neutral GADTs into Polysemy's open unions (`Union r (m a)`) using
+     vinyl-like type-level projection combinators. Polysemy's higher-order `Weaving` or type-list
+     overhead never leaks into core signatures, the streaming kernel, or production hot loops.
 
 ---
 
