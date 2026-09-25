@@ -27,6 +27,7 @@ and are checked by the script net (§5).
 | `notes/INSTRUMENTS_SPEC.md` | spec | draft | cross-cutting (measurement) | — |
 | `notes/OBSERVABILITY_DESIGN.md` | design | draft | cross-cutting (observability) | — |
 | `notes/KOGAKI_DESIGN.md` | design | draft | cross-cutting (Unicode, codecs, faithfulness) | — |
+| `notes/ASSISTANT_TOOLING_DESIGN.md` | design | draft | cross-cutting (assistant tooling, code intelligence & configuration) | — |
 | `plans/PHASE_0_PLAN.md` | plan | draft | substrate (implementation phase 0) | — |
 | `plans/PHASE_1_PLAN.md` | plan | draft | wire (implementation phase 1) | — |
 | `plans/PHASE_1.5_PLAN.md` | plan | draft | cross-cutting (vertical slice phase 1.5) | — |
@@ -67,7 +68,7 @@ table); until then, the law inventories live in `notes/EFFECT_CATALOG_DESIGN.md`
 in tier order (substrate → streaming → database → memory → model) → the specs
 (hokora, instruments) → `notes/KOGAKI_DESIGN.md` (the doctrine for Unicode, codecs, and
 external protocol faithfulness) → the registers (check before every dependency and every
-provider integration) → `notes/DOC_STRATEGY.md` + `notes/INFRASTRUCTURE.md` (how the
-corpus and the toolchain themselves are governed) → `notes/DESIGN_REVIEW.md` (synthesis
-and audit across all tiers before Tier-0 code) → `plans/PHASE_0_PLAN.md`, `plans/PHASE_1_PLAN.md`
+provider integration) → `notes/DOC_STRATEGY.md` + `notes/INFRASTRUCTURE.md` + `notes/ASSISTANT_TOOLING_DESIGN.md`
+(how the corpus, the toolchain, and AI assistant configurations are governed) → `notes/DESIGN_REVIEW.md`
+(synthesis and audit across all tiers before Tier-0 code) → `plans/PHASE_0_PLAN.md`, `plans/PHASE_1_PLAN.md`
 & `plans/PHASE_1.5_PLAN.md` (concrete WBS and hermetic task packets).
