@@ -87,17 +87,56 @@ Relational algebra as row transformations; the AST node computes the output row 
 | `LeftJoin r1 r2 on` | `r1 ++ Nullable r2` | type-level nullability lift |
 | `Filter r p` | `r` | `p` built from `Record (Column f) r` expressions |
 | `Aggregate r by agg` | the aggregation row | keys ++ aggregates |
+| `Window r w` | `r ++ w` | window functions (ranking, offsets, cumulative aggregates) |
+| `With name cte q` | yields `RowOf q` | scoped CTEs (`WITH` clauses); named subquery row in scope |
+| `WithRecursive cte q`| yields `RowOf q` | recursive CTEs; guarded by `Supports 'RecursiveCTE` |
 | `Union r` | `r` | row equality enforced |
 | `Insert/Update/Delete` | affected/returning row | TriState patches compile to SET lists |
+| `Upsert t conflict act`| affected/returning row | `ON CONFLICT DO UPDATE/NOTHING` using `TriState` patch |
+
+#### Query Expressiveness Extensions
+1. **Window Functions (`Window r w`):**
+   - AST node: `Window :: Query d p r -> Record (WindowExpr f) w -> Query d p (r ++ w)`
+   - Computes window frames: `OVER (PARTITION BY keys ORDER BY ord [ROWS/RANGE frame])`.
+   - Supported expressions: `RowNumber`, `Rank`, `DenseRank`, `Lead offset def`, `Lag offset def`,
+     and windowed aggregates (`WinSum`, `WinAvg`, `WinCount`).
+   - Type rule: appends computed window columns `w` to input row `r`; conflicting field names
+     are rejected at compile time.
+2. **Common Table Expressions (`With` / `WithRecursive`):**
+   - AST node: `With :: KnownSymbol name => Proxy name -> Query d p1 r1 -> Query d p2 r2 -> Query d (p1 ++ p2) r2`
+   - Scopes intermediate named queries into the type environment without runtime view creation.
+   - Recursive CTEs (`WithRecursive`) require base union step and dialect validation:
+     `Supports 'RecursiveCTE d ~ 'True`.
+3. **Upserting (`Upsert`):**
+   - AST node: `Upsert :: Table t -> ConflictTarget t -> ConflictAction t -> Returning r -> Query d p r`
+   - Actions: `DoNothing` or `DoUpdate (Record TriState t)` (leveraging the `TriState` functor
+     from `FIELDS_RECORDS_DESIGN.md` §2.2).
+   - Generates PostgreSQL / SQLite $\ge$3.24 `INSERT INTO ... ON CONFLICT (keys) DO UPDATE SET ...`
+     with exact field mapping.
 
 Smart constructors keep the AST surface small; the row-type rules are type families, so a
-JOIN that would duplicate a field name is a compile error, not a runtime surprise.
+JOIN or window projection that would duplicate a field name is a compile error, not a runtime surprise.
 
 ### 3.3 Compilation
 
-- **Dialect tags.** `data Dialect = Postgres | SQLite` (open to growth); queries are
-  quantified over a dialect ceiling (` Supports 'JSONB Postgres ~ 'False ⇒ compile error`),
-  so backend-specific features cannot leak into portable queries.
+- **Dialect tags & Capability Ceilings.**
+  `data Dialect = Postgres | SQLite` (open to growth). Queries verify feature support via
+  type-level capability constraints:
+  ```haskell
+  type family Supports (feat :: Capability) (d :: Dialect) :: Bool where
+    Supports 'JSONB            'Postgres = 'True
+    Supports 'JSONB            'SQLite   = 'False
+    Supports 'WindowFunctions  'Postgres = 'True
+    Supports 'WindowFunctions  'SQLite   = 'True  -- Supported in SQLite >= 3.25
+    Supports 'CTEs             'Postgres = 'True
+    Supports 'CTEs             'SQLite   = 'True  -- Supported in SQLite >= 3.8.3
+    Supports 'RecursiveCTE     'Postgres = 'True
+    Supports 'RecursiveCTE     'SQLite   = 'True
+    Supports 'Upsert           'Postgres = 'True
+    Supports 'Upsert           'SQLite   = 'True  -- Supported in SQLite >= 3.24
+  ```
+  If a query invokes a feature not supported by the target dialect, compilation fails with
+  a custom `TypeError` indicating the unsupported capability and target dialect ceiling.
 - **Phases:** AST → dialect-normalized algebra → SQL text + placeholder vector (one-pass
   pretty-printer per dialect; no intermediate strings). Compilation is pure and cached.
 - **Placeholders** map 1:1 onto hasql's binary encoders and SQLite's bind families; the

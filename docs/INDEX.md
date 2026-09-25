@@ -26,6 +26,7 @@ and are checked by the script net (§5).
 | `notes/HOKORA_SPEC.md` | spec | draft | cross-cutting (vertical slice) | — |
 | `notes/INSTRUMENTS_SPEC.md` | spec | draft | cross-cutting (measurement) | — |
 | `notes/OBSERVABILITY_DESIGN.md` | design | draft | cross-cutting (observability) | — |
+| `notes/KOGAKI_DESIGN.md` | design | draft | cross-cutting (Unicode, codecs, faithfulness) | — |
 | `registers/REUSE_REGISTER.md` | register | living | cross-cutting | — |
 | `registers/CODEC_QUIRKS.md` | register (living) | living | model | — |
 | `registers/GLOSSARY.md` | register (term index) | living | cross-cutting | — |
@@ -61,7 +62,8 @@ table); until then, the law inventories live in `notes/EFFECT_CATALOG_DESIGN.md`
 **Maintainers (the corpus, in dependency order).** `notes/NIH_PLAN.md` (the program)
 → `notes/EFFECT_CATALOG_DESIGN.md` (the load-bearing abstraction) → the domain notes
 in tier order (substrate → streaming → database → memory → model) → the specs
-(hokora, instruments) → the registers (check before every dependency and every
+(hokora, instruments) → `notes/KOGAKI_DESIGN.md` (the doctrine for Unicode, codecs, and
+external protocol faithfulness) → the registers (check before every dependency and every
 provider integration) → `notes/DOC_STRATEGY.md` + `notes/INFRASTRUCTURE.md` (how the
 corpus and the toolchain themselves are governed) → `notes/DESIGN_REVIEW.md` (synthesis
 and audit across all tiers before Tier-0 code).

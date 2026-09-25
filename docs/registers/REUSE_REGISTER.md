@@ -189,10 +189,10 @@ validates handlers-as-records. Revisit triggers: a provider family whose codec c
 provably disproportionate (recorded transcripts will tell), or an upstream baikai
 development we'd rather contribute to than duplicate (e.g. a row-native renaissance —
 unlikely, but the register keeps the door labeled). Codec maintenance across upstream
-provider drift is disciplined by the **kogaki strategy** (`LLM_SUBSTRATE_DESIGN.md` §5,
-`registers/CODEC_QUIRKS.md` §6): build-time extraction from checked-in API specs,
-conformance against recorded wire transcripts, and differential fuzzing against live
-oracles in CI, strictly bounded to agent-turn needs.
+provider drift is disciplined by the **kogaki strategy** (`KOGAKI_DESIGN.md`,
+`LLM_SUBSTRATE_DESIGN.md` §5, `registers/CODEC_QUIRKS.md` §6): build-time extraction from
+checked-in API specs, conformance against recorded wire transcripts, and differential
+fuzzing against live oracles in CI, strictly bounded to agent-turn needs.
 
 ### 2.15 The `openai` Hackage SDK — NOT REUSED (doubly displaced)
 Servant-generated client bindings; displaced by the codec decision (2.14) and the servant
@@ -311,12 +311,12 @@ space; count-min or similar judged per the register when demand arrives.
 
 ### 2.22 text-icu (ICU4C bindings) — role revised 2026-09-24: oracle and reference source, not dependency (the i18n NIH decision)
 **The direction (maintainer, 2026-09-24): the internationalisation ecosystem is NIH'd
-pure-Haskell**, with faithfulness carried by (a) source analysis of ICU4C (semantic
-ground truth) and the pure reimplementations Go x-text / ICU4X (architectural
-references — ICU4X, the Consortium's own pure-Rust ICU, is the existence proof and
-design donor), (b) formal verification aimed where it is strong (normalization
-confluence; collation transitivity per UTS #10's mechanized axioms; bidi algebraic
-properties), (c) empirical regression testing against the official UCD/CLDR
+pure-Haskell** under the **kogaki architecture** (`KOGAKI_DESIGN.md`), with faithfulness
+carried by (a) source analysis of ICU4C (semantic ground truth) and the pure reimplementations
+Go x-text / ICU4X (architectural references — ICU4X, the Consortium's own pure-Rust ICU,
+is the existence proof and design donor), (b) formal verification aimed where it is strong
+(normalization confluence; collation transitivity per UTS #10's mechanized axioms; bidi
+algebraic properties), (c) empirical regression testing against the official UCD/CLDR
 conformance files plus ICU as second oracle. Extensible records carry the redesign:
 locale as a resolved record (CLDR inheritance as record merge — root ⊕ lang ⊕ region),
 services as capability-granted effects, ICU-parity as an enforced law of the dual

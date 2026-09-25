@@ -82,9 +82,9 @@ ollama, vLLM, LM Studio). The family is de-facto standard, but the quirks are mo
 
 ## 6. Growth procedure and the Kogaki Codec Strategy
 
-Quirk tracking is governed by the **kogaki strategy** (transposed from the pure-Haskell
-internationalisation methodology in `registers/REUSE_REGISTER.md` 2.22 and
-`docs/transcripts/kogaki-i18n-unicode.md`):
+Quirk tracking is governed by the **kogaki strategy** (defined program-wide in
+`docs/notes/KOGAKI_DESIGN.md`, transposing the pure-Haskell internationalisation
+methodology in `registers/REUSE_REGISTER.md` 2.22 and `docs/transcripts/kogaki-i18n-unicode.md`):
 
 1. **Source Analysis of Upstream Donors:** When providers modify streaming event
    structures, we inspect the official reference implementations (`anthropic-sdk-python`,

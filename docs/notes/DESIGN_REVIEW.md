@@ -163,13 +163,18 @@ of four foundational pillars:
   decoders) and `direct-sqlite` (`sqlite3_step`) exemplifies the doctrine: reuse
   principled engines while replacing nominal query vocabularies.
 
-#### Gaps & Critical Open Items
-1. **AST Complexity vs Query Expressiveness:** The query AST in §3.2 covers `Table`,
-   `Project`, `Join`, `LeftJoin`, `Filter`, `Aggregate`, `Union`. Real-world agent
-   workloads frequently require window functions, Common Table Expressions (CTEs),
-   subquery expressions (`EXISTS`, `IN`), and upsert clauses (`ON CONFLICT DO UPDATE`).
-   The dialect compilation phase (`hashigakari-syntax`) must define where these
-   constructs live without sacrificing linear-time compilation.
+#### Resolution of Prior Gaps
+1. **AST Complexity vs Query Expressiveness — RESOLVED:** `HASHIGAKARI_DESIGN.md` §3.2
+   and §3.3 have been expanded to natively support the full expressive range required by
+   agent workloads:
+   - `Window r w`: Window functions with partition/order frames, ranking (`row_number`,
+     `rank`, `dense_rank`), offsets (`lead`, `lag`), and windowed aggregates (`sum() OVER ...`).
+   - `With name cte q` / `WithRecursive cte q`: Scoped and recursive CTEs with type-level
+     environment scoping and dialect validation.
+   - `Upsert t conflict act`: `ON CONFLICT (keys) DO UPDATE/NOTHING` using the `TriState`
+     patch functor from `FIELDS_RECORDS_DESIGN.md` §2.2.
+   - Dialect capabilities (`Supports 'WindowFunctions`, `Supports 'CTEs`, `Supports 'Upsert`)
+     guarantee compile-time safety across SQLite ($\ge$3.25) and PostgreSQL.
 2. **Draft Drift in §3.4 — RESOLVED:** `HASHIGAKARI_DESIGN.md` §3.4 has been officially
    updated to normalize `Database` over `(m :: Type -> Type)` and standardizes query
    traversal onto `Stepper m (Record Identity row)`.
@@ -204,16 +209,23 @@ of four foundational pillars:
   operations (`TailOnly`) from cache-breaking operations (`PrefixBreaking`) via
   `SomeDecision` creates a transparent audit trail for prompt caching.
 
-#### Gaps & Critical Open Items
-1. **Vector / Embedding Retrieval Deferral:** Retrieval is deferred to v1.5. For
-   extended agent conversations before compression triggers, semantic recall will be
-   absent. The project should confirm whether a pure lexical/BM25 or SQLite FTS5
-   reducer should serve as an interim retrieval bridge in Phase 2.
-2. **Single-Writer vs Multi-Writer Guardrails:** While the memory engine enforces
-   single-writer per session, the row-evolution standard (E4) introduces
-   anti-silent-loss rules for rolling upgrades. The interaction between SQLite
-   WAL mode locking and concurrent CLI/TUI invocations on the same session must be
-   explicitly handled with fail-closed locks.
+#### Resolution of Prior Gaps
+1. **Interim Retrieval Bridge Architecture — RESOLVED & POSITIONED:** Resolved in
+   `MEMORY_ENGINE_DESIGN.md` §5.3 and §10:
+   - *Architecturally Resolved:* Retrieval is modeled as an abstract `RetrievalReducer`
+     stream reduction. **SQLite FTS5 is designated as the default interim retrieval bridge**
+     for Phase 2, providing immediate, disk-backed BM25 full-text recall with zero new
+     dependencies.
+   - *Empirically Positioned:* The fine-grained crossover comparing in-memory BM25 vs
+     SQLite FTS5 vs embedding vector retrieval cannot and should not be guessed a priori;
+     it is an empirical optimization deferred to the `kakegoe` (§8.2) grid sweep over
+     synthetic corpora once the Phase 2 runtime is operable.
+2. **Single-Writer vs Multi-Writer Guardrails — RESOLVED:** Formally codified in
+   `MEMORY_ENGINE_DESIGN.md` §6: `utaibon` implements **fail-closed session locking** via
+   an atomic lease table in SQLite (`session_locks` with `BEGIN IMMEDIATE`) and transaction
+   advisory locking in PostgreSQL (`pg_try_advisory_xact_lock`). Collisions immediately
+   raise `SessionConcurrencyLockError` without waiting or silent overwriting, strictly
+   enforcing E4 (anti-silent-loss) and preserving `seq` linearizability.
 
 ### 3.2 The LLM Substrate (`LLM_SUBSTRATE_DESIGN.md` - utai)
 
@@ -338,9 +350,10 @@ and the fifth (codec maintenance) resolved via the evaluation below:
 │    Design Ambiguity            │ Church-encoded kernel declared as Tier-0   │
 │                                │ public API in YAMAARASHI §1 & NIH_PLAN §0. │
 ├────────────────────────────────┼────────────────────────────────────────────┤
-│ 5. Codec Maintenance Overhead  │ RESOLVED IN DOCS / EVALUATED BELOW:        │
-│    NIH Wire Codecs vs Churn    │ Kogaki Codec Strategy adopted in           │
-│                                │ LLM_SUBSTRATE §5 & CODEC_QUIRKS §6.        │
+│ 5. Codec Maintenance Overhead  │ RESOLVED IN DOCS:                          │
+│    NIH Wire Codecs vs Churn    │ Kogaki Doctrine canonicalized in           │
+│                                │ KOGAKI_DESIGN; strategy in LLM_SUBSTRATE §5│
+│                                │ and CODEC_QUIRKS §6; evaluated below.      │
 ├────────────────────────────────┼────────────────────────────────────────────┤
 │ 6. Stepper Signature           │ RESOLVED IN DOCS:                          │
 │    Proliferation               │ Unified into canonical `Stepper m a` GADT  │
@@ -390,7 +403,8 @@ structures (`ANT-003` content block nesting, `ANT-004` thinking blocks, `OPEN-00
 tool call arguments), and publish multi-thousand-line API specs.
 
 Applying the five Kogaki pillars yields the **Kogaki Codec Strategy**
-(`LLM_SUBSTRATE_DESIGN.md` §5, `CODEC_QUIRKS.md` §6):
+(canonicalized across all domains in `KOGAKI_DESIGN.md`, and specialized for LLMs
+in `LLM_SUBSTRATE_DESIGN.md` §5 and `CODEC_QUIRKS.md` §6):
 
 | Kogaki i18n Pillar | LLM Codec Analog | Implementation Mechanism |
 |---|---|---|

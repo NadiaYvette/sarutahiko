@@ -416,12 +416,30 @@ design must make the cache-hostile path *type-visible* and consent-gated.
 
 ### 5.3 Retrieval (long-term memory)
 
-- Indexes over the log (lexical first; embeddings via `ModelAPI.embed` as the second
-  backend) are projections (§4), rebuilt by replay, cached by `yamaarashi-flow`.
-- Retrieval policy selects middle-blocks: query construction from the current turn, top-k
-  with a *declared* `PrefixBreaking` impact — retrieved blocks must enter *after* the
-  stable prefix, or the cache contract is violated; the design slots them between tail and
-  system head, never inside it.
+- **Indexes over the log** are projections (§4), rebuilt by replay, cached by `yamaarashi-flow`.
+- **Architectural Seam: The Pluggable Retrieval Reducer.**
+  Retrieval is architected as an abstract stream reduction:
+  ```haskell
+  data RetrievalReducer state = RetrievalReducer
+    { reduceIndex :: EventEnvelope -> state -> state
+    , queryIndex  :: QueryText -> TopK -> state -> [BlockRef]
+    }
+  ```
+- **Phase 2 Interim Baseline: SQLite FTS5.**
+  For Phase 2, **SQLite FTS5 is designated as the default interim retrieval bridge**:
+  1. *Zero Dependency Footprint:* SQLite is already the local storage engine for the
+     spine log in `utaibon`. No secondary vector database or network embedding model
+     calls are required.
+  2. *Disk-Backed Efficiency:* Full-text search and BM25 ranking (`fts5` with `bm25(fts_idx)`)
+     run directly on disk, avoiding ballooning in-memory heap during long-running sessions.
+- **The Design vs Empirical Boundary:**
+  - *Resolved in Design:* The reducer signature, the SQLite FTS5 interim baseline, and
+    the strict cache-preservation rule: retrieved blocks enter *after* the stable prefix
+    with a declared `PrefixBreaking` impact (slotted between system head and turn tail).
+  - *Deferred to Empirical Calibration (§8.2):* Whether an in-memory pure-Haskell BM25
+    index or embedding vectors (`ModelAPI.embed`) achieve higher precision@k per latency
+    overhead cannot be guessed a priori. The `kakegoe` harness evaluates this crossover
+    over synthetic corpora once the Phase 2 runtime is operable.
 - `RetrievalHit` events record what was retrieved and whether it was used, giving the
   salience function a feedback signal — the one place the engine learns, and it learns
   from its own log.
@@ -432,6 +450,38 @@ design must make the cache-hostile path *type-visible* and consent-gated.
   owns the worker). The log layer enforces session-scoped linearizability; concurrent
   *sessions* are independent streams, which is what makes SQLite viable for the hokora and
   small deployments.
+- **Fail-Closed Session Locking.**
+  To guarantee E4 (anti-silent-loss across rolling upgrades) and prevent `seq` corruption
+  from concurrent CLI/TUI invocations on the same session store, `utaibon` implements
+  **fail-closed session locking**:
+  1. *SQLite Lease Table:*
+     ```sql
+     CREATE TABLE IF NOT EXISTS session_locks (
+       session_id       TEXT PRIMARY KEY,
+       holder_id        TEXT NOT NULL,
+       acquired_at      INTEGER NOT NULL,
+       lease_timeout_ms INTEGER NOT NULL
+     );
+     ```
+  2. *Atomic Acquisition:* On session open, the writer acquires the lock inside an immediate
+     transaction (`BEGIN IMMEDIATE`). If an unexpired lock exists for `session_id` with a
+     different `holder_id`, the engine **fails closed immediately** by throwing:
+     ```haskell
+     data SessionConcurrencyLockError = SessionConcurrencyLockError
+       { lockedSession :: !SessionId
+       , lockHolder    :: !Text
+       , acquiredAt    :: !UTCTime
+       } deriving stock (Show, Eq)
+     ```
+     The writer does *not* wait, does *not* poll, and does *not* overwrite.
+  3. *Postgres Mapping:* Under Postgres, writers acquire an advisory transaction lock:
+     `SELECT pg_try_advisory_xact_lock(hashtext(session_id))`. If `False`, immediately throw
+     `SessionConcurrencyLockError`.
+  4. *Heartbeats & Crash Recovery:* The active process renews its lease periodically
+     (heartbeat interval = $\frac{1}{3}\text{lease\_timeout}$). If an agent process crashes
+     abruptly (`SIGKILL`), the lease expires after `lease_timeout_ms` (default: 15 seconds),
+     permitting subsequent invocations to acquire the session safely with an advisory warning.
+     An explicit CLI flag `--force-break-lock` is required to break an active, unexpired lease.
 - Cross-session aggregates (fleet dashboards, global retrieval) are read-only projections
   over the union stream, eventually consistent by design — no distributed-transaction
   machinery is admitted.
@@ -523,8 +573,11 @@ happen against these numbers, not against intuition.
 3. The `PolicyEffect` encoding — now spec'd in §5.1.4 v0.2 (decisions phantom-tagged by
    a closed kind, capability-row components, single-writer turn program, consent proof);
    adoption via the six-scenario expressiveness trial at implementation time.
-4. Retrieval backends: lexical index shape (§5.3) and whether embeddings land in Phase 2
-   or 3 (hokora ships lexical only) — decided by the §8.2 precision@k crossover.
+4. ~~Retrieval backends: interim bridge settled.~~ Resolved in §5.3 — the pluggable
+   `RetrievalReducer` interface and SQLite FTS5 interim baseline are fixed architecturally.
+   The precision@k / latency crossover comparing in-memory BM25 vs SQLite FTS5 vs vector
+   embeddings is an empirical question evaluated by the §8.2 grid sweep in `kakegoe` once
+   the Phase 2 runtime is operable.
 5. ~~The `SomeRow` tagging scheme for `(kind, schemaV)`.~~ Resolved — worked example in
    §3.4a (witness registry, strict-across/lenient-within, evolution by replay); the
    generalization requirements feed the catalog's `SomeRow` standard.

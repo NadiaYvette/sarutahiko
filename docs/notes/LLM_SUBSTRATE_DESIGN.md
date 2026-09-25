@@ -165,10 +165,10 @@ usage events.
 The central objection to writing provider codecs from scratch (the "codec maintenance
 problem", `DESIGN_REVIEW.md` §6 Tension 5) is that external model provider wire APIs drift,
 add subtle streaming nuances, and change chunking conventions across releases.
-Under the **kogaki strategy** (transposed from the internationalisation and Unicode
-methodology of `registers/REUSE_REGISTER.md` 2.22 and `docs/transcripts/kogaki-i18n-unicode.md`),
-this burden is managed by a principled five-part discipline rather than ongoing ad-hoc
-triage:
+Under the **kogaki strategy** (specified program-wide in `KOGAKI_DESIGN.md`,
+transposing the Unicode/i18n doctrine from `registers/REUSE_REGISTER.md` 2.22 and
+`docs/transcripts/kogaki-i18n-unicode.md`), this burden is managed by a principled
+five-part discipline rather than ongoing ad-hoc triage:
 
 1. **Upstream Source Analysis (Reference Donors):**
    Rather than adopting third-party SDKs as nominal dependencies (which violates the

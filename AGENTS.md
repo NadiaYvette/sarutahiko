@@ -40,6 +40,7 @@ code implements blessed designs.
 | Codec quirks | `docs/registers/CODEC_QUIRKS.md` | living; fixture-backed rows |
 | Documentation policy | `docs/notes/DOC_STRATEGY.md` | lifecycle, flags, canonicity |
 | Observability | `docs/notes/OBSERVABILITY_DESIGN.md` | kagami-ita: events, tracing, metrics, replay |
+| Kogaki / Codecs | `docs/notes/KOGAKI_DESIGN.md` | Unicode/i18n, LLM & protocol codecs, oracles |
 | Corpus index | `docs/INDEX.md` | inventory + reading paths |
 | Glossary | `docs/registers/GLOSSARY.md` | term index; add entries same-change |
 
