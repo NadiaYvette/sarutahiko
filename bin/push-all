@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # bin/push-all — multi-remote batched fan-out per INFRASTRUCTURE.md §7 & §12.
-set -euo pipefail
+set -uo pipefail
 
 echo "==> Pushing master to GitHub..."
-git push github master --follow-tags
+git push github master --follow-tags || echo "Warning: github push failed"
 
-echo "==> Pushing master to all mirrors (Disroot, Framagit, GitCode)..."
-git push all master --follow-tags
+echo "==> Pushing master to Disroot..."
+git push disroot master --follow-tags || echo "Warning: disroot push failed"
+
+echo "==> Pushing master to Framagit..."
+git push framagit master --follow-tags || echo "Warning: framagit push failed"
+
+echo "==> Pushing master to GitCode..."
+git push gitcode master --follow-tags || echo "Warning: gitcode push failed (remote repository may not exist yet)"
 
 echo "==> Pushing master to Radicle..."
 git push rad master || echo "Warning: rad push encountered an issue, check radicle node status"
 
-echo "==> Batched push complete."
+echo "==> Batched push fan-out complete."
