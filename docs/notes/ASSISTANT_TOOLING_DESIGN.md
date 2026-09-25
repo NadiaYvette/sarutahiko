@@ -675,7 +675,7 @@ Qdrant, or Pinecone), nor does it require a PostgreSQL server with `pgvector`.
 
 ### 9.3 Native Haskell Tree-Sitter & Ctags (Wagner-Graham Incremental GLR Parsing)
 
-In [`docs/Reimplementing Tree-sitter and Ctags in Haskell.md`](../Reimplementing%20Tree-sitter%20and%20Ctags%20in%20Haskell.md), an extensive architectural study
+In [`docs/transcripts/treesitter-ctags-incremental-parsing.md`](../transcripts/treesitter-ctags-incremental-parsing.md), an extensive architectural study
 analyzes the mechanics of native Haskell syntax analysis:
 - **Wagner-Graham Incremental GLR Parsing:**
   Standard parsers re-tokenize the entire file on every keystroke. Tree-sitter's brilliance

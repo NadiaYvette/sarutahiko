@@ -18,7 +18,7 @@ Sources consolidated by this plan:
 - `docs/imports/HERMES_DESIGN.md` — the component inventory being replaced: plugin system, execution
   surfaces, CLI structure, MCP/JSON-RPC embedding, TUI/gateway/ACP surfaces.
 - `docs/imports/hermes_components.dot` — the dependency graph to be re-homed package by package.
-- `docs/Reimplementing Tree-sitter and Ctags in Haskell.md` — the code-intelligence workstream
+- `docs/transcripts/treesitter-ctags-incremental-parsing.md` — the code-intelligence workstream
   (incremental GLR parsing, tags indexing, RTS-friendly pure core).
 
 ---

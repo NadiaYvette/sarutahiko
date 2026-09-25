@@ -41,7 +41,7 @@ and are checked by the script net (§5).
 | `transcripts/kogaki-i18n-unicode.md` | transcript | archive | cross-cutting (i18n/kogaki recon) | — |
 | `transcripts/noh-writing-motifs.md` | transcript | archive | cross-cutting (naming recon) | — |
 | `transcripts/web-style-guides.md` | transcript | archive | cross-cutting (style survey) | — |
-| `Reimplementing Tree-sitter and Ctags in Haskell.md` | study (transcript) | archive | cross-cutting (parsing, code intelligence) | — |
+| `transcripts/treesitter-ctags-incremental-parsing.md` | transcript | archive | cross-cutting (parsing, code intelligence) | — |
 | `../.agents/docs/NEWBIE_GUIDE.md` | guide (tooling) | living | cross-cutting (assistant newbie quickstart) | — |
 | `../.agents/docs/MAINTAINER_GUIDE.md` | guide (tooling) | living | cross-cutting (assistant maintainer guide) | — |
 

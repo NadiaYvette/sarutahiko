@@ -1,5 +1,11 @@
 # **Reimplementing Tree-sitter and Ctags in Haskell**
 
+> **Provenance:** archived Gemini conversation transcript (Gemini app, 2026-09; URL below),
+> imported verbatim 2026-09-24. Genre: `transcript` — a primary-source record of the
+> program's origin discussions, not a design document; citable as reasoning history,
+> never as canon (DOC_STRATEGY §1 canonicity table, §5). Filename assigned by topic,
+> freely renamable; original title retained above.
+
 [https://gemini.google.com/app/1ac2ec37f5066213](https://gemini.google.com/app/1ac2ec37f5066213)
 
 &nbsp;
