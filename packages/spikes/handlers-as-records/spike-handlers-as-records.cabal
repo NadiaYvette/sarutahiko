@@ -1,0 +1,47 @@
+cabal-version:      3.14
+name:               spike-handlers-as-records
+version:            0.1.0.0
+synopsis:           Empirical spike: Handlers-as-Records dynamic dispatch overhead
+license:            BSD-3-Clause
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -O2
+
+library
+    import:           commons
+    exposed-modules:  Spike
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        effectful-core,
+        polysemy,
+        large-anon,
+        sarutahiko-records
+    hs-source-dirs:   src
+
+benchmark spike-handlers-as-records-bench
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   bench
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
+        effectful-core,
+        polysemy,
+        large-anon,
+        spike-handlers-as-records

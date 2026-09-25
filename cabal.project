@@ -7,6 +7,7 @@ packages:
     packages/sarutahiko-effect-effectful
     packages/sarutahiko-effect-polysemy
     packages/sarutahiko-effect-testkit
+    packages/spikes/handlers-as-records
 
 optional-packages:
     ../large-records-interfaces/large-anon
