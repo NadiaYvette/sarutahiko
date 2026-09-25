@@ -23,13 +23,44 @@ common commons
 
 library
     import:           commons
-    exposed-modules:  Sarutahiko.Records
+    exposed-modules:
+        Sarutahiko.Records
+        Sarutahiko.Records.HKD.TriState
+        Sarutahiko.Records.Envelope
+        Sarutahiko.Records.Combinators
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,
+        containers >= 0.6,
         text >= 2.1,
         vector >= 0.13,
         primitive >= 0.9,
         sarutahiko-fields >= 0.1,
         large-anon
     hs-source-dirs:   src
+
+test-suite test
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    other-modules:    Laws.CombinatorLaws
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        sarutahiko-fields,
+        sarutahiko-records,
+        large-anon
+
+benchmark bench
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          CompileTime40Col.hs
+    hs-source-dirs:   bench
+    build-depends:
+        base >= 4.20 && < 5,
+        time >= 1.12,
+        sarutahiko-records,
+        large-anon
