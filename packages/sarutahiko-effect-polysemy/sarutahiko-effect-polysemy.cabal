@@ -23,9 +23,17 @@ common commons
 
 library
     import:           commons
-    exposed-modules:  Sarutahiko.Effect.Polysemy
+    exposed-modules:
+        Sarutahiko.Effect.Polysemy
+        Sarutahiko.Effect.Interpreter.Polysemy
     build-depends:
         base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
         polysemy >= 1.9,
-        sarutahiko-effect-signatures >= 0.1
+        sarutahiko-records >= 0.1,
+        sarutahiko-effect-signatures >= 0.1,
+        sarutahiko-effect-effectful >= 0.1
     hs-source-dirs:   src

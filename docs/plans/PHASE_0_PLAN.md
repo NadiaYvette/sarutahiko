@@ -1,6 +1,6 @@
 # Phase 0 Implementation Plan — Foundations, Spikes & Task Packets
 
-Status: DRAFT v0.1 · 2026-09-25 — The operational work breakdown structure (WBS)
+Status: COMPLETED · 2026-09-25 — The operational work breakdown structure (WBS)
 and hermetic task packets for Phase 0 execution.
 Related: `NIH_PLAN.md` (§2 package map, §3.3 wire contracts, §4 roadmap),
 `FIELDS_RECORDS_DESIGN.md` (HKD, evolution E1–E7, combinators),
@@ -219,28 +219,28 @@ The following six task packets represent the sequential execution units of Phase
 Each packet is self-contained and verifiable via deterministic CLI commands.
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          PHASE 0 TASK PACKETS                               │
-├────────────┬─────────────────────────────┬──────────────────────────────────┤
-│ Packet ID  │ Target Scope                │ Deliverables                     │
-├────────────┼─────────────────────────────┼──────────────────────────────────┤
-│ **TP-0.1** │ Project Root & Scaffolding  │ `cabal.project`, commons stanza, │
-│            │                             │ directory stubs                  │
-├────────────┼─────────────────────────────┼──────────────────────────────────┤
-│ **TP-0.2** │ `sarutahiko-fields`         │ First-class field datums,        │
-│            │                             │ witnesses, CD1–CD2 registry      │
-├────────────┼─────────────────────────────┼──────────────────────────────────┤
-│ **TP-0.3** │ `sarutahiko-records`        │ HKD `TriState`, `WireEnvelope`,  │
-│            │                             │ `(⊕)` merge, 40-col bench        │
-├────────────┼─────────────────────────────┼──────────────────────────────────┤
-│ **TP-0.4** │ Spike Execution             │ Handlers-as-Records Criterion    │
-│            │                             │ benchmark & adjudication         │
-├────────────┼─────────────────────────────┼──────────────────────────────────┤
-│ **TP-0.5** │ `effect-signatures`         │ The Minimal Core GADTs & Stepper │
-├────────────┼─────────────────────────────┼──────────────────────────────────┤
-│ **TP-0.6** │ Dual Interpreter Bridges    │ `effectful` & `polysemy` parity  │
-│            │                             │ testkit in CI                    │
-└────────────┴─────────────────────────────┴──────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 PHASE 0 TASK PACKETS                                   │
+├────────────┬─────────────────────────────┬──────────────────────────────────┬──────────┤
+│ Packet ID  │ Target Scope                │ Deliverables                     │ Status   │
+├────────────┼─────────────────────────────┼──────────────────────────────────┼──────────┤
+│ **TP-0.1** │ Project Root & Scaffolding  │ `cabal.project`, commons stanza, │ COMPLETE │
+│            │                             │ directory stubs                  │          │
+├────────────┼─────────────────────────────┼──────────────────────────────────┼──────────┤
+│ **TP-0.2** │ `sarutahiko-fields`         │ First-class field datums,        │ COMPLETE │
+│            │                             │ witnesses, CD1–CD2 registry      │          │
+├────────────┼─────────────────────────────┼──────────────────────────────────┼──────────┤
+│ **TP-0.3** │ `sarutahiko-records`        │ HKD `TriState`, `WireEnvelope`,  │ COMPLETE │
+│            │                             │ `(⊕)` merge, 40-col bench        │          │
+├────────────┼─────────────────────────────┼──────────────────────────────────┼──────────┤
+│ **TP-0.4** │ Spike Execution             │ Handlers-as-Records Criterion    │ COMPLETE │
+│            │                             │ benchmark & adjudication         │          │
+├────────────┼─────────────────────────────┼──────────────────────────────────┼──────────┤
+│ **TP-0.5** │ `effect-signatures`         │ The Minimal Core GADTs & Stepper │ COMPLETE │
+├────────────┼─────────────────────────────┼──────────────────────────────────┼──────────┤
+│ **TP-0.6** │ Dual Interpreter Bridges    │ `effectful` & `polysemy` parity  │ COMPLETE │
+│            │                             │ testkit in CI                    │          │
+└────────────┴─────────────────────────────┴──────────────────────────────────┴──────────┘
 ```
 
 ---

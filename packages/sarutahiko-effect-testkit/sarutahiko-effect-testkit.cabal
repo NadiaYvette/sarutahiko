@@ -23,12 +23,30 @@ common commons
 
 library
     import:           commons
-    exposed-modules:  Sarutahiko.Effect.TestKit
+    exposed-modules:
+        Sarutahiko.Effect.TestKit
+        Sarutahiko.Effect.Testkit.Parity
     build-depends:
         base >= 4.20 && < 5,
-        tasty >= 1.5,
-        hedgehog >= 1.4,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
+        effectful-core >= 2.3,
+        polysemy >= 1.9,
+        large-anon,
+        sarutahiko-records >= 0.1,
         sarutahiko-effect-signatures >= 0.1,
         sarutahiko-effect-effectful >= 0.1,
         sarutahiko-effect-polysemy >= 0.1
     hs-source-dirs:   src
+
+test-suite test
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        time >= 1.12,
+        sarutahiko-effect-testkit

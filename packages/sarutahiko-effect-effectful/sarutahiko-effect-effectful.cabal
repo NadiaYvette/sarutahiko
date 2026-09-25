@@ -23,9 +23,16 @@ common commons
 
 library
     import:           commons
-    exposed-modules:  Sarutahiko.Effect.Effectful
+    exposed-modules:
+        Sarutahiko.Effect.Effectful
+        Sarutahiko.Effect.Interpreter.Effectful
     build-depends:
         base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
         effectful-core >= 2.3,
+        sarutahiko-records >= 0.1,
         sarutahiko-effect-signatures >= 0.1
     hs-source-dirs:   src

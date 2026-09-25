@@ -1,9 +1,10 @@
 -- |
 -- Module      : Sarutahiko.Effect.Effectful
--- Description : Effectful production interpreters
+-- Description : Top-level Effectful interpreter bridge for neutral signatures
+--
+-- Exposes Effectful production and test interpreters per EFFECT_CATALOG_DESIGN.md.
 module Sarutahiko.Effect.Effectful
-  ( -- * Effectful bridge
-    module Sarutahiko.Effect.Signatures
+  ( module Sarutahiko.Effect.Interpreter.Effectful
   ) where
 
-import Sarutahiko.Effect.Signatures
+import Sarutahiko.Effect.Interpreter.Effectful

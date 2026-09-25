@@ -1,9 +1,10 @@
 -- |
 -- Module      : Sarutahiko.Effect.Polysemy
--- Description : Polysemy seam compatibility adapter
+-- Description : Top-level Polysemy interpreter bridge for neutral signatures
+--
+-- Exposes Polysemy seam compatibility interpreters per EFFECT_CATALOG_DESIGN.md.
 module Sarutahiko.Effect.Polysemy
-  ( -- * Polysemy bridge
-    module Sarutahiko.Effect.Signatures
+  ( module Sarutahiko.Effect.Interpreter.Polysemy
   ) where
 
-import Sarutahiko.Effect.Signatures
+import Sarutahiko.Effect.Interpreter.Polysemy

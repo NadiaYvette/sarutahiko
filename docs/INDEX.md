@@ -28,7 +28,7 @@ and are checked by the script net (§5).
 | `notes/OBSERVABILITY_DESIGN.md` | design | draft | cross-cutting (observability) | — |
 | `notes/KOGAKI_DESIGN.md` | design | draft | cross-cutting (Unicode, codecs, faithfulness) | — |
 | `notes/ASSISTANT_TOOLING_DESIGN.md` | design | draft | cross-cutting (assistant tooling, code intelligence & configuration) | — |
-| `plans/PHASE_0_PLAN.md` | plan | draft | substrate (implementation phase 0) | — |
+| `plans/PHASE_0_PLAN.md` | plan | complete | substrate (implementation phase 0) | — |
 | `plans/PHASE_1_PLAN.md` | plan | draft | wire (implementation phase 1) | — |
 | `plans/PHASE_1.5_PLAN.md` | plan | draft | cross-cutting (vertical slice phase 1.5) | — |
 | `registers/REUSE_REGISTER.md` | register | living | cross-cutting | — |
