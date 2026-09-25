@@ -105,7 +105,7 @@ cabal.project as it grows):
 
 | Package | Contents | NIH-of |
 |---|---|---|
-| `sarutahiko-parse` | Incremental GLR per Wagner–Graham: CST nodes as anonymous records of monoidal annotations; damage tracking via finger-tree/2-3 refold; subtree reuse; re-synchronization; error recovery. | tree-sitter |
+| `sarutahiko-parse` | Incremental GLR per Wagner–Graham and row-typed effect-oriented Earley chart parsing: CST nodes as anonymous records of monoidal annotations; damage tracking via finger-tree/2-3 refold; subtree reuse; re-synchronization; error recovery. | tree-sitter / Earley |
 | `sarutahiko-tags` | Shallow index extraction: FSM/regex opt-in per language, scope stack, then query-based extraction over `sarutahiko-parse` trees. | ctags / universal-ctags |
 
 ### Tier 5 — Data

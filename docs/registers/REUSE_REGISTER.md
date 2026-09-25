@@ -414,3 +414,11 @@ the ASCII minimum (Phase 3), or with the i18n package (2.21) whichever comes fir
 - **kiroku / shibuya / keiro / kioku** (keiro stack): interop-first contact strategy
   (NIH_PLAN); reuse-or-reimplement is not currently posed — hashigakari reads/writes
   their formats; deeper integration decisions wait for the contact spike.
+- **megaparsec / attoparsec / happy / tree-sitter** (parser combinators & GLR generators):
+  Standard Hackage parser combinator libraries are closed monad transformers parsing
+  into nominal ADTs. They resist algebraic effect interleaving (`Eff es`), cannot
+  annotate parse items with extensible records (`Record f r`), and require unnatural
+  grammar mutilation (eliminating left recursion, factoring). In `sarutahiko-parse`,
+  we NIH a row-typed, effect-oriented Earley chart parser alongside Wagner–Graham
+  incremental GLR parsing, taking grammars as written (Predict/Scan/Complete) and
+  annotating parse items directly with anonymous records. Trigger: Tier 4 code intelligence.
