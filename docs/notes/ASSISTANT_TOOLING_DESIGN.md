@@ -147,75 +147,159 @@ Tier 0: Vanilla POSIX Baseline (git, cabal, standard shell tools) [MANDATORY]
   `run_command`).
 - **Guarantee:** No external tool or daemon is mandatory for compilation, testing, or contributing.
 
+### 2.2 The Local Tooling Inventory
+
+An audit of the local development environment reveals a rich, already-installed
+suite of AST-aware and agent-specialized tools:
+
+| Binary | Location | Primary Role & Capabilities |
+|---|---|---|
+| **`ast-grep` (`sg`)** | `~/.cargo/bin/ast-grep` | Ultra-fast structural code search, linting, and rewrite using tree-sitter syntax trees. |
+| **`topiary`** | `~/.cargo/bin/topiary` | Tree-sitter-based universal code formatter (Tweag) driven by tree-sitter query files. |
+| **`tsquery`** | `~/.local/bin/tsquery` | Dedicated CLI for executing raw tree-sitter S-expression queries against source files. |
+| **`hasktags`** | `/usr/bin/hasktags` | Instant Haskell symbol indexer; scans `packages/` in $<0.1\text{s}$ generating `tags`. |
+| **`ctags`** | `/usr/bin/ctags` | Universal Ctags fallback for multi-language symbol extraction. |
+| **`cabal-fmt`** | `~/.local/bin/cabal-fmt` | Deterministic formatter for `.cabal` package definition files. |
+
+### 2.3 `tricorder` (`~/src/tricorder/`): Background GHCi Daemon for AI Agents
+
+`~/src/tricorder/` is a specialized developer tool built specifically for **Haskell + LLM coding agents**:
+- **Continuous Background Compilation:** Runs a persistent GHCi daemon that monitors all packages
+  in a `cabal.project` workspace, rebuilding incrementally on file change events.
+- **Token Conservation Advantage:** Instead of an AI assistant executing a full `cabal build all`
+  (which dumps 200–500 lines of terminal output and takes 5–15 seconds), the agent queries:
+  ```bash
+  tricorder status --json
+  ```
+  or connects directly to the bundled **`tricorder-mcp`** server. The assistant receives only
+  structured JSON diagnostics (`file`, `line`, `col`, `message`) in $<50$ tokens.
+- **Dependency Source Exploration:** Provides `tricorder source Some.Module` to retrieve the
+  exact source of a dependency from disk without guessing package paths.
+
+### 2.4 `haskell-language-server` (`~/src/haskell-language-server/`)
+
+The canonical Haskell Language Server (HLS) provides full semantic type checking, definition
+jumps, and cross-references. While heavy to run continuously in resource-constrained environments,
+HLS can be bridged to AI assistants via:
+1. **Editor Bridge:** Zed, Cursor, or VS Code passing LSP diagnostics to the AI assistant.
+2. **LSP-to-MCP Bridge:** Running an MCP adapter that exposes HLS `textDocument/definition` and
+   `textDocument/hover` as callable agent tools.
+
+---
+
+## 3. Context Engines & Memory Providers: Off-the-Shelf vs. In-Tree
+
+AI coding assistants require two levels of memory:
+1. **Working Memory (Context Engine):** Manages the in-flight conversation context window.
+2. **Long-Term Memory (Memory Provider):** Retains facts, decisions, and past turns across sessions.
+
+### 3.1 Off-the-Shelf Solutions (Available Today)
+
+Where off-the-shelf components exist and how to obtain them:
+
+| Category | Product / Package | Source & Installation | Mechanism |
+|---|---|---|---|
+| **Context Engine** | **Continue.dev Context Providers** | `npm install -g @continuedev/core` | Extensible `@codebase` (vector search via LanceDB), `@docs`, and `@diff` context injecters. |
+| **Context Engine** | **Antigravity / Claude Compactors** | Built-in to REPL harnesses | Sliding-window summarization: compresses older turns when context reaches 80% capacity. |
+| **Context Engine** | **Mem0 / Letta** | `pip install mem0ai` / `letta` | Automatically extracts facts, user preferences, and project decisions into a local graph/vector store. |
+| **Memory Provider** | **Anthropic Memory MCP Server** | `npm install -g @modelcontextprotocol/server-memory` | Official reference MCP memory server: stores entities, relations, and observations as a local JSON graph. |
+| **Memory Provider** | **SQLite-vec MCP Server** | `pip install mcp-server-sqlite` / npm | Local SQLite database with vector similarity extensions, exposed over stdio as an MCP server. |
+| **Memory Provider** | **Chroma / Qdrant MCP** | Docker / pip / npm | Local vector database running local embedding models (e.g. `all-MiniLM-L6-v2`) for semantic code search. |
+
+### 3.2 In-Tree `sarutahiko` Vision: Utaibon (謡本)
+
+While off-the-shelf memory servers provide immediate utility, they have critical limitations
+for high-assurance Haskell development:
+- **Lossy & Unstructured:** Vector similarity search frequently retrieves syntactically similar
+  snippets that are semantically irrelevant or hallucinated.
+- **No Concurrency Safety:** Multiple agent sessions writing to the same knowledge graph risk
+  corrupting or interleaving facts.
+
+**Utaibon's Event-Sourced Architecture ([`MEMORY_ENGINE_DESIGN.md`](../notes/MEMORY_ENGINE_DESIGN.md)):**
+- **Strict Event Log:** Every turn is an immutable row in SQLite `session_events` with spine v0.2.
+- **Fail-Closed Session Locking:** Atomic lease acquisition via `session_locks` with `BEGIN IMMEDIATE`.
+- **Pure Fold Reducers:** Retrieval, checkpoints, and session history are pure left-folds over the
+  event log, guaranteeing bit-identical replay (RPL-1).
+- **Prompt-Cache Alignment:** Invariant ordering C1–C6 guarantees maximum prefix sharing for
+  hardware prompt caches.
+
+---
+
+## 4. The Graceful Degradation Hierarchy
+
+A fundamental design tension in AI assistant engineering is:
+1. **Developer Accessibility:** Anyone should be able to clone the repo and run `cabal build`
+   with standard GHC tools, without having to configure complex language daemons,
+   background containers, or proprietary IDE extensions.
+2. **Agent Efficiency:** An assistant should leverage all available code intelligence
+   tools to minimize token burn and latency.
+
+To reconcile these goals, `sarutahiko` enforces a **four-tier graceful degradation hierarchy**:
+
+```
+Tier 3: Full Semantic Suite (LSP / HLS, Background MCP sidecars, tricorder-mcp) [Optional]
+   ▲
+Tier 2: Structural AST Search (tree-sitter, ast-grep, topiary) [Optional]
+   ▲
+Tier 1: Shallow Symbol Index (ctags, hasktags via bin/generate-tags) [Lightweight, Opt-In]
+   ▲
+Tier 0: Vanilla POSIX Baseline (git, cabal, standard shell tools) [MANDATORY]
+```
+
+### Tier 0: Vanilla POSIX Baseline (The Inviolable Floor)
+- **Prerequisites:** GHC 9.12/9.14, Cabal 3.14+, git, standard POSIX utilities (`grep`, `find`).
+- **Behavior:** The codebase builds, tests, and documents with standard cabal commands.
+  AI coding assistants operate using standard file tools (`view_file`, `replace_file_content`,
+  `run_command`).
+- **Guarantee:** No external tool or daemon is mandatory for compilation, testing, or contributing.
+
 ### Tier 1: Shallow Symbol Index (`hasktags` / `ctags`)
-- **Prerequisites:** `hasktags` (installed via `cabal install hasktags`) or Universal Ctags.
-- **Configuration:** Generated via `make tags` or `hasktags -c packages/`. The resulting
-  `tags` file is strictly `.gitignore`d.
+- **Prerequisites:** `hasktags` or Universal Ctags.
+- **Configuration:** Generated via `./bin/generate-tags`. Output file `./tags` is `.gitignore`d.
 - **Behavior:** Assistant REPLs use `grep -w "^SymbolName" tags` to locate definitions
   instantly, reading targeted slices via `view_file` rather than broad scans.
 
-### Tier 2: Structural AST Search (`ast-grep` / `tree-sitter`)
-- **Prerequisites:** `ast-grep` binary available in `PATH`.
-- **Configuration:** Project-level rules stored in `.ast-grep/` (optional).
+### Tier 2: Structural AST Search (`ast-grep` / `topiary`)
+- **Prerequisites:** `ast-grep` (`sg`) or `topiary` in `PATH`.
 - **Behavior:** Assistant uses structural pattern matching for refactors (e.g. renaming
   record fields, auditing GADT constructors) without regex false positives.
 
 ### Tier 3: Semantic LSP & MCP Sidecars (Maximum Capability)
-- **Prerequisites:** `haskell-language-server` (HLS) or custom MCP servers.
-- **Configuration:** Defined in user-local or optional workspace MCP configs (`mcp_config.json`).
-- **Behavior:** Full semantic hover, auto-completion, and definition lookups exposed directly
-  as MCP tools to the agent. If absent, the agent seamlessly falls back to Tier 1/0.
+- **Prerequisites:** `tricorder`, `haskell-language-server`, or external MCP memory servers.
+- **Configuration:** Defined in optional workspace MCP configs (`mcp_config.json`).
+- **Behavior:** Continuous background diagnostics and semantic type search. If absent, the
+  assistant seamlessly falls back to Tier 1/0.
 
 ---
 
-## 4. Configuration Guide for AI Coding Assistant REPLs
+## 5. Practical Guide for Newbies & Maintainers
 
-This section serves as a practical orientation for configuring and driving AI coding
-assistant REPLs on this repository.
+### 5.1 Newbie Quickstart: Keeping Token Burn Minimal
+If you are running an AI coding assistant REPL on this codebase and want to minimize token costs:
 
-### 4.1 Project-Level Rule Invariants (`AGENTS.md`)
-`AGENTS.md` at the project root is the canonical **orientation projection**:
-- It is read automatically by compliant AI assistant REPLs (Antigravity, Codebuff,
-  Claude Code, Aider).
-- **Budget Discipline:** Kept to $\sim 4\text{ KB}$ per `DOC_STRATEGY.md` §7.
-- **Directing Attention:** It contains pointers to canonical documents rather than
-  reproducing specifications, preventing context window bloat during initial orientation.
+1. **Generate the Symbol Tags:**
+   ```bash
+   ./bin/generate-tags
+   ```
+2. **Never Dump Full Modules:**
+   - Instead of asking the assistant to *"read all packages to find where Field is"*, ask:
+     *"Find where Field is defined using tags and show only the definition."*
+   - The assistant will query `tags` and view just lines 10–25 of `Sarutahiko/Fields.hs` (20 tokens vs 2,000 tokens).
+3. **Use Structural Search for Code Audits:**
+   ```bash
+   # Find all data type definitions across packages
+   sg -p 'data $NAME = $$$CONSTRUCTORS' packages/
+   ```
+4. **Use Autonomous Mode for Complete Task Packets:**
+   - Type `/goal` when starting a task packet (e.g. TP-0.2) so the assistant can write modules,
+     run compiler checks, and commit locally without back-and-forth prompting.
 
-### 4.2 Local Workspace Skills (`.agents/skills/`)
-Skills codify multi-step procedural workflows into version-controlled markdown runbooks:
-- **Location:** `.agents/skills/<skill-name>/SKILL.md`
-- **Structure:**
-  ```markdown
-  ---
-  name: cabal-package-check
-  description: Verifies cabal package bounds, commons imports, and compiles warning-free.
-  ---
-  # Instructions for Cabal Package Verification
-  1. Run `cabal check` inside the target package directory.
-  2. Verify that GHC2024 commons are imported.
-  3. Ensure base bounds are `>= 4.20 && < 5`.
-  ```
-- **How It Saves Tokens:** The agent's system prompt only contains the name and description
-  (~40 tokens). The body is loaded into context *only when the agent decides to execute that check*.
-
-### 4.3 Interactive Slash Commands
-- **`/goal`:** Transitions the agent into an autonomous, long-running execution mode.
-  Recommended when executing a complete task packet (e.g. TP-0.2) where the agent
-  can write modules, run `cabal build`, fix compiler warnings, and commit locally
-  without requiring user prompts at every intermediate step.
-- **`/plan`:** Requests an interactive, structured work breakdown before code modifications.
-
----
-
-## 5. Architectural Recommendations for `sarutahiko`
-
-1. **Adopt Tier 1 `hasktags` Generation in Project Scripts:**  
-   Provide a zero-dependency script `bin/generate-tags` that runs `hasktags` if present,
-   generating a local `tags` file ignored by git.
-2. **Preserve Progressive Disclosure in All Documentation:**  
-   Keep root files (`README.md`, `AGENTS.md`) compact and pointer-rich. Never embed full
-   task packet implementations in orientation files.
-3. **Encapsulate Code Intelligence within Tier 4 (`sarutahiko-parse` / `sarutahiko-tags`):**  
-   In Phase 4, our own internal `sarutahiko-parse` (Earley chart parser) and `sarutahiko-tags`
-   will provide native, row-typed code intelligence, making `sarutahiko` completely
-   self-hosting for its own AI coding assistant capabilities without external dependencies.
+### 5.2 Maintainer Guide: Repository Hygiene & Progressive Disclosure
+1. **Keep `AGENTS.md` and `README.md` Lean:**  
+   Always obey the $\sim 4\text{ KB}$ budget in `AGENTS.md`. Add pointer links, never inline
+   large implementations.
+2. **Keep `.agents/skills/` Modular:**  
+   Write self-contained, single-purpose skills (`.agents/skills/<name>/SKILL.md`). The system
+   prompt only displays the 2-line description until activated.
+3. **Keep `tags` Ignored:**  
+   Ensure generated index files (`tags`, `TAGS`, `.ghc.environment.*`) remain strictly in `.gitignore`.

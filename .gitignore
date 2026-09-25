@@ -10,3 +10,7 @@ dist-newstyle/
 
 # GHC environment files
 .ghc.environment.*
+
+# Tags files
+tags
+TAGS
