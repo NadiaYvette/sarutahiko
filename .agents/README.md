@@ -3,6 +3,8 @@
 **Status:** Active Bootstrapping Environment · Governed under [`docs/notes/DOC_STRATEGY.md`](../docs/notes/DOC_STRATEGY.md)  
 **Canonical Specification:** [`docs/notes/ASSISTANT_TOOLING_DESIGN.md`](../docs/notes/ASSISTANT_TOOLING_DESIGN.md)  
 **Orientation Projection:** [`AGENTS.md`](../AGENTS.md)  
+**User Guides:** [`NEWBIE_GUIDE.md`](docs/NEWBIE_GUIDE.md) · [`MAINTAINER_GUIDE.md`](docs/MAINTAINER_GUIDE.md)  
+
 
 ---
 

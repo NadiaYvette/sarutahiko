@@ -276,97 +276,21 @@ Tier 0: Vanilla POSIX Baseline (git, cabal, standard shell tools) [MANDATORY]
 
 Per [`DOC_STRATEGY.md`](../notes/DOC_STRATEGY.md), the assistant configuration environment
 (`.agents/`, `.mcp.json`, and associated skills, rules, and scripts) is formally elevated
-to an **honorary package** within the repository: `sarutahiko-tooling`. While not a Cabal
-library distributed to Hackage, it possesses its own contracts, degradation hierarchy,
-lifecycle, and strict boundaries.
+to an **honorary package** within the repository: [`sarutahiko-tooling`](../../.agents/README.md).
+While not a Cabal library distributed to Hackage, it possesses its own contracts, degradation
+hierarchy, lifecycle, and strict boundaries.
 
-### 5.1 Newbie Quickstart: Keeping Token Burn Minimal via the Bootstrapping Suite
+Its user-facing documentation has been split into dedicated package guides:
 
-If you are a newcomer or AI coding assistant running a REPL in this workspace, you have
-immediate access to our **bootstrapping toolchain** (leveraging Tweag's `tricorder`,
-Nadeem Bitar's `shikumi`, Contextful, and fast symbol indices):
-
-1. **Instant Compiler Checks via Tricorder (<50 tokens):**
-   - Instead of running `cabal build all` (which consumes 200–500 lines of terminal output
-     and ~2,500 tokens), query structured diagnostics:
-     ```bash
-     tricorder status --json
-     ```
-   - If `tricorder-mcp` is active in `.mcp.json`, call the MCP tool `status(wait: true)`.
-     The assistant receives only machine-readable errors/warnings with zero terminal clutter.
-
-2. **Never Dump Full Modules (The Progressive Disclosure Rule):**
-   - **Step 1 (Find):** Run `grep -w "^SymbolName" tags` (<15 tokens).
-   - **Step 2 (View):** Use `view_file` specifying `StartLine` and `EndLine` (±15 lines around
-     the symbol). Never read entire 500-line modules just to inspect a signature.
-
-3. **Structural Code Audits via `ast-grep`:**
-   - Use `sg` to search Concrete Syntax Trees directly without regex false positives:
-     ```bash
-     # Find all GADT effect signatures
-     sg -p 'data $NAME :: Effect where $$$CONSTRUCTORS' packages/
-
-     # Find all row-typed record definitions
-     sg -p 'type $NAME = Record $F $R' packages/
-     ```
-
-4. **Tracing & Replay via Nadeem's `shikumi`:**
-   - To inspect prompt assemblies, token usage, and tool executions from language-model runs:
-     ```bash
-     shikumi trace
-     ```
-   - To deterministically verify an execution without spending network tokens:
-     ```bash
-     shikumi replay <trace-id>
-     ```
-
-5. **Token-Budgeted Context Packs via `contextful`:**
-   - When researching cross-cutting features, query Contextful for an evidence pack bounded
-     by a strict token ceiling:
-     ```bash
-     cxf pack "effect handlers polysemy effectful" --max-tokens 1500
-     ```
-
-6. **The Inviolable Fallback (Tier 0 POSIX Baseline):**
-   - If any daemon, MCP server, or external binary fails or is absent:
-     ```bash
-     cabal build all
-     cabal test all
-     ```
-     The codebase *never* requires external daemons or specialized tooling to build and test.
-
----
-
-### 5.2 Maintainer Guide: Repository Hygiene, Honorary Package Governance & Self-Hosting
-
-1. **Honorary Package Boundaries (`sarutahiko-tooling`):**
-   - All assistant tooling configurations reside in `.agents/`, `.mcp.json`, or user-local
-     directories (`~/.local/bin/`).
-   - **Zero Cabal Contamination:** Bootstrapping tools (`tricorder`, `shikumi`, `kioku`,
-     `contextful`) must **never** be injected into core `cabal.project` package dependencies.
-     They operate strictly out-of-process via stdio IPC / MCP bridges.
-
-2. **The Bootstrapping to Self-Hosting Transition Lifecycle:**
-   `sarutahiko` follows a staged self-hosting plan:
-   - **Stage 1 (Current Bootstrap):** External tools (`tricorder-mcp`, `shikumi`, `kioku-core`,
-     `contextful`, `hasktags`) provide immediate developer acceleration and token savings.
-   - **Stage 2 (Hokora Vertical Slice — Phase 1.5):** In-tree SQLite event spine, fail-closed
-     leases, and RPL-1 deterministic replay harness replace external session tracking.
-   - **Stage 3 (Full Self-Hosting — Phase 2 & 3):** `sarutahiko-mcp` (in-tree MCP server),
-     `utaibon` (in-tree event memory with embedded SQLite FTS5 + `sqlite-vec`), and
-     `sarutahiko-parse` (in-tree Earley chart parser) replace the bootstrapping suite entirely.
-
-3. **Living Registers as External Memory:**
-   - Maintain the single-point-of-truth invariant: when adding dependencies, consult
-     [`REUSE_REGISTER.md`](../registers/REUSE_REGISTER.md); when recording provider wire
-     peculiarities, update [`CODEC_QUIRKS.md`](../registers/CODEC_QUIRKS.md).
-   - Obey the ~4 KB budget in [`AGENTS.md`](../../AGENTS.md). Keep orientation files as pointers;
-     never duplicate canonical architectural text.
-
-4. **Tag & Index Hygiene:**
-   - Keep generated files (`tags`, `TAGS`, `.ghc.environment.*`, `dist-newstyle/`) strictly
-     in `.gitignore`.
-   - Run `./bin/generate-tags` whenever modules or signatures are added or renamed.
+* **Newbie & Contributor Guide:** [`NEWBIE_GUIDE.md`](../../.agents/docs/NEWBIE_GUIDE.md)  
+  A step-by-step tutorial on keeping token burn minimal (<50 tokens per turn) using the
+  active bootstrapping suite (Tricorder GHCi daemon, Hasktags definition jumping, `ast-grep`
+  structural queries, and Nadeem's `shikumi` CLI).
+* **Maintainer & Self-Hosting Guide:** [`MAINTAINER_GUIDE.md`](../../.agents/docs/MAINTAINER_GUIDE.md)  
+  Architecture governance for maintainers: zero-contamination dependency boundaries, the
+  3-stage transition lifecycle from bootstrapping tools to self-hosted in-tree engines
+  (`sarutahiko-mcp`, `utaibon`, `sarutahiko-parse`), living register curation, and the
+  batched multi-remote push policy (`bin/push-all`).
 
 ---
 
