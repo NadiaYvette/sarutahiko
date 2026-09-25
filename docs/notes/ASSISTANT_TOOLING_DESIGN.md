@@ -303,3 +303,53 @@ If you are running an AI coding assistant REPL on this codebase and want to mini
    prompt only displays the 2-line description until activated.
 3. **Keep `tags` Ignored:**  
    Ensure generated index files (`tags`, `TAGS`, `.ghc.environment.*`) remain strictly in `.gitignore`.
+
+---
+
+## 6. The Packaging Precedent: Lessons from Tweag's Tricorder & agent-plugins.org
+
+An examination of Tweag’s [`tricorder`](file:///home/nyc/src/tricorder/) provides a valuable,
+real-world precedent for how AI agent capabilities should be packaged and distributed across
+diverse REPL platforms.
+
+### 6.1 The Unified `agent-plugins.org` Structure
+Rather than inventing an ad-hoc layout, `tricorder` adopts the emerging open standard
+schemas from `agent-plugins.org`:
+
+```
+agent-plugins/my-plugin/
+├── plugin.json         # Manifest schema: https://agent-plugins.org/schemas/1.0.0/plugin.schema.json
+├── mcp.json            # MCP server schema: https://agent-plugins.org/schemas/1.0.0/mcp.schema.json
+└── skills/             # On-demand markdown procedural runbooks
+    └── my-skill/
+        └── SKILL.md
+```
+
+- **`plugin.json`:** Holds canonical metadata (`name`, `description`, `version`, `keywords`).
+- **`mcp.json`:** Defines the server startup command using `${PLUGIN_ROOT}` variable
+  interpolation (e.g. `"${PLUGIN_ROOT}/servers/my-mcp-binary"`), ensuring the plugin remains
+  relocatable regardless of where it is installed.
+- **`skills/`:** Houses the progressive-disclosure runbooks (`SKILL.md`) that teach the LLM
+  how and when to invoke the tool.
+
+### 6.2 Multi-REPL Projections via Projections Directories
+A major operational challenge is supporting multiple AI coding assistants simultaneously
+(Claude Code, Antigravity, OpenAI Codex, Zed) without duplicating configuration code.
+`tricorder` demonstrates the projection pattern:
+- The canonical implementation lives in `agent-plugins/`.
+- Platform-specific adapter folders project this implementation cleanly:
+  - `.claude-plugin/marketplace.json` $\rightarrow$ points to `./agent-plugins/*`
+  - `.codex-plugin/` $\rightarrow$ points to `./agent-plugins/*`
+  - `.agents/plugins/marketplace.json` $\rightarrow$ points to `./agent-plugins/*`
+
+### 6.3 Application to `sarutahiko`
+`sarutahiko` adopts this precedent in two directions:
+1. **Outbound Capability Export (Phase 1 Wire Flagship):**  
+   When `sarutahiko-mcp` is delivered in Phase 1, it will package its tool catalog (record
+   introspection, schema translation, ReAct execution) using this exact `agent-plugins.org`
+   structure. Any external assistant (Claude Code, Cursor, Zed) can install `sarutahiko`
+   as an MCP plugin by pointing to its `marketplace.json`.
+2. **Inbound Developer Tooling (Zero-Contamination Consumption):**  
+   Developers running `sarutahiko` locally can mount developer plugins (such as `tricorder-mcp`
+   from `~/src/tricorder/`) in their private assistant configurations to accelerate feedback
+   loops, without imposing any build-time or runtime dependencies on the `sarutahiko` core codebase.
