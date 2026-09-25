@@ -27,6 +27,7 @@ and are checked by the script net (§5).
 | `notes/INSTRUMENTS_SPEC.md` | spec | draft | cross-cutting (measurement) | — |
 | `notes/OBSERVABILITY_DESIGN.md` | design | draft | cross-cutting (observability) | — |
 | `notes/KOGAKI_DESIGN.md` | design | draft | cross-cutting (Unicode, codecs, faithfulness) | — |
+| `plans/PHASE_0_PLAN.md` | plan | draft | substrate (implementation phase 0) | — |
 | `registers/REUSE_REGISTER.md` | register | living | cross-cutting | — |
 | `registers/CODEC_QUIRKS.md` | register (living) | living | model | — |
 | `registers/GLOSSARY.md` | register (term index) | living | cross-cutting | — |
@@ -44,11 +45,11 @@ links — no archive directory per §5).
 
 Planned, not yet written (the pre-birth frontier — prospective references to these
 are *dormant*, not dead links, per DOC_STRATEGY §4): `registers/ATTIC.md`; the
-tutorial track (`docs/tutorial/`); the glossary (`registers/GLOSSARY.md`).
+tutorial track (`docs/tutorial/`).
 
 ## Part 2 — Reading paths
 
-**Arrivals (orientation).** `README.md` → this index → the package map in
+**Arrivals (orientation).** `README.md` → `CODE_OF_CONDUCT.md` → this index → the package map in
 `notes/NIH_PLAN.md` §2 → `notes/HOKORA_SPEC.md` (the Phase-1.5 vertical slice is the
 fastest honest view of what the program is building) → the design note for whatever
 drew you here. The tutorial track (`docs/tutorial/`, scaled-textbook genre) is
@@ -66,4 +67,5 @@ in tier order (substrate → streaming → database → memory → model) → th
 external protocol faithfulness) → the registers (check before every dependency and every
 provider integration) → `notes/DOC_STRATEGY.md` + `notes/INFRASTRUCTURE.md` (how the
 corpus and the toolchain themselves are governed) → `notes/DESIGN_REVIEW.md` (synthesis
-and audit across all tiers before Tier-0 code).
+and audit across all tiers before Tier-0 code) → `plans/PHASE_0_PLAN.md` (concrete WBS
+and hermetic task packets).

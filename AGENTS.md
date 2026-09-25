@@ -1,9 +1,9 @@
 # AGENTS.md — Advisory Context for AI Coding Assistants
 
-Audience: AI coding assistants (Codebuff, and any tool reading the AGENTS.md
-convention). This file is an *orientation projection* per `docs/DOC_STRATEGY.md` §1 —
-it points at canonical sources rather than restating them; when this file and a
-canonical document disagree, the canonical document wins.
+Audience: AI coding assistants (Antigravity, Codebuff, Claude Code, Aider, and any
+driver reading the AGENTS.md convention). This file is an *orientation projection* per
+`docs/DOC_STRATEGY.md` §1 — it points at canonical sources rather than restating them;
+when this file and a canonical document disagree, the canonical document wins.
 
 ## What this repository is
 
@@ -53,8 +53,9 @@ code implements blessed designs.
 2. **Design docs are load-bearing** — if your change makes a blessed document stale,
    update the document in the same change set (DOC_STRATEGY §4 precedence: code wins
    at runtime, but the note must be corrected, not ignored).
-3. **Commits:** descriptive-imperative subject, body explains why, Codebuff footer,
-   HEREDOC style (INFRASTRUCTURE §12).
+3. **Commits:** descriptive-imperative subject, body explains why, HEREDOC style.
+   Attribution uses Linux kernel-style git trailers: `Assisted-by: <Tool> (<Provider> / <Model>)`
+   (INFRASTRUCTURE §12) reflecting the actual assistant driver and model in use.
 4. **Toolchain:** GHC 9.14/cabal 3.18, GHC2024; features opt in via the cabal
    commons only (INFRASTRUCTURE §1). Formatting: brittany. Tests: tasty/hedgehog;
    new effect signatures land in BOTH interpreter packages or not at all

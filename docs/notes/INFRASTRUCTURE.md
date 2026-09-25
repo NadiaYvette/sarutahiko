@@ -325,8 +325,12 @@ Four layers, with enforcement:
 
 ## 12. Procedure & prose rules
 
-- **Commits:** descriptive-imperative subject; body explains the *why*; Codebuff
-  footer per session convention; HEREDOC style for multi-line messages.
+- **Commits:** descriptive-imperative subject; body explains the *why*; HEREDOC
+  style for multi-line messages. Attribution uses Linux kernel-style RFC 2822 git trailers:
+  `Assisted-by: <Tool> (<Provider> / <Model>)` (e.g. `Assisted-by: Antigravity (Google DeepMind / Gemini 3.8)`)
+  to accurately credit AI assistant drivers and models without vendor misidentification.
+  Human authors commit under their own standard git identity configurations; the repository
+  imposes no hardcoded contributor identity.
 - **Pushing (amended 2026-09-24, hosting-resources policy):** commits are local and
   frequent; **pushes are batched** — at session end or on maintainer request, not
   after every commit. AI-assisted development that pushes per change overtaxes
