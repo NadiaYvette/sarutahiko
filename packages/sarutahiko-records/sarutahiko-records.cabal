@@ -1,0 +1,35 @@
+cabal-version:      3.14
+name:               sarutahiko-records
+version:            0.1.0.0
+synopsis:           Higher-kinded data (HKD), wire envelopes, and record combinators
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Data, Records
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:  Sarutahiko.Records
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        text >= 2.1,
+        vector >= 0.13,
+        primitive >= 0.9,
+        sarutahiko-fields >= 0.1,
+        large-anon
+    hs-source-dirs:   src

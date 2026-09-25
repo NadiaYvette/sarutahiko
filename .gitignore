@@ -7,3 +7,6 @@ dist-newstyle/
 *.o
 *.dyn_hi
 *.dyn_o
+
+# GHC environment files
+.ghc.environment.*

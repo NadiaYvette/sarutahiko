@@ -1,0 +1,32 @@
+cabal-version:      3.14
+name:               kogaki-core
+version:            0.1.0.0
+synopsis:           Pervasive Unicode, text normalization, and i18n message catalogs
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Text, Internationalization
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:  Kogaki.Core
+    build-depends:
+        base >= 4.20 && < 5,
+        text >= 2.1,
+        bytestring >= 0.12,
+        primitive >= 0.9
+    hs-source-dirs:   src

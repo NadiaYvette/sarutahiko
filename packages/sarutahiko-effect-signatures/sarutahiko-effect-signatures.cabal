@@ -1,0 +1,32 @@
+cabal-version:      3.14
+name:               sarutahiko-effect-signatures
+version:            0.1.0.0
+synopsis:           Neutral effect GADTs and canonical Stepper
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Control, Effects
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:  Sarutahiko.Effect.Signatures
+    build-depends:
+        base >= 4.20 && < 5,
+        text >= 2.1,
+        bytestring >= 0.12,
+        time >= 1.12
+    hs-source-dirs:   src

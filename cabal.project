@@ -1,29 +1,39 @@
 packages:
     .
-    ../beam/beam-backend-bench/beam-backend-bench.cabal
-    ../beam/beam-core/beam-core.cabal
-    ../beam/beam-duckdb/beam-duckdb.cabal
-    ../beam/beam-migrate/beam-migrate.cabal
-    ../beam/beam-postgres/beam-postgres.cabal
-    ../beam/beam-sqlite/beam-sqlite.cabal
+    packages/kogaki-core
+    packages/sarutahiko-fields
+    packages/sarutahiko-records
+    packages/sarutahiko-effect-signatures
+    packages/sarutahiko-effect-effectful
+    packages/sarutahiko-effect-polysemy
+    packages/sarutahiko-effect-testkit
+
+optional-packages:
     ../large-records-interfaces/large-anon
     ../large-records-interfaces/large-generics
     ../large-records-interfaces/large-records
-    ../porcupine/docrecords
-    ../porcupine/porcupine-core
-    ../porcupine/porcupine-http
-    ../porcupine/porcupine-s3
-    ../porcupine/reader-soup
-    ../IDA/projects/effectful/servant
-    ../IDA/projects/effectful/wai
-    ../IDA/projects/effectful/warp
-    ../IDA/projects/effectful/http-client
-    ../servant/servant
-    ../servant/servant-server
-    ../servant/servant-client
-    ../servant/servant-client-core
-    ../servant/servant-openapi3
-    ../smirk/smirk.cabal
+    -- Optional external worktrees (uncomment as needed):
+    -- ../beam/beam-backend-bench/beam-backend-bench.cabal
+    -- ../beam/beam-core/beam-core.cabal
+    -- ../beam/beam-duckdb/beam-duckdb.cabal
+    -- ../beam/beam-migrate/beam-migrate.cabal
+    -- ../beam/beam-postgres/beam-postgres.cabal
+    -- ../beam/beam-sqlite/beam-sqlite.cabal
+    -- ../porcupine/docrecords
+    -- ../porcupine/porcupine-core
+    -- ../porcupine/porcupine-http
+    -- ../porcupine/porcupine-s3
+    -- ../porcupine/reader-soup
+    -- ../IDA/projects/effectful/servant
+    -- ../IDA/projects/effectful/wai
+    -- ../IDA/projects/effectful/warp
+    -- ../IDA/projects/effectful/http-client
+    -- ../servant/servant
+    -- ../servant/servant-server
+    -- ../servant/servant-client
+    -- ../servant/servant-client-core
+    -- ../servant/servant-openapi3
+    -- ../smirk/smirk.cabal
 
 with-compiler: ghc-9.12.2
 
