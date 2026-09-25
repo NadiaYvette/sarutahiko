@@ -1,0 +1,1 @@
+Tricorder is supported on Linux only.
