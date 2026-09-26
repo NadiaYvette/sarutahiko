@@ -42,6 +42,7 @@ and are checked by the script net (§5).
 | `transcripts/noh-writing-motifs.md` | transcript | archive | cross-cutting (naming recon) | — |
 | `transcripts/web-style-guides.md` | transcript | archive | cross-cutting (style survey) | — |
 | `transcripts/treesitter-ctags-incremental-parsing.md` | transcript | archive | cross-cutting (parsing, code intelligence) | — |
+| `transcripts/ai-assistant-tooling-shubham-synthesis.md` | transcript | archive | cross-cutting (assistant tooling, compiler truth) | — |
 | `../.agents/docs/NEWBIE_GUIDE.md` | guide (tooling) | living | cross-cutting (assistant newbie quickstart) | — |
 | `../.agents/docs/MAINTAINER_GUIDE.md` | guide (tooling) | living | cross-cutting (assistant maintainer guide) | — |
 

@@ -819,3 +819,201 @@ highlights specific operational realities for background daemons:
    When a third-party REPL lacks structured observability into its background processes, always
    fall back to deterministic CLI inspection (`cabal build`, `git status -sb`, `ps aux`) from
    a known-good shell to verify system ground truth.
+
+---
+
+## 11. Polyglot Code Intelligence, Frankenstein/Organ-Bank & Generalized Compiler Truth Oracles
+
+### 11.1 Configurable Compiler Truth Oracles (Modern GHC vs. Historical & Bootstrap Portability)
+
+In `sarutahiko`, the compiler truth oracle is pinned to modern GHC (`ghc-9.12` / `ghc-9.14` under `GHC2024`).
+However, across the maintainer's broader ecosystem of repositories—particularly in bootstrap restoration
+work (`~/src/frankenstein/BOOTSTRAP_RESTORATION.md`) and portability research—codebases deliberately target
+historical, minimal, or alternative compilers:
+- **Historical GHCs:** GHC 6.x (e.g. 6.12, 6.4) and GHC 7.x.
+- **Haskell 98 & Report-Only Compilers:** `nhc98` (Malcolm Wallace & Colin Runciman), `Hugs 98`.
+- **Standalone Bootstrap Compilers:** `MicroHs` (Björn Bringert & Lennart Augustsson).
+- **Alternative Research Compilers:** `UHC` (Utrecht), `YHC` (York), `HBC` (Chalmers Haskell B Compiler).
+
+#### The Small-Model Hazard in Bootstrap Codebases
+If an AI coding assistant evaluates bootstrap code using a modern GHC oracle, it will trigger catastrophic
+regressions: forcing modern Prelude conventions, suggesting extensions (`TypeApplications`, `DataKinds`)
+that break ancient compilers, or stripping Haskell 98 import statements essential for report-conformant
+tools.
+
+#### Parameterized Compiler Oracle Architecture
+The compiler truth oracle must therefore be parameterized by a **target dialect profile**:
+```haskell
+data CompilerOracleProfile
+  = ModernGHC
+      { ghcVersion  :: Version
+      , languageExt :: [Extension]
+      , warningGate :: WarningPolicy -- e.g. -Wall -Werror
+      }
+  | HistoricalGHC
+      { ghcVersion  :: Version
+      , compatFlags :: [String]
+      }
+  | BootstrapHaskell98
+      { compilerBin :: FilePath     -- e.g. /usr/bin/nhc98 or /usr/bin/hugs
+      , reportYear  :: H98Standard  -- Haskell98, Haskell2010
+      }
+  | MicroHsOracle
+      { mhsBinary   :: FilePath
+      }
+  | CustomToolchainOracle
+      { checkCmd    :: FilePath -> [String] -> IO ExitCode
+      }
+```
+When an assistant operates inside an owner-class repo, it reads the target profile from repository
+configuration (e.g. `.compiler-oracle.yaml` or Cabal default-language stanzas) and verifies code strictly
+against the declared target dialect.
+
+---
+
+### 11.2 Organ-Bank Shims & Frankenstein MLIR as Unified Semantic Navigation
+
+The maintainer's owner-class projects `~/src/organ-bank/` and `~/src/frankenstein/` contain an extraordinary
+polyglot compiler substrate:
+- **`organ-bank`:** Houses 25+ language shims (Ada, Agda, Common Lisp, C++, C, Erlang, Forth, Fortran, F#,
+  GHC, Idris2, Julia, Koka, Lean4, Lua, Mercury/MMC, OCaml, Prolog, PureScript, Rust, Scala3, Scheme,
+  SML, Swift, Zig), along with `organ-ir`, `organ-extract`, and `organ-diff`.
+- **`frankenstein`:** Explores multi-lingual MLIR dialects, LLVM codegen, arena allocators, cycle collectors,
+  and bootstrap restoration.
+
+#### The Problem: LSP Daemon Proliferation
+Attempting to support 25 languages by running 25 separate Language Server Protocol daemons simultaneously
+would instantly exhaust laptop RAM and thrash CPU scheduling.
+
+#### The Solution: Slices of `organ-extract` for Unified Code Navigation
+Instead of spinning up 25 third-party LSPs:
+1. **Unified Semantic Extraction:** `organ-extract` parses foreign source files into `organ-ir` representations.
+2. **Polyglot Symbol & Tag Generation:** Lightweight slices of `organ-extract` can emit unified ctags/etags
+   or AST outline indices. This allows the assistant's Tier 1 `code-navigation` skill to jump to definitions
+   seamlessly across Haskell, Mercury, Koka, Idris2, and C without running heavy LSP servers.
+3. **Polyglot Compiler Feedback via Tricorder:** `tricorder`'s background daemon model (file-watch $\rightarrow$
+   instant diagnostic) can be extended using `organ-bank`'s shims: watching `.mh` (Mercury), `.koka`, or
+   `.idr` files and querying the respective compiler shim in the background.
+
+---
+
+### 11.3 Upstream Cabal Solving for Tooling Dependencies (`config-ini`, `tasty-hspec`)
+
+When porting tooling dependencies (such as `config-ini` and `tasty-hspec`) to modern GHC (9.12/9.14),
+quick local patches often simply delete upper bounds. While sufficient for local builds, upstream
+Hackage maintainers require clean, PVP-compliant solutions.
+
+#### The Upstream Solver Procedure:
+1. **Run the Solver in Dry-Run Mode:**
+   ```bash
+   cabal build --dry-run --enable-tests --flags="+..."
+   ```
+2. **PVP-Bounded Bumps:**
+   Rather than uncapping (`foo >= 1.0`), relax bounds by exactly one major PVP version (e.g. `base >= 4.7 && < 4.22`,
+   `megaparsec >= 7.0 && < 10.0`).
+3. **Conditional Stanzas for Breaking Upstream Changes:**
+   Where GHC 9.12+ introduces breaking changes in standard libraries:
+   ```cabal
+   if impl(ghc >= 9.12)
+     build-depends: base >= 4.21 && < 5
+   else
+     build-depends: base >= 4.7 && < 4.21
+   ```
+4. **Isolated Upstream PR Branches:**
+   Package changes into a dedicated `upstream/ghc914-compat` branch containing only the cabal bound bumps
+   and minimal CPP conditionals, verified with clean test passes.
+
+---
+
+## 12. Panoramic Portfolio Orchestration, Bounded Worker Fleets & Brittany Style Engineering
+
+### 12.1 Managing the "Brambles": DAG/Hypergraph Orchestration vs. Flat Kanban Boards
+
+The maintainer describes a "panoramic vista of brambles of intertwined, imbricated and interrelated ideas
+and projects." Standard project management paradigms (flat Kanban boards in Trello, GitHub Projects, or
+Hermes Agent) fail in this setting:
+- Flat 2D Kanban columns (`To Do` $\rightarrow$ `In Progress` $\rightarrow$ `Done`) assume independent, linear tasks.
+- In reality, tasks across `sarutahiko`, `organ-bank`, `frankenstein`, and `kioku` form an **imbricated DAG
+  (Directed Acyclic Graph) or Hypergraph**: a breakthrough in `organ-ir` unlocks features in `frankenstein`,
+  which feeds `kogaki`, which alters `sarutahiko` codecs.
+
+#### The DAG-Based Portfolio Engine
+Rather than flat cards, portfolio orchestration requires:
+1. **Topological Task Graphs:** Tasks declare explicit dependency edges (`depends_on: [organ-ir/ast-slice, sarutahiko/tp-1.4]`).
+2. **Active Frontier Projection:** Hermes / agent "Boards" are generated dynamically as **projections** of
+   the frontier nodes whose dependencies are 100% satisfied.
+3. **Event-Sourced Task Ledger:** Drawing from `keiki`'s symbolic-register finite-state transducer model,
+   task state transitions are recorded as immutable events, allowing deterministic replay and cross-repo audit.
+
+---
+
+### 12.2 Worker Fleets vs. Local Hardware Bounds (Managing Combinatorial Firecrackers)
+
+While cloud LLM APIs can generate tokens indefinitely, code execution, compiler verification, GHC linking,
+and test suites run **locally on developer hardware**.
+
+#### The "Combinatorial Firecracker" Hazard
+When orchestrating multi-agent fleets across a matrix of options (e.g. $N$ compilers $\times$ $M$ language
+shims $\times$ $K$ test targets), an unconstrained system will spawn dozens of parallel workers. On a
+developer laptop (e.g. ThinkPad), this leads to immediate CPU saturation, thermal throttling, memory exhaustion
+(OOM killer invocation), and NVMe write endurance degradation.
+
+#### The Safe Execution Architecture:
+1. **Strict Concurrency Ceilings:** The orchestrator enforces a hard gate on concurrent local subprocesses
+   (`max_concurrent_builds = 2`, `cabal build -j2`).
+2. **POSIX Process Niceness:** Local worker commands run under deprioritized scheduling:
+   ```bash
+   nice -n 19 ionice -c 3 cabal test ...
+   ```
+3. **Content-Addressed Build Caching:** Shared artifact stores prevent combinatorial workers from rebuilding
+   identical dependencies.
+4. **Asynchronous Ledger Queueing:** Agents do not spin or sleep in memory; tasks are queued in an embedded
+   SQLite task database, and agents wake up reactively upon task completion notifications.
+
+---
+
+### 12.3 Brittany Style Engineering: Developing a Personal Haskell Formatting Profile
+
+The maintainer favors `brittany` over opinionated, monolithic formatters (`ormolu`, `fourmolu`) because
+Brittany leverages `ghc-exactprint` and a Wadler/Leijen-style layout algorithm that respects human layout
+intent, preserves column alignments, and accommodates distinct personal coding aesthetics.
+
+#### The Methodology for Synthesizing Nadia's Brittany Profile:
+1. **Curate Exemplar Modules:** Select 3–5 representative, hand-crafted Haskell files from the owner's
+   repositories that exhibit the desired aesthetic (GADT column alignment, record layout, comment placement).
+2. **Differential Config Tuning:**
+   Run Brittany over the exemplars using a parameter grid search on `.brittany.yaml` settings:
+   - `conf_layout.lconfig_cols` (column width)
+   - `conf_layout.lconfig_indentPolicy`
+   - `conf_layout.lconfig_indentAmount`
+   - `conf_layout.lconfig_importColumn`
+   - `conf_layout.lconfig_hangingTypeSignatures`
+   Minimize the `git diff --word-diff` against the original handwritten exemplars.
+3. **Document Layout Engine Gaps:** Where Brittany's default engine cannot produce the desired formatting
+   (e.g., custom indentation for `large-anon` `(=:)` row constructors or multi-line comment blocks),
+   isolate the exact AST nodes.
+4. **Brittany Extension Roadmap:** If needed, author a local fork or patch to Brittany's document-builder
+   pipeline adding targeted layout combinators for extensible record syntax.
+
+---
+
+### 12.4 Cascading Rigor Across Nadia-Owned Repositories
+
+To bring all owner-class repositories up to the architectural and operational standards established in
+`sarutahiko`, an incremental 4-level onboarding ladder is defined:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+1. Level 1: Orientation Projection (AGENTS.md, README, License, Cabal Bounds)  │
+├─────────────────────────────────────────────────────────────────────────────┤
+2. Level 2: Diagnostic & Navigation Harness (tags, code-navigation, Oracle)   │
+├─────────────────────────────────────────────────────────────────────────────┤
+3. Level 3: Architectural Documentation (docs/INDEX.md, Registers, Laws)       │
+├─────────────────────────────────────────────────────────────────────────────┤
+4. Level 4: Continuous Verification (Hermetic Tests, GHC -Wall -Werror)        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+By executing this migration systematically across repositories as token and compute budgets permit,
+the entire multi-repo workspace achieves uniform assistant compatibility and verifiable correctness.
+
