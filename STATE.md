@@ -26,9 +26,10 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 2. **Hermes Trial Run Quiescence & Branch Preservation:**
    - Trial branch `nadia.chambers/hermes-trial-run-001` preserved with commit `010e673` capturing Hermes's WIP code attempts.
    - Docs commit `722a2f6` cherry-picked to `master` as `9c329d0`.
-3. **Host vs. Distrobox Tooling Audit Reconciled:**
-   - Core `@optave/codegraph` (`/home/nyc/.local/bin/codegraph`), `@inferensys/contextful` (`/home/nyc/.local/bin/cxf`), and `tricorder-mcp` verified active on host.
-   - Noted missing host packages present in container: `@astudioplus/codegraph-mcp`, `open-kioku`, `keiro-ops`.
+3. **Host Tooling Suite Fully Configured & Repaired:**
+   - **`~/.hermes/config.yaml` Defect Repair:** Migrated deprecated `custom_providers` list to modern `providers:` mapping (`api:` endpoints). Verified zero deprecation warnings under `hermes doctor`.
+   - **MCP Tool Integration:** Configured `/home/nyc/.local/bin/codegraph-mcp` (AST & call-graph queries), `/home/nyc/.local/bin/open-kioku` (evidence graph & impact analysis), and authored `/home/nyc/.local/bin/keiro-ops-mcp` (durable workflow & PGMQ operations) in `~/.hermes/config.yaml`.
+   - **Continuous AST Auto-Indexing Daemon:** Created, enabled, and launched `codegraph-daemon.service` under `systemd --user` with `CODEGRAPH_TELEMETRY=off`, continuously watching `sarutahiko` and indexing AST/call-graph changes to RocksDB in the background.
 
 ---
 
