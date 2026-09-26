@@ -276,4 +276,33 @@ When multiple AI coding assistants (Antigravity, Hermes, Claude Code) touch shar
    (which collides on `.git/index.lock`). Agents must utilize **Git Worktrees** (`git worktree add`),
    giving each assistant an isolated working directory sharing a single `.git/objects` store.
 
+---
+
+## **15. Doctorow's Critique, "Theory-Free" Meaning, and the Logic Onion Reconciliation**
+
+The maintainer reflected on Cory Doctorow's critique of purely statistical curve-fitting and the
+failure of dense vector embeddings to capture genuine semantic meaning:
+- **The "Theory-Free" Hazard:** Vector embeddings reflect distributional co-occurrence (Firth: "you shall
+  know a word by the company it keeps"). They have zero truth conditions (Tarski), zero rigid designation
+  across possible worlds (Kripke), zero deontic inferential scorekeeping (Brandom), and no triadic sign
+  structure (Peirce).
+- **The "LLM Override Pathology" in `peirce`:** In earlier experiments in `~/src/peirce/`, passing structured
+  logic through an end-to-end LLM caused the statistical probability cloud to swallow and erode the
+  rigorous philosophical and modal-logical representations, turning formal inference into mushy associative
+  approximations.
+- **The Reconciliation in the Logic Onion (`mowgli`):**
+  Embeddings are stripped of their sovereign status and assigned their proper role as **continuous perceptual
+  sensors (Layer 1 $\rightarrow$ Layer 2)**:
+  - *Firstness (Qualisigns):* Vector embeddings represent continuous qualitative textures and perceptual affinities.
+  - *Secondness (Sinsigns/Indices):* Concrete tokens and indexical references in text.
+  - *Thirdness (Legisigns/Symbols/Arguments):* Formal logic, Kripke frames, and event calculus ontologies.
+  - *Golden Law:* **Embeddings propose; Logic disposes.** Tiny CPU models (~60–150 MB running in 5–8 ms on
+    existing laptop hardware) propose candidate ontological bindings to guide deterministic parsers, while
+    discrete modal logic enforces invariant truth conditions with zero hallucination.
+- **The "Tera/Cray" Consolidation:** Formally documented in
+  `~/src/mowgli/docs/architecture/HYBRID_SEMIOTIC_EMBEDDING_DESIGN.md` and `~/src/peirce/docs/hybrid-semiotic-embedding-architecture.md`,
+  planning the project merger of `peirce`'s 10-class sign engine and Kripke tables into `mowgli`'s 7-layer
+  Logic Onion stack.
+
+
 
