@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# bin/kanban-stage-tp1.5 — Stage Phase 1 TP-1.5 onto Hermes Kanban
+#
+# Decomposes the monolithic Task Packet 1.5 goal into 4 sequentially gated
+# Kanban cards with process isolation and bounded context windows.
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+if ! command -v hermes >/dev/null 2>&1; then
+  echo "Error: hermes CLI not found in PATH." >&2
+  exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is required to parse Kanban task IDs." >&2
+  exit 1
+fi
+
+echo "Staging Phase 1 TP-1.5 pipeline on Hermes Kanban..."
+echo "Target repository: $REPO_ROOT"
+
+# Card 1: Toolchain & Cabal Setup
+T1=$(hermes kanban create \
+  "TP-1.5 Step 1: Register sarutahiko-mcp in cabal.project and author cabal file" \
+  --workspace "dir:$REPO_ROOT" \
+  --completion-contract "local-only" \
+  --json \
+  --body "Objective: Setup packages/sarutahiko-mcp package configuration.
+
+Invariants:
+1. Register 'packages/sarutahiko-mcp' in cabal.project under with-compiler: ghc-9.12.2.
+2. Author packages/sarutahiko-mcp/sarutahiko-mcp.cabal adhering strictly to repo invariants:
+   - cabal-version: 3.14
+   - default-language: GHC2024
+   - ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+   - Exposed modules: Sarutahiko.MCP, Sarutahiko.MCP.Types, Sarutahiko.MCP.Server, Sarutahiko.MCP.Client
+   - Dependencies: base >= 4.20 && < 5, bytestring, containers, text, large-anon, kogaki-wire, sarutahiko-fields, sarutahiko-records, sarutahiko-jsonrpc, sarutahiko-schema, sarutahiko-process, effectful-core
+   - Test suite: test-mcp with tasty, hedgehog, tasty-hedgehog
+3. Verify: run 'cabal build --dry-run' to ensure dependencies resolve.
+4. Completion: commit changes with descriptive message and call kanban_complete." | jq -r .id)
+
+echo "  ✓ Created Card 1 (Cabal Setup): $T1"
+
+# Card 2: Types & Codecs (gated on T1)
+T2=$(hermes kanban create \
+  "TP-1.5 Step 2: Implement Sarutahiko.MCP.Types (protocol 2025-03-26, zero aeson)" \
+  --parent "$T1" \
+  --workspace "dir:$REPO_ROOT" \
+  --completion-contract "local-only" \
+  --json \
+  --body "Objective: Implement MCP protocol types and serialization codecs.
+
+Invariants:
+1. Author packages/sarutahiko-mcp/src/Sarutahiko/MCP/Types.hs and Sarutahiko.MCP.
+2. Zero-Aeson: use large-anon extensible records and kogaki-wire row codecs.
+3. Model types: InitializeRequest, InitializeResult, ServerCapabilities, ClientCapabilities, ToolDefinition, CallToolRequest, CallToolResult.
+4. Verify: run 'cabal build sarutahiko-mcp' to verify clean compilation with -Wall -Werror.
+5. Completion: commit changes and call kanban_complete." | jq -r .id)
+
+echo "  ✓ Created Card 2 (MCP Types): $T2 (gated by $T1)"
+
+# Card 3: Server & StateGuard (gated on T2)
+T3=$(hermes kanban create \
+  "TP-1.5 Step 3: Implement Sarutahiko.MCP.Server with StateGuard" \
+  --parent "$T2" \
+  --workspace "dir:$REPO_ROOT" \
+  --completion-contract "local-only" \
+  --json \
+  --body "Objective: Implement MCP Server engine hosting tools.
+
+Invariants:
+1. Author packages/sarutahiko-mcp/src/Sarutahiko/MCP/Server.hs.
+2. StateGuard Invariant: enforce the protocol state machine. Reject any request received prior to 'notifications/initialized' with JSON-RPC error code -32600 (Invalid Request).
+3. Handle standard routes: initialize, notifications/initialized, tools/list, tools/call.
+4. Verify: run 'cabal build sarutahiko-mcp' with zero warnings.
+5. Completion: commit changes and call kanban_complete." | jq -r .id)
+
+echo "  ✓ Created Card 3 (Server & StateGuard): $T3 (gated by $T2)"
+
+# Card 4: Client & Test Verification (gated on T3)
+T4=$(hermes kanban create \
+  "TP-1.5 Step 4: Implement Sarutahiko.MCP.Client and test-mcp verification suite" \
+  --parent "$T3" \
+  --workspace "dir:$REPO_ROOT" \
+  --completion-contract "local-only" \
+  --json \
+  --body "Objective: Author client engine and verification test suite.
+
+Invariants:
+1. Author packages/sarutahiko-mcp/src/Sarutahiko/MCP/Client.hs (stdio JSON-RPC transport).
+2. Author packages/sarutahiko-mcp/test/Main.hs implementing test-mcp.
+3. StateGuard Parity Test: write a Hedgehog property test asserting that any request received before initialization returns error code -32600.
+4. Verification: run 'cabal test test-mcp' and ensure all tests pass cleanly.
+5. Update STATE.md §4 to record completion of TP-1.5.
+6. Completion: commit changes and call kanban_complete." | jq -r .id)
+
+echo "  ✓ Created Card 4 (Client & Test Suite): $T4 (gated by $T3)"
+
+echo ""
+echo "=== Phase 1 TP-1.5 Pipeline Successfully Staged ==="
+hermes kanban list
