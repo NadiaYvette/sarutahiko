@@ -1049,3 +1049,61 @@ To bring all owner-class repositories up to the architectural and operational st
 By executing this migration systematically across repositories as token and compute budgets permit,
 the entire multi-repo workspace achieves uniform assistant compatibility and verifiable correctness.
 
+---
+
+### 12.5 The Token Economics of Task Execution: Monolithic Goal Loops vs. Decoupled Kanban Workqueues
+
+A critical operational question in AI coding assistant engineering is how autonomous tasks should be
+structured to avoid catastrophic context accumulation, token burn, and compaction stalls.
+
+#### 1. The Structural Dilemma: Monolithic Loops vs. Decoupled Task Queues
+
+Two competing execution topologies exist in modern agentic runtimes:
+
+```
+A. Monolithic Single-Session Goal Loop (The "Ralph / Devin / /goal" Pattern)
+   [Turn 1: 5k] ──► [Turn 2: 15k] ──► ... ──► [Turn 10: 97k] ──► [Compaction Stall (10m)] ──► Degraded Context
+   (All turns, terminal chatter, compiler errors accumulate in a single monotonically growing context window)
+
+B. Decoupled Task-Queue Pipeline (The "Kanban / SWE-Bench Scaffolder" Pattern)
+   Macro-State:  Repository Files + PLAN.md / STATE.md + External Ledger (~/.hermes/kanban.db)
+                        │                     │                      │
+                        ▼                     ▼                      ▼
+   Card 1: [Worker 1: ~4k] ──► Card 2: [Worker 2: ~4k] ──► Card 3: [Worker 3: ~4k]
+   (Ephemeral OS processes; each worker starts with a pristine context window, commits, and terminates)
+```
+
+| Dimension | Monolithic Goal Loop (`/goal`, Ralph Loop) | Decoupled Task Queue (Kanban Board) |
+|---|---|---|
+| **Session Model** | Single continuous conversation thread | Ephemeral, isolated OS process per card |
+| **Context Trend** | Monotonic accumulation: $O(N)$ tokens ($30\text{k} \to 60\text{k} \to 97\text{k}$) | Constant per milestone: $O(1)$ tokens ($\approx 3\text{k}–5\text{k}$ tokens per worker) |
+| **Attention Economics** | Quadratic degradation ($O(N^2)$ KV-cache); "lost in the middle" drift | Pristine attention floor for every architectural subtask |
+| **Compaction Hazard** | **High**: Compaction eventually forces massive summarization prompts | **Zero**: Workers complete bounded cards and exit before compaction triggers |
+| **Fallback Fragility** | Auxiliary compression on slow/rate-limited models hangs for 5–10 mins | Tasks fail-stop in SQLite without corrupting other pipeline stages |
+| **State Persistence** | Volatile LLM scratchpad and conversation transcript | Durable SQLite rows, Git commits, and filesystem artifacts |
+
+#### 2. Industry-Wide Phenomenon: Is This Hermes-Specific or Universal?
+
+This phenomenon is **not an idiosyncrasy of Hermes Agent**; it is an industry-wide structural invariant
+governing transformer-based LLMs and autonomous agent scaffolding:
+
+1. **OpenAI & SWE-bench Scaffolders:** High-scoring SWE-bench evaluation harnesses never attempt to resolve
+   complex, multi-step engineering benchmarks in a single unbounded session. Instead, they isolate task
+   execution in fresh sandboxes with bounded micro-prompts.
+2. **Anthropic Claude Code & Cursor Agent:** Claude Code’s built-in `/compact` facility suffers identical
+   degradation when session contexts pass 100k tokens. Multi-hour refactoring tasks reliably degrade unless
+   the user resets the context window at milestone boundaries.
+3. **Multi-Agent Research (PaperQA, AutoGen, CrewAI):** Conversational agent swarms (where parent agents
+   hold continuous dialogues with children) have been broadly abandoned in production in favor of
+   **blackboard / message-queue architectures**: workers pull tasks from a queue, operate ephemerally,
+   and write structured evidence back to a database.
+4. **The Externalized Two-File Loop (`PLAN.md` & `STATE.md`):** By externalizing engineering state to
+   Git-versioned markdown documents, the repository itself serves as the durable blackboard, allowing
+   successive $O(1)$-context agent passes to execute long-horizon projects without context amnesia.
+
+#### 3. Operational Rule of Thumb
+- **Reach for `/goal`** for tightly bounded, single-file iterations where progress is verified in 2–4 turns
+  (e.g., "Fix the 3 type errors in module X and ensure `cabal build` passes").
+- **Reach for Kanban** for multi-step feature implementations, architectural refactors, and tactical
+  packages (e.g., Phase 1 TP-1.5), decomposing work into dependent cards with clean process isolation.
+
