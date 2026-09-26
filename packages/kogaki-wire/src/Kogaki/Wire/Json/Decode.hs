@@ -26,11 +26,13 @@ module Kogaki.Wire.Json.Decode
     -- * Row-Native Decoders
   , decodeJsonRow
   , decodeJsonRowEither
+  , decodeJsonRowFromTokens
   , decodeJsonEnvelope
 
     -- * Canonical Encoders
   , encodeJsonRow
   , encodeJsonEnvelope
+  , renderTokens
 
     -- * Token Slicing Helpers
   , extractObjectFields
@@ -347,20 +349,38 @@ scanBalanced openTok closeTok (tok : rest) !acc !depth
         else scanBalanced openTok closeTok rest (tok : acc) (depth - 1)
   | otherwise = scanBalanced openTok closeTok rest (tok : acc) depth
 
--- | Render a sequence of tokens back to raw bytes (used for unknown fields).
+-- | Render a sequence of tokens back to canonical JSON bytes.
 renderTokens :: [JsonToken] -> ByteString
-renderTokens [] = ""
-renderTokens (TkObjectOpen : rest) = "{" <> renderTokens rest
-renderTokens (TkObjectClose : rest) = "}" <> renderTokens rest
-renderTokens (TkArrayOpen : rest) = "[" <> renderTokens rest
-renderTokens (TkArrayClose : rest) = "]" <> renderTokens rest
-renderTokens (TkKey k : rest) = "\"" <> escapeJsonString k <> "\":" <> renderTokens rest
-renderTokens (TkString t : rest) = "\"" <> escapeJsonString (TE.encodeUtf8 t) <> "\"" <> renderTokens rest
-renderTokens (TkInt n : rest) = BSC.pack (show n) <> renderTokens rest
-renderTokens (TkDouble d : rest) = BSC.pack (show d) <> renderTokens rest
-renderTokens (TkBool True : rest) = "true" <> renderTokens rest
-renderTokens (TkBool False : rest) = "false" <> renderTokens rest
-renderTokens (TkNull : rest) = "null" <> renderTokens rest
+renderTokens tokens = fst (renderValue tokens)
+  where
+    renderValue [] = ("", [])
+    renderValue (TkObjectOpen : rest) =
+      let (pairs, afterClose) = renderObjectPairs rest []
+      in ("{" <> BS.intercalate "," pairs <> "}", afterClose)
+    renderValue (TkArrayOpen : rest) =
+      let (elems, afterClose) = renderArrayElems rest []
+      in ("[" <> BS.intercalate "," elems <> "]", afterClose)
+    renderValue (TkString t : rest) = ("\"" <> escapeJsonString (TE.encodeUtf8 t) <> "\"", rest)
+    renderValue (TkInt n : rest) = (BSC.pack (show n), rest)
+    renderValue (TkDouble d : rest) = (BSC.pack (show d), rest)
+    renderValue (TkBool True : rest) = ("true", rest)
+    renderValue (TkBool False : rest) = ("false", rest)
+    renderValue (TkNull : rest) = ("null", rest)
+    renderValue (tok : rest) = (BSC.pack (show tok), rest)
+
+    renderObjectPairs [] acc = (reverse acc, [])
+    renderObjectPairs (TkObjectClose : rest) acc = (reverse acc, rest)
+    renderObjectPairs (TkKey k : afterKey) acc =
+      let (valBytes, afterVal) = renderValue afterKey
+          pair = "\"" <> escapeJsonString k <> "\":" <> valBytes
+      in renderObjectPairs afterVal (pair : acc)
+    renderObjectPairs (_ : rest) acc = renderObjectPairs rest acc
+
+    renderArrayElems [] acc = (reverse acc, [])
+    renderArrayElems (TkArrayClose : rest) acc = (reverse acc, rest)
+    renderArrayElems tks acc =
+      let (elemBytes, afterElem) = renderValue tks
+      in renderArrayElems afterElem (elemBytes : acc)
 
 -- | Escape characters in string bytes according to JSON spec.
 escapeJsonString :: ByteString -> ByteString

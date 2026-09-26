@@ -4,6 +4,7 @@ packages:
     packages/kogaki-wire
     packages/sarutahiko-fields
     packages/sarutahiko-records
+    packages/sarutahiko-jsonrpc
     packages/sarutahiko-effect-signatures
     packages/sarutahiko-effect-effectful
     packages/sarutahiko-effect-polysemy
