@@ -304,5 +304,29 @@ failure of dense vector embeddings to capture genuine semantic meaning:
   planning the project merger of `peirce`'s 10-class sign engine and Kripke tables into `mowgli`'s 7-layer
   Logic Onion stack.
 
+---
+
+## **16. Pre-LLM NLP Algorithmic Survey & Symbolic Reimplementation Roadmap**
+
+The maintainer surveyed the pre-deep-learning natural language processing algorithmic design space
+to guide clean-slate reimplementations under an NIH philosophy:
+- **Full Survey Document:** Formally authored in `~/src/mowgli/docs/research/PRE_LLM_NLP_ALGORITHMIC_SURVEY.md`
+  and cross-referenced in `~/src/peirce/docs/PRE_LLM_NLP_ALGORITHMIC_SURVEY.md`.
+- **Six Strata Cataloged:**
+  1. *Morphology & WFSTs:* Two-Level Morphology (TWOL, Koskenniemi); reference implementations `foma` (C)
+     and `OpenFst` (C++).
+  2. *Syntactic Parsing & Categorial Grammars:* Combinatory Categorial Grammar (Steedman; `C&C Parser`, `OpenCCG`)
+     where syntactic reductions transparently evaluate lambda-calculus semantics; Earley/CKY charts; HPSG (`ACE`, `PET`).
+  3. *Sequence Modeling:* Linear-chain Conditional Random Fields (CRFs; Lafferty, McCallum, Pereira; `CRF++`, `Wapiti`)
+     avoiding label bias via global partition function normalization.
+  4. *Discourse Representation & Semantics:* Johan Bos's `Boxer` mapping CCG parses into Discourse Representation
+     Structures (DRT / Neo-Davidsonian event semantics); Abstract Meaning Representation (AMR / `JAMR`); FrameNet / PropBank.
+  5. *Reference Resolution:* The Stanford Multi-Pass Deterministic Sieve (Raghunathan et al.); Jerry Hobbs' syntactic
+     tree traversal; Centering Theory ($C_b, C_f$ transitions).
+  6. *Lexical Ontologies:* WordNet synset graph metrics and ConceptNet relational assertions.
+- **The Synthesis:** The entire pipeline executes locally on laptop CPUs in deterministic polynomial time,
+  producing sound first-order / modal logic formulas with zero hallucination.
+
+
 
 
