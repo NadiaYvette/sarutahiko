@@ -1,0 +1,57 @@
+cabal-version:      3.14
+name:               kogaki-wire
+version:            0.1.0.0
+synopsis:           Zero-bloat row-native JSON lexer, decoder, and SSE streaming parser
+license:            BSD-3-Clause
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Data, Parsing, Network
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:
+        Kogaki.Wire
+        Kogaki.Wire.Json.Lexer
+        Kogaki.Wire.Json.Decode
+        Kogaki.Wire.SSE.Parser
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        vector >= 0.13,
+        primitive >= 0.9,
+        large-anon,
+        kogaki-core,
+        sarutahiko-fields,
+        sarutahiko-records
+    hs-source-dirs:   src
+
+test-suite test-kogaki-wire
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        vector >= 0.13,
+        kogaki-wire,
+        sarutahiko-fields,
+        sarutahiko-records,
+        large-anon

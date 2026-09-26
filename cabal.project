@@ -1,6 +1,7 @@
 packages:
     .
     packages/kogaki-core
+    packages/kogaki-wire
     packages/sarutahiko-fields
     packages/sarutahiko-records
     packages/sarutahiko-effect-signatures
