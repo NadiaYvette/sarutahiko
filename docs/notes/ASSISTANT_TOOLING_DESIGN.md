@@ -705,5 +705,117 @@ a unified capability hierarchy:
 | **`contextful`** | `~/src/contextful/` | FTS5 BM25 search and token-budgeted context packs. | `cxf pack` via `contextful` skill. |
 | **Tier 0 POSIX** | `cabal`, `git`, standard shell | Inviolable baseline; guarantees clean builds without daemons. | `cabal build all`, `cabal test all`. |
 
+---
 
+## 10. Defensive Guidance, Reasoning Heterogeneity & The Experiment Quarantine Protocol
 
+As the assistant tooling ecosystem matures, human maintainers frequently deploy heterogeneous
+AI drivers—ranging from flagship frontier models (e.g. Gemini 3.8 Pro, Claude 3.5 Sonnet)
+to lighter or open-weights models (e.g. 7B/8B/70B local models via Hermes Agent, Ollama, or
+`flash_lite`). 
+
+Developing inside `sarutahiko` imposes unusual cognitive demands: large-anon extensible records,
+row-polymorphic algebraic effects, zero-bloat anti-aeson laws, strict `-Wall -Werror`, and POSIX
+concurrency invariants. When less-capable or unconstrained models touch this codebase, they
+exhibit distinct failure modes that require formal architectural defenses.
+
+### 10.1 The Small-Model Hazard in High-Assurance Codebases
+
+Empirical observations across assistant experiments reveal recurring failure patterns in
+reasoning-constrained agents:
+
+1. **Manifest & Config Mangling:** Smaller models frequently hallucinate dependencies in
+   `.cabal` files, corrupt Cabal stanza syntax, or delete delicate compiler options
+   (such as `-fplugin=Data.Record.Anon.Plugin` or `-threaded`).
+2. **Whole-File Rewriting Fatigue:** Rather than issuing targeted, surgical edits via
+   `replace_file_content`, less-capable models attempt full-file replacements, dropping
+   unrelated typeclass instances, re-introducing previously resolved compiler warnings,
+   or silently truncating module exports.
+3. **Convention Amnesia & Positive-Bias Drift:** Even when provided extensive architectural
+   documentation, smaller models default to generic internet training patterns: reaching
+   for `Data.Aeson`, introducing `scientific` or `unordered-containers`, ignoring TriState
+   semantics, or polling asynchronous task statuses in tight loops.
+4. **Concurrency & POSIX Blindness:** Models under 70B parameters consistently struggle with
+   subtle runtime semantics: forgetting `-threaded` runtime flags, assuming `waitForProcess`
+   is interruptible by async exceptions, or closing pipes while child buffers still hold data.
+
+### 10.2 Stringent Guidance & Operational Guardrails for Assistants
+
+To safeguard the repository while allowing contributors to experiment with diverse agent harnesses,
+the following guardrails govern assistant prompts and tool configurations:
+
+1. **Negative Constraints Over Philosophical Exhortations:**  
+   Reasoning-constrained models do not reliably internalize abstract design philosophy. Prompts
+   must provide explicit, enumerated **negative constraints** ("Thou Shalt Not"):
+   - *FORBIDDEN:* Modifying `cabal.project` or adding Hackage dependencies without explicit maintainer consent.
+   - *FORBIDDEN:* Importing `aeson`, `scientific`, or `unordered-containers`.
+   - *FORBIDDEN:* Polling `manage_task status` in a loop; execution must pause and await reactive wakeups.
+   - *FORBIDDEN:* Attempting whole-file rewrites on modules exceeding 100 lines.
+2. **Tier-Restricted Blast Radii:**  
+   Lighter models should be restricted to narrow, well-bounded scopes:
+   - *Permitted:* Running Tier 1 symbol lookups (`tags`), executing isolated test suites,
+     generating documentation, or authoring leaf test cases.
+   - *Restricted:* Modifying core effect signatures, altering extensible record internals, or
+     refactoring inter-package dependency graphs.
+3. **Compiler As Truth Oracle (The Zero-Trust Feedback Loop):**  
+   Never accept an assistant's natural-language assurance that "the code is correct." Every turn
+   must verify against GHC `-Wall -Werror`. If an agent introduces compiler errors or lints,
+   it must immediately address the diagnostic before touching any other file.
+
+### 10.3 The Experiment Quarantine & Archive Branch Protocol
+
+When an experimental REPL run, third-party agent driver (such as Hermes), or exploratory spike
+diverges or destabilizes the working tree, maintainers and assistants must execute the
+**Quarantine Protocol**:
+
+```
+                              THE QUARANTINE PROTOCOL
+                              
+   [Active Session / Master]
+              │
+   (Wrong turn / Bungled commits detected)
+              │
+              ├───► Create Archive Branch:  git branch archive/experiment-<topic>-<date>
+              │     (Preserves all exploratory commits, logs, and artifacts permanently)
+              │
+              └───► Clean Reset to Milestone:  git reset --hard <last-clean-commit>
+                    (Restores master to 100% verified, green-test state)
+```
+
+- **Step 1: Immediate Freeze & Branch Preservation:**  
+  Do not attempt frantic, multi-commit rewrites or force-pushes on the dirty branch. Freeze the
+  current HEAD and create a dedicated archive branch:
+  ```bash
+  git branch archive/experiment-<description>-<YYYYMMDD>
+  ```
+  This guarantees that no exploratory code, research notes, or experimental configurations are lost.
+- **Step 2: Clean Hard Reset to the Last Verified Gate:**  
+  Reset the primary working branch (`master`) cleanly to the last verified milestone tag or
+  commit (e.g. `rad/master` or the Phase 0/1 gate commit):
+  ```bash
+  git reset --hard 9a6c1e2  # or target milestone
+  ```
+- **Step 3: Post-Mortem Documentation:**  
+  If the experiment revealed architectural friction or tool incompatibilities (e.g. REPL container
+  discovery issues or daemon race conditions), document the findings in `ASSISTANT_TOOLING_DESIGN.md`
+  or a living register before resuming development.
+
+### 10.4 REPL Introspection, Daemons, and Synchronization (Tricorder & Hermes)
+
+Cross-REPL testing with tools like Hermes Agent in containerized environments (e.g. `distrobox`)
+highlights specific operational realities for background daemons:
+
+1. **Filesystem & Socket Boundaries:**  
+   When an assistant runs inside a container (such as a distrobox container) while `tricorder`
+   runs on the host (or vice versa), Unix domain sockets, inotify file watch events, and process
+   namespaces may not synchronize seamlessly. Daemon tools must expose explicit TCP/stdio fallbacks
+   or allow path mapping between host and container paths.
+2. **Race-Free Daemon Synchronization:**  
+   When multiple agent processes or editor instances query `tricorder` concurrently, lack of
+   synchronization around GHCi handles or build locks can cause transient exit code failures.
+   Background daemons intended for multi-REPL consumption must implement atomic lockfiles or
+   serialized request queues.
+3. **Observability Fallbacks:**  
+   When a third-party REPL lacks structured observability into its background processes, always
+   fall back to deterministic CLI inspection (`cabal build`, `git status -sb`, `ps aux`) from
+   a known-good shell to verify system ground truth.
