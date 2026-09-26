@@ -102,3 +102,94 @@ with 7B/70B models), distinct failure modes emerge:
    `archive/experiment-<topic>-<date>` and `git reset --hard` back to the verified milestone gate.
 3. **Container Daemon Synchronization:** Tricorder and background daemons must handle filesystem socket
    boundaries between host and containerized distrobox environments.
+
+---
+
+## **5. Sideband Repositories vs. Upstream Trees: The `pgcl-testscripts` Pattern**
+
+### **The Architecture: Sideband as Root with Upstream as Peer/Submodule**
+The maintainer reflected on the structure of `pgcl-testscripts` (on git hosting) vs `~/src/pgcl/` (on disk),
+where the Linux kernel work lived as a branch in the Linux kernel while `pgcl` contained test scripts,
+reproduction harnesses, diagnostics, documentation, and formal CBMC models:
+- **Option 1: Sideband as Root with Submodule Upstream:**  
+  *Pros:* Pinning exact commit SHAs; clean reproducible entrypoint for CI.  
+  *Cons:* The 5GB+ kernel git history makes submodule operations heavy; detached HEAD friction during
+  kernel development; risk of pushing sideband commits with unpushed submodule pointers.
+- **Option 2: Symbiotic Worktrees / Sibling Repositories:**  
+  *Pros:* A primary object store (`~/src/linux/`) with detached worktrees (`pgcl/kernel-worktree/`) eliminates
+  object duplication and submodule friction while allowing out-of-tree builds (`make O=...`).
+- **Option 3: Thin Git Bundles (The PGCL Innovation):**  
+  As implemented in `~/src/pgcl/kernel-bundles/`, storing a thin git bundle of the development branches
+  (~900 KB) atop upstream releases guarantees durability across lightweight git hosts (Framagit, Disroot)
+  without hosting multi-gigabyte kernel trees.
+
+---
+
+## **6. The Grand NIH Constellation: The Oberon Precedent**
+
+The maintainer’s panoramic ecosystem is explicitly non-hierarchical, forming an imbricated constellation
+aspiring to the scale of Niklaus Wirth's **Project Oberon** (rather than eccentric, non-rigorous systems
+like Terry Davis's TempleOS):
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    THE WIRTH-GRADE GRAND NIH CONSTELLATION                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Hardware & MMU:        Custom RISC-V MMU (satp 14/15, 256 B base page,     │
+│                         inverted PT, SLB, 42 superpage sizes; Sail/Rocq/QEMU)│
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Formal Verification:   Tessera (Sail specs, Rocq proofs, CBMC concurrency) │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Kernel Substrates:     Telix (coremapless, morsel allocator, extent VM)    │
+│                         Linux-PGCL & FreeBSD-PGCL (page clustering retrofit)│
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Compiler Substrates:   Frankenstein (multilingual MLIR lowering, arena RT) │
+│                         Organ-Bank (25+ language shims, organ-ir ASTs)      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  AI & Agent Layer:      Sarutahiko (row-polymorphic effects, large-anon,    │
+│                         Yamaarashi streaming, Hashigakari database AST)     │
+│                         Peirce / Mowgli (neuro-symbolic math & diffusion)   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Wirth's Oberon as the Gold Standard:** Total vertical integration—from custom RISC processor on
+  FPGA to the Oberon language, single-pass compiler, and cooperative OS—comprehensible by one human,
+  formally sound, and strictly modular.
+- **The Imbricated Mesh:** The repositories do not form a top-down tree. Slices of `organ-bank` feed
+  MLIR in `frankenstein`, which feeds fixtures to `kogaki` and `sarutahiko`; `telix` drives the custom
+  MMU while `tessera` proves the refill handler; `pgcl` demonstrates page clustering on legacy kernels.
+
+---
+
+## **7. The Custom RISC-V MMU Design & Naming Candidates**
+
+The custom RISC-V MMU extension (proposed `satp` modes 14 and 15) replaces the conventional hardware-walked
+radix tree with an **inverted (hashed) page table**, a **POWER9-style SLB segment cache**, and **residue-based
+TLB partitioning** covering 42 distinct translation sizes ($g_n = K \cdot 2^{W \cdot n}$, with $K=256\text{ B}$,
+$n \in \{0 \dots 41\}$ up to 512 TiB).
+
+### **Naming Candidates:**
+1. **Ajiro (網代):** Classical Japanese woven wickerwork lattice / fish trap mesh. Perfectly captures the
+   hashed inverted page table lattice (an interconnected mesh rather than a hierarchical radix tree).
+2. **Kusabi (楔):** Wedge or keystone. Represents the 256 B base page as the architectural wedge splitting
+   the radix-tree deadlock without VAX pathologies.
+3. **Kasen (歌仙) / Kasen-42:** Named for the classical 42 poetic masters, commemorating the 42 distinct
+   translation sizes.
+4. **Sudare (簾):** Slatted partition screen, matching residue-based TLB partitioning.
+5. **T-Grain / Morsel-MMU:** Direct architectural attribution linking the 256 B grain to Tessera and Telix.
+
+---
+
+## **8. Ecosystem Documentation Guidelines & Portfolio Standards**
+
+To sweep the portfolio and ensure uniform excellence across all repositories, documentation must adhere
+to formal structural guidelines:
+1. **Genre Separation (DOC_STRATEGY):** Design notes, specifications, implementation plans, living registers,
+   and transcripts are strictly separated.
+2. **Diátaxis Alignment:** Clear distinction between Tutorials (learning-oriented), How-To Guides (problem-oriented),
+   Reference (information-oriented), and Architecture/Design (understanding-oriented).
+3. **Formal Verification & Failure Catalogues:** In system software (`tessera`, `telix`, `pgcl`), documents
+   must enumerate explicit Invariants, Proof Obligations, and Failure Catalogues (e.g. `failure-modes-pgcl.md`).
+4. **The ~4 KB Pointer Budget for AGENTS.md:** Frontline orientation projections point to canonical documents
+   rather than replicating content, preserving context tokens across AI assistant sessions.
+
