@@ -1,0 +1,55 @@
+cabal-version:      3.14
+name:               sarutahiko-schema
+version:            0.1.0.0
+synopsis:           Row Descriptors to JSON Schema compiler and offline validator
+license:            BSD-3-Clause
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Data, Schema
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:
+        Sarutahiko.Schema
+        Sarutahiko.Schema.Types
+        Sarutahiko.Schema.Compile
+        Sarutahiko.Schema.Validate
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        kogaki-wire,
+        sarutahiko-fields,
+        sarutahiko-records
+    hs-source-dirs:   src
+
+test-suite test-schema
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        kogaki-wire,
+        sarutahiko-fields,
+        sarutahiko-records,
+        sarutahiko-schema
