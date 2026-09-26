@@ -16,10 +16,12 @@ code implements blessed designs.
 ## Read first (in this order)
 
 1. `README.md` — build/run one-liners.
-2. `docs/INDEX.md` — corpus inventory and reading map (DOC_STRATEGY §5).
-3. `docs/notes/NIH_PLAN.md` — the program: decisions taken (§0), package map (§2),
+2. `PLAN.md` & `STATE.md` — canonical roadmap, operational frontier, and active task
+   queue (read on every fresh session start; update `STATE.md` before session reset).
+3. `docs/INDEX.md` — corpus inventory and reading map (DOC_STRATEGY §5).
+4. `docs/notes/NIH_PLAN.md` — the program: decisions taken (§0), package map (§2),
    contracts (§3), roadmap (§4), naming registry (§6.1).
-4. The design note for whatever you're touching (see map below). Layout: `docs/notes/`
+5. The design note for whatever you're touching (see map below). Layout: `docs/notes/`
    (designs/specs), `docs/registers/` (living registers), `docs/imports/` (verbatim
    third-party material), `docs/transcripts/` (conversation archives).
 
@@ -67,3 +69,6 @@ code implements blessed designs.
    scrub-manifest rule (INSTRUMENTS_SPEC §2.4).
 7. **This file has an ~4 KB budget** (DOC_STRATEGY §7 amendment): it is a pointer
    file — add links, not content; canonical documents absorb any new material.
+8. **Staged Context Reset & Two-File Loop:** Long-horizon tasks avoid compounding drift
+   by resetting sessions at milestone boundaries. Always update `STATE.md` before ending
+   or resetting a session; fresh sessions initialize from `PLAN.md` and `STATE.md`.
