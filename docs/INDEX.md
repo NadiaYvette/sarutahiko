@@ -29,6 +29,7 @@ and are checked by the script net (§5).
 | `notes/KOGAKI_DESIGN.md` | design | draft | cross-cutting (Unicode, codecs, faithfulness) | — |
 | `notes/ASSISTANT_TOOLING_DESIGN.md` | design | draft | cross-cutting (assistant tooling, code intelligence & configuration) | — |
 | `notes/CONSTELLATION_ARCHITECTURE.md` | design | draft | cross-cutting (Wirth-grade constellation, sideband patterns) | — |
+| `notes/PORTFOLIO_WORKFLOW_SURVEY.md` | survey | draft | cross-cutting (portfolio workflow tracking, vector algorithms) | — |
 | `plans/PHASE_0_PLAN.md` | plan | complete | substrate (implementation phase 0) | — |
 | `plans/PHASE_1_PLAN.md` | plan | draft | wire (implementation phase 1) | — |
 | `plans/PHASE_1.5_PLAN.md` | plan | draft | cross-cutting (vertical slice phase 1.5) | — |

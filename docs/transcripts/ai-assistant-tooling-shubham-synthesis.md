@@ -193,3 +193,87 @@ to formal structural guidelines:
 4. **The ~4 KB Pointer Budget for AGENTS.md:** Frontline orientation projections point to canonical documents
    rather than replicating content, preserving context tokens across AI assistant sessions.
 
+---
+
+## **9. Spatial Trees vs. High-Dimensional Vector Graphs (The Curse of Dimensionality)**
+
+The maintainer examined whether vector databases use spatial trees like $R^*$-trees or $X$-trees
+(as found in `~/src/spatial-trees/`):
+- **Spatial Bounding Trees ($d \le 16$):** $R$-trees, $R^*$-trees, and $X$-trees partition space using minimal
+  bounding hyper-rectangles. In 2D, 3D, and up to ~16 dimensions, this prunes large swaths of the search
+  space with minimal bounding-box overlap.
+- **The Curse of Dimensionality ($d = 768$):** In high-dimensional spaces, the volume of bounding
+  hyper-rectangles expands exponentially, causing internal node boxes to overlap almost 100% of the space.
+  Tree descent degenerates to linear $O(N)$ scan.
+- **Modern Vector Topologies:** Vector stores therefore bypass spatial bounding trees in favor of
+  **Approximate Nearest Neighbor (ANN)** graph and inverted-list structures:
+  - **HNSW (Hierarchical Navigable Small World graphs):** Multi-layer proximity skip-graphs ($O(\log N)$ search).
+  - **IVF (Inverted File Index):** Voronoi cell clustering around K-means centroids + inverted lists.
+  - **DiskANN / Vamana:** High-throughput graph-based ANN engineered for SSDs (implemented in `sqlite-vec-diskann.c`).
+
+---
+
+## **10. Pure-Haskell Native Storage Engines (`haskey-btree` & `spatial-trees`)**
+
+In `sarutahiko`'s data access layer (`hashigakari`), two native Haskell libraries provide hermetic,
+zero-C-FFI storage backends:
+1. **`haskey-btree` (`~/src/haskey-btree/`):** Henri Verroken & Steven Keuchel's purely functional,
+   copy-on-write B-tree implementation with transactional ACID guarantees, eliminating runtime thread
+   pinning and native C dependencies.
+2. **`spatial-trees` (`~/src/spatial-trees/`):** Multi-dimensional $R^*$-tree and $X$-tree indexing for
+   spatial, geometric, and low-dimensional clustering.
+
+---
+
+## **11. Database Parity: PostgreSQL vs. SQLite**
+
+The codebase enforces strict database neutrality in `hashigakari` (Tier 5):
+- **Vector Search:** PostgreSQL's `pgvector` (`vector(768)` type, HNSW indexes, `<->`, `<=>` operators)
+  exhibits direct semantic parity with SQLite's `sqlite-vec` (`vec0` virtual table, `MATCH` operator).
+- **Full-Text Search:** PostgreSQL's native `tsvector` + `tsquery` (with GIN/GiST indexes and `ts_rank_cd`)
+  exhibits direct parity with SQLite's `FTS5` (BM25 ranking and porter stemming).
+- **Neutrality Guard:** `sqlite-vec` and `FTS5` are chosen strictly as zero-daemon developer tooling for
+  local desktop indexing; `sarutahiko` is never locked to an SQLite-only paradigm.
+
+---
+
+## **12. Home-Directory Packaging Aware of System Packages (Spack & Distrobox)**
+
+The challenge of installing packages in `$HOME` without root privileges while remaining aware of the
+host system's package database (RPM/Debian) is addressed by:
+- **Spack (`~/src/spack/`):** Developed at LLNL for national labs and HPC clusters. It installs entirely
+  within `$HOME`, but runs `spack external find` to automatically detect host-installed compilers (GCC, Clang)
+  and system libraries (`glibc`, `openssl`), building user-space packages linked directly against host components.
+- **Distrobox (`~/Projects/Workspace/Nadia/`):** Mounts the host `$HOME`, shares Wayland/X11 and GPUs,
+  while maintaining isolated package manager states.
+
+---
+
+## **13. Durable Workflow Tracking: Nadeem's `keiro` / `keiki` and Kanban**
+
+- **Nadeem's Workflow Stack:**  
+  - **`keiro` (経路):** A durable workflow execution engine built over Postgres event logs (`kiroku`).
+  - **`keiki` (継起):** A pure, zero-database finite-state transducer core modeling state machines and event streams.
+- **Applying to Human + Agent Affairs:**  
+  While designed for computer orchestration, `keiro`'s event-sourced model can represent human tasks,
+  cross-repo milestones, and project DAGs (`TaskProposed`, `TaskBlocked`, `TaskCompleted`), enabling
+  deterministic replay and dependency tracking across the portfolio.
+- **Nomenclature:** The Greek word referenced is **`diataxis` (διάταξις - arrangement/classification)**
+  or **`tessera` (τέσσερα - four / mosaic tile)**. "Kanban" (看板) is Japanese, meaning signboard or billboard.
+
+---
+
+## **14. Multi-REPL Concurrency & ACID (SQLite WAL Mode & Git Worktrees)**
+
+When multiple AI coding assistants (Antigravity, Hermes, Claude Code) touch shared repository state:
+1. **SQLite Concurrency:** Configure **WAL mode (Write-Ahead Logging)** with a busy timeout:
+   ```sql
+   PRAGMA journal_mode = WAL;
+   PRAGMA busy_timeout = 5000;
+   ```
+   Readers never block writers, and writers never block readers, completely eliminating `database is locked` errors.
+2. **Git Concurrency:** Multiple agents must never run concurrent commits in the same working directory
+   (which collides on `.git/index.lock`). Agents must utilize **Git Worktrees** (`git worktree add`),
+   giving each assistant an isolated working directory sharing a single `.git/objects` store.
+
+
