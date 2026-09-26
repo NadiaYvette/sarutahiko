@@ -6,6 +6,7 @@ packages:
     packages/sarutahiko-records
     packages/sarutahiko-jsonrpc
     packages/sarutahiko-schema
+    packages/sarutahiko-process
     packages/sarutahiko-effect-signatures
     packages/sarutahiko-effect-effectful
     packages/sarutahiko-effect-polysemy
