@@ -48,6 +48,8 @@ extensible records, and retrofitting their tuple/generics cores means rewriting 
 | `hashigakari-syntax` | Dialect-indexed SQL compilation from the AST: quoting, placeholders (binary vs textual), LIMIT/OFFSET vs FETCH/TOP ceilings, RETURNING, upserts, JSONB operators gated to Postgres, type-level ceiling enforcement (§3.4). |
 | `hashigakari-hasql` | hasql-backed execution: connection settings, session/transaction effects, binary row decoding into anonymous records, cursor declaration + `FETCH FORWARD` stepping. |
 | `hashigakari-sqlite` | direct SQLite binding (via `direct-sqlite`): prepared statements, `sqlite3_step` stepper, column decode into anonymous records. |
+| `hashigakari-haskey` | pure-Haskell ACID B-tree engine (via `haskey-btree`): zero-C-FFI, purely functional storage backend for hermetic/embedded environments. |
+| `hashigakari-spatial`| spatial & multi-dimensional index extensions (via `spatial-trees` R*/X-trees for $d \le 16$, and HNSW/IVF for high-dimensional vectors). |
 | `hashigakari-beam` | the `beam-large-anon` bridge: `AnonTable (r :: Row Type) (f :: Type -> Type)` with hand-written `Beamable` instances bypassing GHC.Generics; published standalone on Hackage. |
 | `hashigakari-patch` | TriState HKD rows (RFC 7396/6902 semantics), generic diff engine (`Record Identity r` × `Record (TriState) r` → minimal UPDATE), conflict/reject policy. |
 | `hashigakari-schema` | schema introspection → row types at runtime; migrations expressed as row diffs; round-trip with `sarutahiko-schema` descriptors. |
@@ -215,6 +217,43 @@ instance Beamable (AnonTable r) where
   that feeds JSON-RPC/MCP/SSE with `rcast` and zero DTOs (the doc's §3 payoff).
 - Scope guard: this bridge does *not* rewrite beam's query AST; tuple flattening stays
   beam's problem. The bridge exists so beam users can opt into rows at their boundaries.
+
+---
+
+### 4.5 Vector Extensions, Spatial Trees & Engine Parity
+
+As retrieval and spatial query demands expand across the agent and memory tiers, Hashigakari
+formulates clear dialect capabilities and mathematical boundaries:
+
+#### 1. The Dimensional Threshold: Spatial Trees vs. High-Dimensional Vector Graphs
+- **Low-Dimensional Spatial Indexing ($d \le 16$):**  
+  Bounding-box hierarchical trees ($R$-trees, $R^*$-trees, $X$-trees, as implemented in `~/src/spatial-trees/`)
+  excel at low dimensions (2D GIS coordinates, 3D spatial extents, temporal ranges). They partition space
+  via minimal bounding boxes with guaranteed overlap minimization.
+- **The Curse of Dimensionality ($d \ge 128$, e.g. 768-dim embeddings):**  
+  In high-dimensional spaces, the volume of bounding hyper-rectangles explodes, and internal node boxes
+  overlap nearly 100% of the space. Tree descent degenerates to linear $O(N)$ scan. Consequently,
+  high-dimensional vector search requires **Approximate Nearest Neighbor (ANN)** graph topologies
+  (HNSW, DiskANN, IVF-PQ) rather than spatial tree partitioning.
+
+#### 2. PostgreSQL vs. SQLite Parity Matrix
+Hashigakari enforces identical row-typed query semantics across both execution backends:
+
+| Capability | PostgreSQL (`hashigakari-hasql`) | SQLite (`hashigakari-sqlite`) |
+|---|---|---|
+| **Vector Similarity** | `pgvector` extension (`vector(768)` type, HNSW index, `<->`, `<=>` operators) | `sqlite-vec` extension (`vec0` virtual table, SIMD distance, `MATCH` operator) |
+| **Lexical Full-Text** | Built-in `tsvector` + `tsquery` with GIN/GiST index and `ts_rank_cd` | Built-in `FTS5` virtual table with BM25 ranking and porter stemmer |
+| **JSON Operations** | Native binary `jsonb` operators (`->`, `->>`, `@>`) | `json_extract()` and JSON1 extension functions |
+| **Concurrency Model** | Multi-process server, MVCC, row-level locks, serialized transactions | In-process library, WAL mode (`busy_timeout = 5000`), single-writer/multi-reader |
+
+#### 3. Pure-Haskell In-Process Engine (`hashigakari-haskey`)
+For hermetic environments, verification harnesses, or targets where native C SQLite linking is
+undesirable, `hashigakari-haskey` integrates Henri Verroken & Steven Keuchel's `haskey-btree`
+(`~/src/haskey-btree/`):
+- Purely functional, copy-on-write B-tree on disk with transactional ACID guarantees.
+- Zero C FFI overhead, eliminating RTS thread pinning and cross-boundary allocation overhead.
+
+---
 
 ## 5. Testing
 
