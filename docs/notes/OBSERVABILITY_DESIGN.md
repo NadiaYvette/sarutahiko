@@ -142,9 +142,13 @@ the limiting factor was the consumer, not the corpus. Standing policies:
 - **O1 — retention defaults per kind.** Proposal: raw events local-only with a
   rolling window (default 7d); sketch snapshots retained indefinitely in experiment
   records; model-call bodies scrub-gated (§6).
-- **O2 — spans: scoped effect or row member?** Scoped (one `Observe` region per
-  span) composes with `Scoped` and forbids cross-span leakage by construction; a
-  plain row member is simpler but allows unmatched begin/end. Leaning scoped.
+- **O2 — spans: resolved as `Scoped` regions with inductive `SpanPath`.** Blessed
+  2026-09-26 (resolving the hierarchical scope nesting hazard). Spans are first-class
+  `Scoped` regions composing with `EFFECT_CATALOG_DESIGN.md` §6.3. The correlation
+  identifier `corr` is not a flat string or truncated integer, but an inductive tree path
+  (`SpanPath = RootSpan !SpanId | ChildSpan !SpanId !SpanPath`). This guarantees arbitrary
+  hierarchical nesting of execution scopes (session → subagent → turn → tool → diagnostic
+  pass) without artificial depth limits, string-clamping, or orphaned diagnostics.
 - **O3 — metrics exposure.** Pull-from-stream only (per §4) until a Phase-3
   dashboard demands a wire exporter; revisit then.
 - **O4 — recording interpreters' home.** kagami-ita (substrate) hosts; kakegoe

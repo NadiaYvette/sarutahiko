@@ -185,6 +185,38 @@ HLS can be bridged to AI assistants via:
 2. **LSP-to-MCP Bridge:** Running an MCP adapter that exposes HLS `textDocument/definition` and
    `textDocument/hover` as callable agent tools.
 
+### 2.5 Hierarchical Diagnostic Scope Attribution (The Wrong-Scope Refactoring Trap)
+
+A pervasive failure mode in AI coding assistant tooling is the **flat-scope assumption** in compiler
+diagnostic ingestion. In Haskell, compiler warnings and type errors frequently occur inside deeply
+nested syntactic and type-level scopes:
+* **Lexical Nesting:** `where` clauses, nested `let` expressions, lambda abstractions, and `do` blocks.
+* **Type-Level & Existential Nesting:** GADT pattern matches (introducing local existential type variables
+  and local equality constraints `t1 ~ t2`), `ScopedTypeVariables`, and `RankNTypes`.
+
+**The Failure:** When a diagnostic parser or LSP bridge flattens the diagnostic to the top-level binding
+(e.g. reporting that function `foo` has a type mismatch, rather than an inner binding 4 levels deep in
+a `where` clause), the LLM is misled into refactoring `foo`'s top-level signature. This triggers a cascade
+of secondary compiler errors because the error was local to an existential unpack where local equalities held.
+
+**The Design Invariant:** All diagnostic consumers in `sarutahiko` (`tricorder`, `codegraph`, `kagami-ita`)
+must preserve the **Scope Path** (`ScopeStack = [ScopeDescriptor]`):
+```haskell
+data ScopeDescriptor
+  = TopModule !ModuleName
+  | TopBinding !SymbolName
+  | InstanceHead !ClassName !TypeName
+  | WhereClause !SymbolName
+  | GadtUnpack !ConstructorName ![LocalTyVar]
+  | LocalLet !SymbolName
+  deriving (Eq, Show, Generic)
+
+type ScopeStack = NonEmpty ScopeDescriptor
+```
+Every diagnostic emitted into the event envelope or presented to an assistant carries this explicit
+lineage. The assistant sees the exact scope boundary where the type mismatch occurs, preventing
+destructive out-of-scope edits.
+
 ---
 
 ## 3. Context Engines & Memory Providers: Off-the-Shelf vs. In-Tree

@@ -253,9 +253,20 @@ data Scoped (m :: Type -> Type) :: Type -> Type where
          -> m a -> Scoped m a             -- body, always finalized
 ```
 
-`Transaction`, cursor scopes, and hook regions become specializations (thin senders over
-`Region` with backend keys). One law set: finalizer runs exactly once, on every exit path,
-in LIFO order; regions may nest; async exceptions are respected.
+`Transaction`, cursor scopes, hook regions, and observability spans become specializations
+(thin senders over `Region` with backend keys).
+
+**Laws:**
+- **S1 (Exactness):** Finalizer runs exactly once, on every exit path (normal return,
+  short-circuit, synchronous error, async exception).
+- **S2 (LIFO Order):** Finalizers in nested regions unwind strictly in reverse allocation order.
+- **S3 (Unbounded Hierarchical Nesting):** `Region` nesting has *no hardcoded depth limit*.
+  Interpreters must support arbitrary recursive finite depth without unlifter exhaustion or
+  scope truncation. The dual-interpreter parity testkit must include a property-based test
+  (`prop_arbitrary_nested_regions`) exercising $N \in [1, 500]$ deeply nested scopes with
+  interleaved exceptions to prove neither interpreter leaks or clips depth.
+- **S4 (No Cross-Scope Escape):** Resources allocated within an inner `Region` cannot escape
+  their bounding scope; parent scopes cannot observe unfinalized child resources.
 
 ### 6.4 `SomeRow` packaging
 
