@@ -14,3 +14,10 @@ dist-newstyle/
 # Tags files
 tags
 TAGS
+
+# Assistant tooling & indexing caches
+.ok/
+.codegraph/
+.contextful/
+.cxf/
+.hls/
