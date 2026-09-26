@@ -91,6 +91,25 @@ DOC_STRATEGY canonical per domain (notes carry the narrative); **naming** — th
 registry; **tutorials** — canonical for orientation facts only, always deferring to
 canonical sources for technical claims (with links, per policy).
 
+**AI Coding Assistants → Orientation Projections & Code Intelligence (The 5th Diátaxis Category).**
+Diátaxis traditionally defines four quadrants for human cognitive engagement:
+1. *Tutorials* (learning-oriented)
+2. *How-To Guides* (task-oriented)
+3. *Reference* (information-oriented)
+4. *Explanation* (understanding-oriented)
+
+The operational deployment of AI coding assistants mandates an explicit **fifth category**:
+5. **Orientation Projections & Machine Intelligence Data (agent-oriented):**
+   - *Pointer Projections (`AGENTS.md`):* Strictly bounded (~4 KB token budget) navigational
+     projections directing assistants to canonical sources without token exhaustion.
+   - *Code Intelligence Data:* Pre-computed semantic symbol and reference databases (e.g. GHC `.hie`
+     files, `hiedb` SQLite stores, trigram `cindex` stores, SCIP/LSIF).
+   - *Assistant Configuration & Capability Envelopes:* Declarative skill files (`SKILL.md`),
+     protocol descriptors (`.mcp.json`), explicit negative constraints ("thou shalt not"), and
+     token-budgeted evidence slices (`contextful`).
+*Canonicity:* Pointer files are non-canonical projections; code intelligence databases are derived
+oracles reflecting compiler truth; skill and capability manifests are canonical for assistant invocations.
+
 ## 2. Single-source-of-truth and drift — PARTIALLY DECIDED 2026-09-24 (assessment half)
 
 Planned duplications already exist: laws (catalog note ↔ haddock ↔ property tests),

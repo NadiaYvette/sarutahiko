@@ -128,3 +128,77 @@ documentation strategy established in `sarutahiko/docs/DOC_STRATEGY.md` is eleva
    How-To Guides (task-oriented), Reference (information-oriented), and Explanation/Architecture (understanding-oriented).
 3. **Formal Verification Trails:** System software repositories must maintain explicit `failure-modes-*.md`,
    invariant catalogues, and proof-obligation matrices.
+
+---
+
+## 6. Index State Partitioning & Multi-Tier Scoping
+
+As code intelligence databases (`.hiedb`, `tags`, `csearch` trigrams, AST graphs) proliferate,
+a fundamental state partitioning challenge arises: most developer tools assume a single, leaf-level
+project root, whereas constellation research frequently requires searches across wide, imbricated fields.
+
+The architecture resolves this through a **4-tier partitioned scoping hierarchy**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       INDEX STATE PARTITIONING TIERS                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Tier 1: Leaf Project Scope (Local .tags, .hiedb, per-repo FTS5)            │
+│          - Confined to current working tree; updated on file save.          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Tier 2: Subsystem Constellation Scope (tessera + telix + pgcl cluster)     │
+│          - Dedicated multi-repo cluster index (e.g. cluster-vm.csearchindex)│
+│          - Bridges hardware proofs, coremapless OS, and kernel clustering.  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Tier 3: Global Workspace Scope (~/src/ wide-field index)                   │
+│          - Complete flat-file trigram index (cindex ~/src) allowing instant │
+│            regex search across all owner-class and reference repositories.  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Tier 4: Ephemeral External Universe (Hackage, crates.io, opam)             │
+│          - Ephemeral, read-only indices of external package registries      │
+│            without cloning full upstream repositories onto local disks.     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Mechanism for SQLite Stores:** Sibling `.hiedb` or `symbols.sqlite3` databases use SQLite's
+  `ATTACH DATABASE` mechanism or unified schema tables with a `repo_id` column, allowing queries to
+  either isolate a single leaf repo or union-query across the entire constellation.
+- **Mechanism for Trigram Searches:** Tools like `csearch` switch scopes via environment variables
+  (`export CSEARCHINDEX=~/.cache/indices/cluster-kernel.csearchindex`), giving agents explicit control
+  over query blast radius.
+
+---
+
+## 7. Dense Embeddings, Vector Storage (`sqlite-vec`), and Hybrid RRF
+
+While trigram search (`csearch`) and lexical search (FTS5 BM25) match literal characters and words,
+they are semantically blind: searching for "handling translation faults" will miss documentation that
+refers exclusively to "MMU refill trap dispatch" because the words share no overlap.
+
+### 7.1 What Dense Embeddings Are and Why They Differ
+- **Dense Embeddings:** A neural encoder (transformer) projects an arbitrary paragraph or code snippet
+  into a high-dimensional vector space (e.g. 384 or 768 floating-point numbers). Concepts that share
+  semantic meaning cluster close together (measured by cosine similarity or inner product), regardless
+  of terminology divergence.
+- **The Blindness of Pure Vector Search:** Pure vector search is notoriously "fuzzy" on code: it cannot
+  guarantee exact identifier matching (it frequently confuses `runProcessIO` with `withSupervisedChild`),
+  producing hallucinated false positives.
+- **The Solution — Hybrid Reciprocal Rank Fusion (RRF):**  
+  As designed in `kioku` and `MEMORY_ENGINE_DESIGN.md`, the ideal retrieval pipeline fuses:
+  $$\text{Score}(d) = \frac{1}{60 + \text{Rank}_{\text{BM25}}(d)} + \frac{1}{60 + \text{Rank}_{\text{Vec}}(d)}$$
+  Exact symbol matches receive top rank via BM25, while dense embeddings retrieve semantically relevant
+  passages that used divergent phrasing.
+
+### 7.2 The Zero-Daemon Local Software Stack
+Dense embeddings can be deployed completely locally without heavyweight background daemons or external
+SaaS dependencies:
+1. **Vector Storage: `sqlite-vec` (`~/src/sqlite-vec/`):**  
+   Compiles directly via `make loadable` into a zero-overhead C extension (`vec0.so`). It exposes virtual
+   tables (`CREATE VIRTUAL TABLE vec_items USING vec0(...)`) allowing vector KNN searches natively
+   inside SQLite alongside FTS5 tables.
+2. **Lightweight Embedding Encoders (Zero-GPU, Fast CPU):**  
+   - Models: Small, highly optimized open models like `nomic-embed-text-v1.5` (137M parameters, ~150 MB)
+     or `bge-small-en-v1.5` (~67 MB).
+   - Execution Engines: `llama.cpp` (`llama-embedding` binary or `llama-server --embedding`) or pure Rust
+     `fastembed-rs` (ONNX runtime embedded, no Python dependencies).
+
