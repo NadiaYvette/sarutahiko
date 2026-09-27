@@ -1,0 +1,68 @@
+cabal-version:      3.14
+name:               sarutahiko-mcp
+version:            0.1.0.0
+synopsis:           Model Context Protocol (MCP 2025-03-26) client and server implementations
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Network, Protocol
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:
+        Sarutahiko.MCP
+        Sarutahiko.MCP.Types
+        Sarutahiko.MCP.Server
+        Sarutahiko.MCP.Client
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        kogaki-wire,
+        sarutahiko-fields,
+        sarutahiko-records,
+        sarutahiko-jsonrpc,
+        sarutahiko-schema,
+        sarutahiko-process,
+        effectful-core >= 2.3
+    hs-source-dirs:   src
+
+test-suite test-mcp
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    ghc-options:      -threaded
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        kogaki-wire,
+        sarutahiko-fields,
+        sarutahiko-records,
+        sarutahiko-jsonrpc,
+        sarutahiko-schema,
+        sarutahiko-process,
+        sarutahiko-mcp,
+        effectful-core >= 2.3,
+        tasty,
+        hedgehog,
+        tasty-hedgehog
