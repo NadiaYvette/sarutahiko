@@ -1,0 +1,75 @@
+# keiro task packet – setup-keiro-state
+id: setup-keiro-state
+title: Initialize or reset Keiro workflow state (database and MCP server)
+description: |
+  Ensure a running Keiro MCP server with a clean or known state so that
+  `keiro-ops wf list` shows existing workflows and task packets can be
+  spawned successfully.
+dependencies: []
+packages:
+  - keiro               # from ~/src/keiro (provides the `keiro` binary)
+  - keiro-runtime-kenshou # optional, provides `kenshou` MCP server
+steps:
+  - name: Ensure Postgres is running (if using pgmq)
+    action: |
+      # If you wish to use PostgreSQL via pgmq/pgmq-hs instead of the
+      # default SQLite, start a Postgres instance and create a database.
+      # Example:
+      #   pg_ctl -D ~/src/postgresql start
+      #   createdb keiro
+      #   createuser keiro -P
+      #   export KEIRO_DATABASE_URL="postgresql://keiro:***@localhost/keiro"
+      # Adjust credentials as needed.
+    duration: "5m"
+  - name: Build the keiro binary (if not already)
+    action: |
+      cd ~/src/keiro
+      cabal build exe:keiro   # or: stack build keiro:exe:keiro
+      # Installs to ~/.cabal/bin/keiro (cabal) or ~/.local/bin/keiro (stack)
+    duration: "2m"
+  - name: (Optional) Build the kenshou MCP server binary
+    action: |
+      cd ~/src/keiro-runtime-kenshou/kenshou-cli
+      cabal install   # installs `kenshou` executable
+    duration: "2m"
+  - name: Start the Keiro MCP server
+    action: |
+      # Choose one of the following:
+      # 1) Let Hermes spawn it via stdio (simplest) – ensure the `keiro-ops`
+      #    config uses `transport: stdio` (see Hermes config).
+      # 2) Run it manually for debugging or external access:
+      #    Using the core keiro binary:
+      #      keiro mcp serve          # stdio mode
+      #      keiro mcp serve --transport tcp --port 8080   # TCP
+      #      keiro mcp serve --transport unixsocket --socket /tmp/keiro.sock
+      #    Using the kenshou variant (if built):
+      #      kenshou serve            # same effect
+      # The server will create/upgrade its database schema on first start.
+      # For SQLite, the file will be ~/.local/share/keiro/keiro.db by default.
+    duration: "1m"
+  - name: Verify the server is reachable
+    action: |
+      # If you ran the server manually, test with a simple MCP command:
+      #   echo '{"jsonrpc":"2.0","id":1,"method":"keiroOpsWfList","params":{}}' |       #     nc localhost 8080   # adjust host/port as needed
+      # Expect a JSON result with an empty array or list of workflows.
+      # If using stdio via Hermes, you can test from a Hermes REPL:
+      #   :load Sarutahiko.EffectSignatures.KeiroOps
+      #   keiroOpsWfList   -- should return [] or existing workflows.
+    duration: "1m"
+  - name: (Optional) Load existing task packets into .keiro/tasks/
+    action: |
+      # Ensure the task directory exists and contains your YAML packets.
+      mkdir -p .keiro/tasks
+      cp /home/nyc/src/sarutahiko/docs/task_packets/*.yaml .keiro/tasks/
+      # Then list them:
+      keiro task list
+    duration: "30s"
+success_criteria:
+  - The Keiro MCP server is running and accepting connections.
+  - `keiro task list` (or `keiro-ops wf list` via Hermes) returns the
+    expected task packet IDs (refactor-effects-records, refactor-logical-string,
+    phase2-agent-core, phase3-surfaces-codeintel, phase4-data-protocol,
+    setup-keiro-state) or at least an empty list if no packets have been
+    spawned yet.
+  - No error messages about missing database or connection failures appear
+    in the server logs or Hermes effect calls.

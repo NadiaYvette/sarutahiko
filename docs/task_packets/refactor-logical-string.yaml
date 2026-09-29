@@ -1,0 +1,108 @@
+# keiro task packet – logical‑string‑abstraction
+id: refactor-logical-string
+title: Introduce a polymorphic LogicalString type (IsString) for i18n/L10n
+description: |
+  Replace naked `ByteString` usage in the logical layers (kogaki‑core,
+  kogaki‑wire orchestrators, llm‑substrate, task‑manager, etc.) with a
+  newtype that implements `IsString`.  This enables localized string
+  look‑ups, deferred‑IO retrieval, and future bidi/formatting concerns
+  without touching call sites.  The wire parsers themselves stay
+  ByteString‑centric for performance, but they convert to/from the
+  logical type at the boundary.
+
+packages:
+  - sarutahiko-kogaki-core   # packages/kogaki-core
+  - sarutahiko-kogaki-wire   # packages/kogaki-wire   (orchestrator only)
+  - sarutahiko-llm-substrate # packages/llm-substrate
+  - sarutahiko-task-manager  # packages/task-manager
+  - sarutahiko-hokora        # packages/hokora
+  - sarutahiko-instruments   # packages/instruments
+  - sarutahiko-agent-core    # packages/agent-core
+  - sarutahiko-koi-loom      # packages/koi/koi-loom
+
+steps:
+  - name: Define LogicalString newtype
+    action: |
+      In `kogaki-core` (or a new `kogaki-string` module) add:
+        newtype LogicalString = LogicalString { getLogical :: Text }
+          deriving newtype (Eq, Ord, Show, IsString,
+                            Semigroup, Monoid)
+      Export `LogicalString` and `getLogical`.
+      Add a safe `fromByteString :: ByteString -> Either UnicodeException LogicalString`
+      that does UTF‑8 validation (`decodeUtf8'`) and returns an error on invalid
+      sequences (or a lossless fallback if desired).
+    owner: ${{ github.actor }}
+    duration: "1h"
+
+  - name: Wire‑layer conversion points
+    action: |
+      In each wire parser/renderer (e.g. `Kogaki/Wire/SSE/Parser.hs`,
+      `Kogaki/Wire/Json/Decode.hs`):
+        * Keep the low‑level functions working on `ByteString`.
+        * At the point where a logical field is produced/consumed,
+          wrap/unwrap with `fromByteString` / `encodeUtf8 . getLogical`.
+        * Example:
+            data SseEvent = SseEvent
+              { sseEvent  :: !(Maybe LogicalString)
+              , sseData   :: !(Maybe LogicalString)
+              , sseId     :: !(Maybe LogicalString)
+              , sseRetry  :: !(Maybe Int) }
+            parseSseStream bs = …
+              where
+                eventTxt = fmap (either error id . fromByteString) <$> lookup "event"
+                dataTxt  = fmap (either error id . fromByteString) <$> lookup "data"
+    owner: ${{ github.actor }}
+    duration: "2h per package"
+
+  - name: Propagate LogicalString to higher layers
+    action: |
+      Replace all `ByteString` fields that represent textual data
+      (configuration keys, message templates, error messages, etc.)
+      with `LogicalString`.  Update record definitions accordingly,
+      e.g.:
+        type WorkerConfRec =
+          '[ "workDir"   := FilePath
+           , "maxTries"  := Int
+           , "logger"    := (LogicalString -> IO ()) ]
+      Adjust any `IsString` usages (`OverloadedStrings`) so that
+      string literals automatically become `LogicalString`.
+    owner: ${{ github.actor }}
+    duration: "1h per package"
+
+  - name: Update effect‑signature senders/receivers
+    action: |
+      Where an effect carries a textual payload (e.g. `Log`,
+      `Fail`, `Trace`), change the payload type to `LogicalString`.
+      Ensure the interpreters (`runTraceIO`, `runFailEither`, etc.)
+      handle the conversion to/from `Text` as needed.
+    owner: ${{ github.actor }}
+    duration: "1h"
+
+  - name: Adjust tests and examples
+    action: |
+      In test suites, replace `ByteString` literals with
+      `LogicalString` literals (enabled by `OverloadedStrings`).
+      Verify that round‑trip `ByteString → LogicalString → ByteString`
+      yields the original input for valid UTF‑8.
+    owner: ${{ github.actor }}
+    duration: "1h per package"
+
+  - name: Validate i18n readiness
+    action: |
+      Write a small demo that shows a `MessageCatalog`
+      (`Record (Const MessageTemplate) AgentMessageRow`) where each
+      `MessageTemplate` is a function `LocaleRecord -> LogicalString`.
+      Show that the same core code can produce different languages
+      by swapping the `LocaleRecord`.
+    owner: ${{ github.actor }}
+    duration: "30m"
+
+success_criteria:
+  - All packages compile.
+  - All existing tests pass.
+  - No `ByteString` literals appear in logical‑layer source
+    (checked via `grep -R "\"[^\"]*\"` src/ | grep -v "Parser\|Decode\|Render"`).
+  - The public API now accepts/produces `LogicalString` where
+    textual data is expected; wire‑layer functions still have
+    `ByteString` signatures but convert at the boundary.
+  - A simple localisation demo works (see step “Validate i18n readiness”).

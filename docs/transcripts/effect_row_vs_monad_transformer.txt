@@ -1,0 +1,1 @@
+Conversation transcript: discussion about design pattern for parsing using row types for extensible records and algebraic effects, software engineering reasons why effects and extensible records mix well, distinctive appearance of code tackling the awkward squad using algebraic effects & extensible records versus monad transformer stacks, with concrete examples.

@@ -1,0 +1,8 @@
+id: test
+title: Test
+description: |
+  A test.
+dependencies: []
+steps:
+  - name: Hello
+    action: echo hello

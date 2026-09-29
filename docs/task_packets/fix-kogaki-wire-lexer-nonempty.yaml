@@ -1,0 +1,22 @@
+# keiro task packet – fix-kogaki-wire-lexer-nonempty
+id: fix-kogaki-wire-lexer-nonempty
+title: Replace unsafe head/tail/!! in Kogaki.Wire.Json.Lexer
+description: |
+  Substitute pattern‑matching or NonNull wrappers for all partial list/ByteString
+  operations in the JSON lexer to make non‑emptiness explicit.
+dependencies: []
+packages:
+  - sarutahiko-kogaki-wire
+steps:
+  - name: Replace BSC.head with pattern match
+    action: |
+      In parseRawString and elsewhere, replace `BSC.head trimmed` with
+      `case BS.uncons trimmed of Nothing -> Left ...; Just (c, _) -> ...`.
+      Replace `BS.tail trimmed` with `case BS.uncons trimmed of Nothing -> ...; Just (_, rest) -> rest`.
+      Replace indexing (`!!`) with `BS.splitAt` or `BS.uncons` loops.
+    owner: ${{ github.actor }}
+    duration: "2h"
+success_criteria:
+  - The file compiles without warnings.
+  - No calls to `BSC.head`, `BS.tail`, or `!!` remain in the file.
+  - All logic paths handle the empty case explicitly.

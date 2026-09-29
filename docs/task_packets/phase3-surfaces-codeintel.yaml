@@ -1,0 +1,156 @@
+# keiro task packet – phase‑3‑surfaces‑codeintel
+id: phase3-surfaces-codeintel
+title: Build TUI, Gateway, ACP surfaces and incremental GLR parser/tag extractor
+description: |
+  After the agent core is complete, add the user‑facing surfaces and
+  the code‑intelligence toolchain.  All surfaces are thin projections
+  of the agent registry over the wire layer (JSON‑RPC/MCP) and therefore
+  reuse the same extensible‑record/effects foundation.
+
+dependencies:
+  - phase2-agent-core
+
+packages:
+  - sarutahiko-tui          # packages/tui
+  - sarutahiko-gateway      # packages/gateway
+  - sarutahiko-acp          # packages/acp
+  - sarutahiko-parse        # packages/parse   (incremental GLR)
+  - sarutahiko-tags         # packages/tags    (scope‑stack extraction)
+  - sarutahiko-effect-signatures
+  - sarutahiko-effects-effectful
+  - sarutahiko-effects-polysemy
+  - yamaarashi
+  - hashigakari-core
+  - sarutahiko-log
+  - sarutahiko-model
+
+steps:
+  - name: TUI (JSON‑RPC to core)
+    action: |
+      * Implement a brick/vty‑based TUI that speaks JSON‑RPC 2.0
+        over a local Unix domain socket or TCP port to the agent core.
+      * The TUI state is a record:
+          type TuiStateRec = '[ "input" := LogicalString
+                              , "output":= LogicalString
+                              , "cursor":= Int
+                              , "focus"  := FocusType ]`
+      * Effects used: `Reader` (config), `State` (TuiState),
+        `Trace` (debug), `Log` (events), `IO` (socket), `Resource`
+        (bracketed connection).
+      * Input handling translates keypresses into `AgentMessage`
+        GADTs, which are sent via the `Tools` effect (MCP tool call)
+        to the core; the core replies with `LogicalString` output.
+      * Rendering uses the `LogicalString` values directly,
+        enabling localisation via the same `MessageCatalog` mechanism.
+    owner: ${{ github.actor }}
+    duration: "4h"
+
+  - name: Gateway (multi‑platform adapters)
+    action: |
+      * Define a `GatewayEffect` signature that abstracts over
+        platforms (Telegram, Discord, Slack, HTTP webhook).
+      * Each adapter is an interpreter of `GatewayEffect` that
+        translates incoming platform messages into `AgentMessage`
+        GADTs and outgoing `LogicalString` replies into platform
+        specific formats.
+      * The gateway core is a simple loop:
+          receive → `agentTurn` → send.
+      * Use the `Resource` effect to bracket each platform client
+        (e.g., keep a persistent HTTP connection or a WebSocket).
+    owner: ${{ github.actor }}
+    duration: "3h"
+
+  - name: ACP (Zed‑editor protocol)
+    action: |
+      * Implement the Agent Client Protocol (ACP) as a thin JSON‑RPC
+        layer over stdio, exactly as Hermes’ `acp_adapter/`.
+      * The ACP surface merely forwards `Tools` requests to the core
+        and returns the `LogicalString` results.
+      * No extra state is needed beyond the `Reader` config and
+        `IO` for stdio.
+    owner: ${{ github.actor }}
+    duration: "1h"
+
+  - name: Incremental GLR parser (`sarutahiko-parse`)
+    action: |
+      * Follow the Wagner‑Graham algorithm, parsing source files into
+        a CST where each node is an anonymous record of monoidal
+        annotations (finger‑tree/2‑3 tree).
+      * Provide effects for:
+          - `ParseStart` / `ParseEnd` (Logging)
+          - `DamageTrack` (State over a finger‑tree of edits)
+          - `ReuseCheck` (Reader over a cache of sub‑trees)
+      * Expose a pure interface `parseFile :: FilePath -> Eff es CST`
+        that can be used by the LSP and tags extractor.
+    owner: ${{ github.actor }}
+    duration: "4h"
+
+  - name: Tag extractor (`sarutahiko-tags`)
+    action: |
+      * Build on the GLR parser: walk the CST with a scope‑stack
+        (State over a list of scopes) and extract
+        `def`, `ref`, `mod` etc. tags into an anonymous record.
+      * Effects used:
+          - `Trace` for debugging the walk,
+          - `State` for the current scope and accumulated tags,
+          - `Reader` for user‑provided options (e.g., include/exclude
+            patterns).
+      * Output format matches universal‑ctags (JSON lines) for easy
+        consumption by editors.
+    owner: ${{ github.actor }}
+    duration: "2h"
+
+  - name: Wire the surfaces to the agent core
+    action: |
+      * Ensure that the TUI, Gateway, and ACP all use the same
+        `sarutahiko-jsonrpc` / `sarutahiko-mcp` wire layer.
+      * The wire layer remains unchanged; it already works with
+        `LogicalString` payloads thanks to the previous refactor.
+      * Verify that invoking a tool via any surface results in the
+        same effectful turn logic as the CLI.
+    owner: ${{ github.actor }}
+    duration: "1h"
+
+  - name: Test suite
+    action: |
+      * Unit tests for each surface using mock carriers
+        (e.g., `runState` for TUI state, `runReader` for config,
+        `runTracePure` for logs, `runIO` with a mock socket).
+      * Integration test: start the agent core, launch the TUI in a
+        headless mode (via `vty`’s `mock` backend), issue a command
+        through the TUI keybindings, verify that the agent processes
+        it and returns the expected output.
+      * End‑to‑end test: run the gateway with a Telegram‑bot fixture,
+        send a message, check that the bot receives the correct
+        reply and that the event log contains the appropriate
+        `MessageAppended` / `ToolObserved` rows.
+    owner: ${{ github.actor }}
+    duration: "3h"
+
+  - name: Documentation & examples
+    action: |
+      * Add a `README.md` for each surface explaining how to run
+        it, configure it, and extend it with new plugins/commands.
+      * Provide a small demo project that shows a custom tool
+        (e.g., a word‑counter) being loaded via a plugin and used
+        from the TUI, gateway, and ACP.
+    owner: ${{ github.actor }}
+    duration: "1h"
+
+success_criteria:
+  - All three surfaces (TUI, gateway, ACP) compile and start
+    without errors.
+  - The TUI displays a prompt, accepts input, and shows the agent’s
+    response correctly localised (if a non‑default `LocaleRecord`
+    is supplied).
+  - The gateway can forward messages to and from at least one
+    platform (e.g., a local echo bot over HTTP) and logs the
+    interaction.
+  - The ACP responds to JSON‑RPC requests with the same results as
+    the CLI.
+  - The GLR parser correctly parses a representative corpus of
+    Haskell source (no parse errors) and the tag extractor outputs
+    tags that match universal‑ctags on that corpus (±5% tolerance).
+  - All unit and integration tests pass.
+  - No surface introduces mutable global state; all state is
+    held in extensible records or effect carriers.
