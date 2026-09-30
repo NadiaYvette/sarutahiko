@@ -1,0 +1,105 @@
+---
+# keiro task packet – yamaarashi-group1
+id: yamaarashi-group1
+title: |
+  Implement yamaarashi kernel, flow, and adapters for a self‑contained
+  workflow harness
+description: |
+  Build the core streaming stack (yamaarashi), the porcupine‑derived
+  task‑DAG layer (yamaarashi-flow), and the conduit/streamly adapters
+  needed to run long series of coding‑task DAGs directly from the agent
+  core or a CLI. Includes the shared effect‑signature package and a
+  minimal harness interpreter.
+packages:
+  - yamaarashi                    # packages/yamaarashi
+  - yamaarashi-flow               # packages/yamaarashi-flow
+  - yamaarashi-conduit            # packages/yamaarashi-conduit
+  - yamaarashi-streamly           # packages/yamaarashi-streamly
+  - sarutahiko-effect-signatures  # packages/sarutahiko-effect-signatures
+steps:
+  - name: Add yamaarashi kernel package
+    action: |
+      Create package `yamaarashi` under `packages/yamaarashi/`:
+      - Define `newtype Stream (Of a) m r = ...` (CPS/free‑monad).
+      - Export core combinators (`yield`, `await`, `fold`, `parse`, etc.).
+      - Provide concurrency strategy wrappers (`Serial`, `Async`, `Interleaved`,
+        `Parallel`) with documented semantics.
+      - Ensure zero dependencies on conduit/streamly/effect system.
+    owner: '${{ github.actor }}'
+    duration: 4h
+  - name: Add yamaarashi-flow package
+    action: |
+      Create package `yamaarashi-flow`:
+      - Re‑home porcupine/ArrowFlow with base monad `Eff es`.
+      - Chunks are anonymous records (`large-anon/large-records`).
+      - Provide task DAG composition, caching at `$_` locations, resumption,
+        and deterministic‑tag invalidation (model, sampling, prompt hash).
+      - Depend on `yamaarashi` and the effect‑signature package.
+    owner: '${{ github.actor }}'
+    duration: 5h
+  - name: Add yamaarashi-conduit adapters
+    action: |
+      Create package `yamaarashi-conduit`:
+      - Provide `ConduitM ⇄ Stream` adapters in both directions.
+      - Include proven framing adapters (stdio JSON‑RPC, SSE, etc.) from
+        conduit‑extra.
+      - Depend on `yamaarashi` and `conduit`.
+    owner: '${{ github.actor }}'
+    duration: 3h
+  - name: Add yamaarashi-streamly backend
+    action: |
+      Create package `yamaarashi-streamly`:
+      - Embed `SerialT (Eff es)` as a backend for the kernel.
+      - Offer fusion‑friendly folds/parsers for hot loops.
+      - Depend on `yamaarashi` and `streamly`.
+    owner: '${{ github.actor }}'
+    duration: 3h
+  - name: Create shared effect‑signature package
+    action: |
+      Create package `sarutahiko-effect-signatures` (or reuse existing):
+      - Define GADTs for `Resource`, `Log`, `StreamingDB`, `MCP`, `Model`,
+        `Tools`, etc.
+      - Keep it neutral so both `effectful` and `polysemy` interpreters can
+        provide instances.
+    owner: '${{ github.actor }}'
+    duration: 2h
+  - name: Write minimal harness interpreter
+    action: |
+      Create a `runYamaarashiWorker` function that supplies concrete carriers:
+        runYamaarashiWorker cfg initState logger ioAction =
+          runM (runTraceIO logger
+                . runState initState
+                . runReader cfg
+                . runFailEither
+                . runIO
+                . workerLogic)
+      Where `workerLogic` interprets `yamaarashi-flow` DAGs using the effect
+      row. Provide pure‑carrier versions for tests.
+    owner: '${{ github.actor }}'
+    duration: 2h
+  - name: Unit test the harness
+    action: |
+      Write tests using pure carriers (`runState`, `runReader`, `runTracePure`,
+      `runFailEither`) to verify:
+        - Stream composition and folds work.
+        - Flow DAG spawning, caching, and resumption.
+        - Concurrency strategies obey documented semantics.
+        - Resource bracketing finalizes on short‑circuit.
+    owner: '${{ github.actor }}'
+    duration: 2h
+  - name: Benchmark the kernel vs. backends
+    action: |
+      Add benchmarks (cabal bench) comparing:
+        - Plain `yamaarashi` kernel (Serial strategy).
+        - `yamaarashi-streamly` backend (fused SerialT).
+        - Conduit backend for byte‑boundary tasks.
+      Ensure overhead <10% for typical workloads.
+    owner: '${{ github.actor }}'
+    duration: 2h
+success_criteria:
+  - The four packages compile and pass their test suites.
+  - The harness can execute a simple DAG (e.g., fetch → transform → aggregate)
+    and return the expected result.
+  - Caching and resumption work for killing a task mid‑run and
+    re‑running yields the same output from cached chunks.
+  - Resource finalization occurs on early exit or error.
