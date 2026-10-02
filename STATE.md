@@ -83,10 +83,14 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ### [DECISION-004] Wire Codecs & Serialization Invariants
 * **Topic:** Strict Kogaki zero-transitive-bloat doctrine vs. Aeson.
-* **Questions:**
-  1. Confirm that task packets, event store records, and JSON-RPC messages strictly use `kogaki-wire` and `sarutahiko-records` (upholding `PLAN.md` Invariant 3).
-  2. What format is approved for human-authored task packet specifications (YAML via custom/approved parser, Dhall, or TOML)?
-* **Status:** PENDING DISCUSSION
+* **Resolution:** **RESOLVED (BLESSED)**
+  1. **Strict Zero-Aeson Doctrine Re-Affirmed:**
+     - References to `aeson` in `AI_Coding_Context_Management_SOTA.md` were drift. The strict zero-transitive-bloat invariant (`PLAN.md` Invariant 3) holds across all packages.
+     - All wire serialization, task packets, event records, and JSON-RPC messages use `kogaki-core` and `kogaki-wire` over `large-anon` / `sarutahiko-records`.
+  2. **Dhall Evaluator Reuse & Row-Typed Bridge (`sarutahiko-format-dhall`):**
+     - Per `REUSE_REGISTER.md` §2.13, we reuse the mature Dhall evaluator and bridge the marshalling boundary into `large-anon` rows.
+     - Provides an effect-based row-typed interface (`evalDhallRow`) mapping Dhall's typed records directly to `large-anon` rows without rewriting the evaluator.
+     - Dhall serves as the canonical typed configuration format for human-authored and generated task/pipeline specifications.
 
 ### [DECISION-005] LLM Invocation & REPL Boundary
 * **Topic:** MCP Sampling (`sampling/createMessage`) vs. direct model API clients.
