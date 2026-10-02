@@ -54,10 +54,14 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ### [DECISION-002] Effect Neutrality Architecture
 * **Topic:** Tagless-final capability typeclasses vs. GADT signatures.
-* **Questions:**
-  1. Do we define orchestration capabilities (`Worktree`, `TaskQueue`, `Sampling`) as GADT signatures in `sarutahiko-effect-signatures` per Invariant 5?
-  2. Or do we introduce tagless-final typeclasses (`MonadWorktree`, `MonadTaskQueue`) interpreted into `Eff es` via adapter packages?
-* **Status:** PENDING DISCUSSION
+* **Resolution:** **RESOLVED (BLESSED)**
+  1. **Standard Façade Pattern Adopted:**
+     - **Base Vocabulary (Reified GADTs):** Domain operations (`Worktree`, `TaskQueue`, `Sampling`, etc.) remain defined as neutral first-order/higher-order GADTs in `packages/sarutahiko-effect-signatures`. This preserves `kagami-ita` tracing/replay, introspectability, and dual-interpreter parity testing (`sarutahiko-effect-testkit`) per `PLAN.md` Invariant 5.
+     - **Consumer Façade (Tagless-Final Typeclasses):** High-level orchestrators (`yamaarashi-flow`, etc.) define and expose lightweight, open capability typeclasses (`MonadWorktree`, `MonadTaskQueue`, etc.). Orchestrator logic is written purely in terms of these typeclasses with zero dependency on `effectful` or `polysemy`.
+     - **Adapter Modules:** Thin adapter packages/modules (`yamaarashi-adapter-effectful`, `yamaarashi-adapter-polysemy`) bind `Eff es` and `Sem r` to the typeclasses by forwarding method calls to the underlying GADTs.
+  2. **Repo-Wide Migration Directive:**
+     - The Façade Pattern becomes the project-wide effect neutrality standard.
+     - Eventual sweeps will be scheduled across the repository to retrofit existing packages where GADTs or tagless-final classes were used to the exclusion of the other.
 
 ### [DECISION-003] Queue & Event Persistence Substrate
 * **Topic:** Keiro/Kiroku vs. pure PostgreSQL reactor vs. in-memory/SQLite carrier.
