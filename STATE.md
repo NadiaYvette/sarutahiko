@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-09-27T04:10:00+02:00
-* **Git Branch:** `nadia.chambers/hermes-trial-run-003`
-* **HEAD Commit:** `a3cead5` (*feat(mcp): implement MCP 2025-03-26 wire types, StateGuard server, and test suite*)
+* **Timestamp:** 2026-10-02T22:40:20+02:00
+* **Git Branch:** `nadia.chambers/yamaarashi-redesign`
+* **HEAD Commit:** `5a9d44d` (*docs: add task packet best practices and AI coding context management SOTA transcript*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -18,32 +18,65 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 2. Recent Completed Actions
 
-1. **Completed Phase 1 TP-1.5 (`packages/sarutahiko-mcp`):**
-   - **`sarutahiko-mcp.cabal` (`8e91f72`):** Registered package in `cabal.project`, configured under `cabal-version: 3.14`, `default-language: GHC2024`, `-Wall -Werror`, with zero `aeson` dependencies.
-   - **`Sarutahiko.MCP.Types` (`a3cead5`):** Spec-conformant MCP `2025-03-26` wire types, capability structures, tool definitions, and token-level row codecs using `large-anon` and `kogaki-wire`.
-   - **`Sarutahiko.MCP.Server` (`a3cead5`):** Protocol server engine strictly enforcing the **StateGuard Invariant**: rejects any request prior to `notifications/initialized` with JSON-RPC error `-32600` (`errServerNotInitialized`).
-   - **`Sarutahiko.MCP.Client` (`a3cead5`):** Stdio/stream client engine for handshake initiation and tool invocation.
-   - **Hedgehog Verification Suite (`test-mcp`) (`a3cead5`):** All 5 property tests passed 100 trials each (500 total) verifying StateGuard rejection laws, handshake transitions, and wire codec roundtripping.
-2. **Environment & Toolchain Stabilization:**
-   - Terminated runaway background Hermes processes (PID 606484 and children) and reclaimed `t_db1d0d0c`.
-   - Reverted accidental `.cabal` downgrades; restored canonical `GHC2024` and `cabal-version: 3.14` across all 14 packages.
-   - Verified Cabal 3.18.1.0 and GHC 9.12.2 build and test cleanly with zero warnings.
+1. **Committed Canonical Task & Context Documentation (`5a9d44d`):**
+   - Added `docs/notes/TASK_PACKET_BEST_PRACTICES.md` establishing fail-fast toolchain verification gates, minimal buildable skeletons, and verifiable task packets.
+   - Added `docs/transcripts/AI_Coding_Context_Management_SOTA.md` documenting context management SOTA, REPL-neutral integration via MCP sampling, and the revised Yamaarashi selective orchestration design.
+2. **Archived Pre-Pivot Yamaarashi Skeletons (`d8521eb`):**
+   - Captured all uncommitted WIP stubs under `packages/yamaarashi*`, experiment `.cabal` changes, and `cabal.project` modifications to isolated archive branch `archive/yamaarashi-pre-pivot-skeletons`.
+   - Created clean working branch `nadia.chambers/yamaarashi-redesign` at `5a9d44d`.
 
 ---
 
 ## 3. Active Blockers & Known Hazards
 
-* **Model Downgrade / Free Fleet Churn:** Dynamic auto-routing via OmniRoute may silently fall back from high-tier models (Nemotron-3-super-120B) to under-parameterized endpoints. Capability checking remains mandatory.
+* **Model Downgrade / Free Fleet Churn:** Dynamic auto-routing via OmniRoute may silently fall back from high-tier models to under-parameterized endpoints. Capability checking remains mandatory.
 * **Hermes Kanban Daemon Caution:** The experimental SQLite background daemon (`hermes kanban watch` / `dispatch`) can experience claim stalls. Direct CLI invocation (`hermes chat -q`) or expect driver scripts are preferred when executing on the free fleet.
 
 ---
 
-## 4. Immediate Workqueue (The Frontier)
+## 4. Immediate Workqueue: Yamaarashi Design Reconciliation Decisions
 
-### [TASK-002] Phase 1 TP-1.6: Phase 1 Wire Flagship CLI & Interop Suite
-* **Objective:** Author standalone `sarutahiko-mcp` CLI executable and dual-interpreter conformance suite.
-* **Deliverables:**
-  1. `packages/sarutahiko-mcp/app/Main.hs`: Standalone executable speaking stdio JSON-RPC, exposing default diagnostic tools (`echo`, `calc`, `env`).
-  2. Dual-interpreter conformance suite running green under both `sarutahiko-effect-effectful` and `sarutahiko-effect-polysemy`.
-  3. Golden fixture verification against `test/fixtures/wire/mcp/hokora-turn.jsonl`.
-* **Verification Command:** `cabal test test-wire-conformance` & `cabal run sarutahiko-mcp`
+The following sequential decisions must be resolved to reconcile the revised Yamaarashi design with `YAMAARASHI_DESIGN.md`, `NIH_PLAN.md`, `AGENTIC_TASK_MANAGEMENT_DESIGN.md`, and `PLAN.md`:
+
+### [DECISION-001] Core Identity & Layering Split
+* **Topic:** Streaming kernel vs. Selective workflow orchestrator; status of Porcupine.
+* **Questions:**
+  1. Does `yamaarashi` become the orchestration package family (`packages/yamaarashi`, `packages/yamaarashi-flow`, etc.), and where does element streaming (`Stream (Of a) m r`) reside?
+  2. Does Selective Applicative Functors (`selective`) + Shake/Alga officially supersede Porcupine `ArrowFlow`, formally deprecating the Porcupine port in `REUSE_REGISTER.md` §2.12?
+* **Status:** PENDING DISCUSSION
+
+### [DECISION-002] Effect Neutrality Architecture
+* **Topic:** Tagless-final capability typeclasses vs. GADT signatures.
+* **Questions:**
+  1. Do we define orchestration capabilities (`Worktree`, `TaskQueue`, `Sampling`) as GADT signatures in `sarutahiko-effect-signatures` per Invariant 5?
+  2. Or do we introduce tagless-final typeclasses (`MonadWorktree`, `MonadTaskQueue`) interpreted into `Eff es` via adapter packages?
+* **Status:** PENDING DISCUSSION
+
+### [DECISION-003] Queue & Event Persistence Substrate
+* **Topic:** Keiro/Kiroku vs. pure PostgreSQL reactor vs. in-memory/SQLite carrier.
+* **Questions:**
+  1. Do we commit to the `keiro` + `kiroku` + `pgmq-hs` ecosystem, build an independent Postgres event-store/reactor loop, or define an abstract interface supporting both?
+  2. How do we ensure lightweight local test execution and Phase 1.5 Hokora vertical slice runs without an external PostgreSQL daemon?
+* **Status:** PENDING DISCUSSION
+
+### [DECISION-004] Wire Codecs & Serialization Invariants
+* **Topic:** Strict Kogaki zero-transitive-bloat doctrine vs. Aeson.
+* **Questions:**
+  1. Confirm that task packets, event store records, and JSON-RPC messages strictly use `kogaki-wire` and `sarutahiko-records` (upholding `PLAN.md` Invariant 3).
+  2. What format is approved for human-authored task packet specifications (YAML via custom/approved parser, Dhall, or TOML)?
+* **Status:** PENDING DISCUSSION
+
+### [DECISION-005] LLM Invocation & REPL Boundary
+* **Topic:** MCP Sampling (`sampling/createMessage`) vs. direct model API clients.
+* **Questions:**
+  1. Is MCP Sampling the primary LLM interaction boundary for Yamaarashi, letting the host REPL manage API keys, routing, and token budgets?
+  2. What role remains for `sarutahiko-model` / `utai` (local mock provider, offline fallback, or MCP sampling wrapper)?
+* **Status:** PENDING DISCUSSION
+
+### [DECISION-006] Spec Extraction & Task Subdivision Package Structure
+* **Topic:** Spec extraction package location, granularity oracle, and library reuse.
+* **Questions:**
+  1. Package naming and path: `packages/yamaarashi-spec` vs. `packages/sarutahiko-spec`?
+  2. Admitting `selective`, `recursion-schemes`, and `algebraic-graphs` into `REUSE_REGISTER.md`.
+  3. Spec decomposition order: deterministic rules first (cross-target sweeps), falling back to MCP sampling for novel tasks.
+* **Status:** PENDING DISCUSSION
