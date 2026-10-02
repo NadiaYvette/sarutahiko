@@ -65,10 +65,21 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ### [DECISION-003] Queue & Event Persistence Substrate
 * **Topic:** Keiro/Kiroku vs. pure PostgreSQL reactor vs. in-memory/SQLite carrier.
-* **Questions:**
-  1. Do we commit to the `keiro` + `kiroku` + `pgmq-hs` ecosystem, build an independent Postgres event-store/reactor loop, or define an abstract interface supporting both?
-  2. How do we ensure lightweight local test execution and Phase 1.5 Hokora vertical slice runs without an external PostgreSQL daemon?
-* **Status:** PENDING DISCUSSION
+* **Resolution:** **RESOLVED (BLESSED)**
+  1. **Canonical Engine Re-Affirmed (`hashigakari`):**
+     - Corrected goal drift in `AGENTIC_TASK_MANAGEMENT_DESIGN.md`. Restored `hashigakari` as the row-native, effect-governed replacement for `persistent`.
+     - The **Event Store** is an append-only event log table of `large-anon` records.
+     - The **Task Queue** is managed natively through event transitions and atomic transaction leases without mandatory external message brokers.
+     - Projections (Kanban board, task readiness, session context, metrics) are pure reducers (folds) over the event stream.
+  2. **Façade Pattern Carriers:**
+     - Capabilities defined as GADTs (`EventStore`, `TaskQueue`) in `sarutahiko-effect-signatures` and tagless-final typeclasses (`MonadEventStore`, `MonadTaskQueue`) in `yamaarashi-flow`.
+     - **Tier 0:** In-memory STM carrier for instant, zero-IO property testing (`sarutahiko-effect-testkit`).
+     - **Tier 1:** `hashigakari-sqlite` embedded carrier for hermetic CI, local CLI, and the Phase 1.5 Hokora vertical slice (zero external daemons).
+     - **Tier 2:** `hashigakari-hasql` for scaled multi-worker PostgreSQL deployments.
+     - **Tier 3:** Optional `keiro`/`pgmq-hs` bridge adapter if arena interop is needed.
+  3. **Hashigakari Backend Expansion Roadmap:**
+     - Added MongoDB, MySQL, and Redis compatibility/feature-parity targets.
+     - Placed ODBC on the protocol roadmap for enterprise/cross-engine connectivity.
 
 ### [DECISION-004] Wire Codecs & Serialization Invariants
 * **Topic:** Strict Kogaki zero-transitive-bloat doctrine vs. Aeson.
