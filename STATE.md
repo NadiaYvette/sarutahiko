@@ -40,10 +40,17 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ### [DECISION-001] Core Identity & Layering Split
 * **Topic:** Streaming kernel vs. Selective workflow orchestrator; status of Porcupine.
-* **Questions:**
-  1. Does `yamaarashi` become the orchestration package family (`packages/yamaarashi`, `packages/yamaarashi-flow`, etc.), and where does element streaming (`Stream (Of a) m r`) reside?
-  2. Does Selective Applicative Functors (`selective`) + Shake/Alga officially supersede Porcupine `ArrowFlow`, formally deprecating the Porcupine port in `REUSE_REGISTER.md` §2.12?
-* **Status:** PENDING DISCUSSION
+* **Resolution:** **RESOLVED (BLESSED)**
+  1. **Package Family Layout:**
+     - `packages/yamaarashi`: Neutral element streaming kernel (`Stream (Of a) m r`) and concurrency strategies.
+     - `packages/yamaarashi-conduit`: Byte boundary framing (stdio JSON-RPC, line framing), process pipes, and inter-task IPC with bracketed resource cleanup.
+     - `packages/yamaarashi-streamly`: In-process fused hot-loops for element/row-typed transforms.
+     - `packages/yamaarashi-flow`: Free Selective + `alga` task graph orchestrator with memoization, early cutoff, and record caching (built on *Build Systems à la Carte* principles to avoid external Shake bloat).
+     - `packages/yamaarashi-spec`: Spec AST, `Control.Selective.Over` VirtualTree walker, and recursive unfolding (`recursion-schemes` `ana`/`hylo`).
+  2. **Arrows Deprecated:** Porcupine `ArrowFlow` and Kernmantle are officially superseded by Selective + Alga. Eliminates `OverloadedLabels` conflicts with `large-anon`.
+  3. **Warts Safeguarded:**
+     - Macro-DAG is strictly Selective (static); dynamic agentic fix/retry loops live inside leaf task runners (monadic/state machine).
+     - Two-pass execution: Pass 1 calculates static `VirtualTree` via `Control.Selective.Over` using pure descriptors; Pass 2 executes and provisions resources.
 
 ### [DECISION-002] Effect Neutrality Architecture
 * **Topic:** Tagless-final capability typeclasses vs. GADT signatures.
