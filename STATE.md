@@ -94,10 +94,15 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ### [DECISION-005] LLM Invocation & REPL Boundary
 * **Topic:** MCP Sampling (`sampling/createMessage`) vs. direct model API clients.
-* **Questions:**
-  1. Is MCP Sampling the primary LLM interaction boundary for Yamaarashi, letting the host REPL manage API keys, routing, and token budgets?
-  2. What role remains for `sarutahiko-model` / `utai` (local mock provider, offline fallback, or MCP sampling wrapper)?
-* **Status:** PENDING DISCUSSION
+* **Resolution:** **RESOLVED (BLESSED)**
+  1. **Canonical Substrate Retained (`utai` / `sarutahiko-model`):**
+     - `utai` remains the canonical LLM substrate per `LLM_SUBSTRATE_DESIGN.md` (Noh naming: 謡, the chant).
+     - Provides the neutral `ModelAPI` GADT effect signature in `sarutahiko-effect-signatures` / `utai`, canonical request renderer for cache/replay simulation, and direct row-typed wire codecs over `kogaki-wire`.
+     - Direct backends: `utai-openai`, `utai-anthropic`, `utai-local` (CLI execution via `Process` effect), and `utai-mock` (deterministic testkit for Phase 1.5 Hokora).
+  2. **MCP Sampling as an Additional ModelAPI Backend (`utai-mcp`):**
+     - MCP Sampling (`sampling/createMessage`) is integrated as an additional execution backend alongside direct provider transports, rather than replacing `utai`.
+     - When embedded in an MCP host (Hermes, Claude Code, etc.), `ModelAPI` can route generation requests through MCP sampling to leverage the host's configured models, API keys, and token budgets.
+     - When running standalone (headless daemon, CLI, hermetic tests), `utai` runs directly via its provider backends or mock carrier. Zero REPL lock-in.
 
 ### [DECISION-006] Spec Extraction & Task Subdivision Package Structure
 * **Topic:** Spec extraction package location, granularity oracle, and library reuse.
