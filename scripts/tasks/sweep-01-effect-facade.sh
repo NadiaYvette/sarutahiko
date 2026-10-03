@@ -793,22 +793,21 @@ runResourcePurePoly logRef = P.interpretH $ \case
   Allocate finalizer -> do
     let key = ResourceKey 100
     P.embed $ modifyIORef' logRef (\s -> "allocated:100" : s)
-    finT <- P.runTSimple finalizer
-    _ <- P.raise finT
-    pureT key
+    f' <- P.runT finalizer
+    _ <- P.raise (runResourcePurePoly logRef f')
+    P.pureT key
   Release (ResourceKey k) -> do
     P.embed $ modifyIORef' logRef (\s -> ("released:" <> showText k) : s)
-    pureT ()
+    P.pureT ()
   where
-    pureT = P.pureT
     showText :: Word64 -> Text
     showText = T.pack . show
 
 runResourceIOPoly :: P.Sem (Resource : r) a -> P.Sem r a
 runResourceIOPoly = P.interpretH $ \case
   Allocate finalizer -> do
-    finT <- P.runTSimple finalizer
-    _ <- P.raise finT
+    f' <- P.runT finalizer
+    _ <- P.raise (runResourceIOPoly f')
     P.pureT (ResourceKey 1)
   Release _ -> P.pureT ()
 
