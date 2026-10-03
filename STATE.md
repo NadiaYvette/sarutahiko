@@ -127,6 +127,23 @@ The following sequential decisions must be resolved to reconcile the revised Yam
      - Deterministic rule engines first (zero-token cross-target sweeps, toolchain matrices, test splits).
      - Fallback to LLM planner via `utai` / MCP sampling only for novel, exploratory synthesis tasks.
 
+### [DECISION-007] The Layered Split: Utai Substrate Scope vs. Sarutahiko Agent Core
+* **Topic:** Division of responsibilities between `packages/utai` (LLM substrate) and `packages/sarutahiko/sarutahiko-agent` (Agent core).
+* **Resolution:** **RESOLVED (BLESSED)**
+  1. **Layered Split Adopted:**
+     - **Utai Scope (`packages/utai`):**
+       * Strictly the pure model substrate (the Noh chant: 謡, *vox calculi*).
+       * Focuses on absorbing API provider differences behind `ModelAPI` GADT and `MonadModelAPI`:
+         - OpenAI-compatible wire codecs & SSE chunk parser (`kogaki-wire`).
+         - Anthropic Messages API (`utai-anthropic`) with content blocks and ephemeral prompt-cache breakpoints (`cache_control`).
+         - Gemini streaming deltas & local runner adapters (`utai-local` via `Process` effect).
+         - MCP Sampling transport bridge (`utai-mcp`).
+         - Token counting and embedding models (`ModelAPI.Embed`).
+       * Houses pure, abstract LM program primitives (`Utai.Turn` / `Utai.Program`) taking `MonadModelAPI m` and an abstract tool dispatcher `(ToolCall -> m Text)` with zero concrete dependencies on SQLite, POSIX supervision, or MCP servers.
+     - **Agent Core Scope (`packages/sarutahiko/sarutahiko-agent`):**
+       * Sits above `utai`, `hashigakari`, and `sarutahiko-mcp` as the top-level orchestrator (the guiding kami: 猿田彦).
+       * Owns multi-turn conversation loops, the extensible-record tool registry (`large-anon`), user consent/safety allowlists (`sarutahiko-hooks`), plugin sandboxes (`sarutahiko-plugins`), and session event sourcing (`sarutahiko-session`).
+
 ---
 
 ## 5. Recent Completed Actions (Design Reconciliation & Bootstrap Phase)
