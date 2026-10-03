@@ -19,13 +19,13 @@ dependencies:
   - yamaarashi-05-dogfood-harness
 
 packages:
-  - packages/utai
+  - utai
 
 steps:
   - id: create-skeleton
     name: Package skeleton and dependencies setup
     action: |
-      In packages/utai:
+      In packages/utai/utai:
       - Create utai.cabal importing commons.
       - Add dependencies on large-anon, sarutahiko-records, kogaki-wire,
         sarutahiko-effect-signatures, yamaarashi.
@@ -35,8 +35,8 @@ steps:
   - id: define-modelapi-signature
     name: Define ModelAPI GADT signature and MonadModelAPI typeclass
     action: |
-      In packages/sarutahiko-effect-signatures/src/Sarutahiko/Effect/ModelAPI.hs
-      and packages/utai/src/Utai/Capability.hs:
+      In packages/sarutahiko/sarutahiko-effect-signatures/src/Sarutahiko/Effect/ModelAPI.hs
+      and packages/utai/utai/src/Utai/Capability.hs:
       - Define request/response row types using large-anon.
       - Define `ModelAPI` GADT signature.
       - Define `MonadModelAPI` typeclass with smart functions (`complete`, `stream`).
@@ -45,7 +45,7 @@ steps:
   - id: implement-mock-interpreter
     name: Implement deterministic utai-mock carrier
     action: |
-      In packages/utai/src/Utai/Mock.hs:
+      In packages/utai/utai/src/Utai/Mock.hs:
       - Implement fixture replayer matching prompt prefixes to canned responses.
       - Support tool call generation for testing agent tool invocation loops.
       - Implement `runModelAPIMock :: FixtureStore -> Eff (ModelAPI : es) a -> Eff es a`.
@@ -54,13 +54,13 @@ steps:
   - id: verify-model-laws
     name: Test suite and law verification
     action: |
-      In packages/utai/test/Spec.hs:
+      In packages/utai/utai/test/Spec.hs:
       - Verify L1 (terminator honesty): streams always finish with valid StopReason.
       - Verify L2 (usage monoid): token counts aggregate associatively.
       - Verify L3 (option honesty): unsupported options fail closed before dispatch.
     duration: "30m"
 
 success_criteria:
-  - `packages/utai` compiles with zero warnings under `-Wall -Werror`.
+  - `utai` compiles with zero warnings under `-Wall -Werror`.
   - All property tests in `utai-test` pass via `cabal v2-test utai`.
   - Zero dependencies on `aeson`.

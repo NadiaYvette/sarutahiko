@@ -21,13 +21,13 @@ dependencies:
   - yamaarashi-05-dogfood-harness
 
 packages:
-  - packages/hashigakari-sqlite
+  - hashigakari-sqlite
 
 steps:
   - id: create-skeleton
     name: Package skeleton and direct-sqlite dependency setup
     action: |
-      In packages/hashigakari-sqlite:
+      In packages/hashigakari/hashigakari-sqlite:
       - Create hashigakari-sqlite.cabal importing commons.
       - Add dependency on direct-sqlite, large-anon, sarutahiko-records,
         sarutahiko-effect-signatures, yamaarashi.
@@ -37,7 +37,7 @@ steps:
   - id: implement-sqlite-stepper
     name: Implement existential sqlite3_step row stepper
     action: |
-      In packages/hashigakari-sqlite/src/Hashigakari/Sqlite/Stepper.hs:
+      In packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/Stepper.hs:
       - Implement `stepRow :: Statement -> Stepper IO (Record Identity r)`.
       - Bracket statement finalization to guarantee resource release on short-circuit.
     duration: "45m"
@@ -45,7 +45,7 @@ steps:
   - id: implement-event-store-interpreter
     name: Implement EventStore GADT interpreter and table schema
     action: |
-      In packages/hashigakari-sqlite/src/Hashigakari/Sqlite/EventStore.hs:
+      In packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/EventStore.hs:
       - Create table `events` with columns (id, session_id, event_type, payload, created_at).
       - Implement `runEventStoreSqlite :: Connection -> Eff (EventStore : es) a -> Eff es a`.
       - Support conversation-tail folds and stream replay.
@@ -54,7 +54,7 @@ steps:
   - id: implement-task-queue-interpreter
     name: Implement TaskQueue GADT interpreter with atomic transaction leases
     action: |
-      In packages/hashigakari-sqlite/src/Hashigakari/Sqlite/TaskQueue.hs:
+      In packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/TaskQueue.hs:
       - Create table `task_queue` with status, lease_until, payload.
       - Implement `enqueueTask`, `claimTask`, `completeTask`, `failTask`.
       - Implement `runTaskQueueSqlite :: Connection -> Eff (TaskQueue : es) a -> Eff es a`.
@@ -63,12 +63,12 @@ steps:
   - id: verify-parity
     name: Test suite and parity gate
     action: |
-      In packages/hashigakari-sqlite/test/Spec.hs:
+      In packages/hashigakari/hashigakari-sqlite/test/Spec.hs:
       - Run dual-interpreter parity property tests against in-memory STM carrier.
       - Verify atomic leases prevent duplicate claims across concurrent workers.
     duration: "30m"
 
 success_criteria:
-  - `packages/hashigakari-sqlite` compiles with zero warnings under `-Wall -Werror`.
+  - `hashigakari-sqlite` compiles with zero warnings under `-Wall -Werror`.
   - All property tests pass via `cabal v2-test hashigakari-sqlite`.
   - Event log and task leases operate hermetically with zero external network daemons.

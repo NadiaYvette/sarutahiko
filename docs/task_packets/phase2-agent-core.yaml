@@ -15,17 +15,17 @@ dependencies:
   - phase1.5-03-hokora-slice
 
 packages:
-  - packages/sarutahiko-agent
-  - packages/sarutahiko-session
-  - packages/sarutahiko-hooks
-  - packages/sarutahiko-plugins
+  - sarutahiko-agent
+  - sarutahiko-session
+  - sarutahiko-hooks
+  - sarutahiko-plugins
 
 steps:
   - id: create-agent-skeletons
     name: Create package skeletons and cabal definitions
     action: |
-      In packages/sarutahiko-agent, packages/sarutahiko-session,
-         packages/sarutahiko-hooks, packages/sarutahiko-plugins:
+      In packages/sarutahiko/sarutahiko-agent, packages/sarutahiko/sarutahiko-session,
+         packages/sarutahiko/sarutahiko-hooks, packages/sarutahiko/sarutahiko-plugins:
       - Create minimal cabal files importing commons.
       - Add dependencies on utai, hashigakari-sqlite, sarutahiko-records,
         sarutahiko-effect-signatures, yamaarashi-flow.
@@ -35,7 +35,7 @@ steps:
   - id: implement-turn-engine
     name: Implement interpreted ReAct agent loop
     action: |
-      In packages/sarutahiko-agent/src/Sarutahiko/Agent/Turn.hs:
+      In packages/sarutahiko/sarutahiko-agent/src/Sarutahiko/Agent/Turn.hs:
       - Define `agentTurn :: (MonadModelAPI m, MonadTaskQueue m, MonadEventStore m, MonadProcess m) => Text -> m Text`.
       - Enforce single model call + at most one tool call per turn step.
       - Resource-bracket all tool subprocesses using `typed-process`.
@@ -44,7 +44,7 @@ steps:
   - id: implement-tool-registry
     name: Build dynamic tool/command/skill/hook registry
     action: |
-      In packages/sarutahiko-agent/src/Sarutahiko/Agent/Registry.hs:
+      In packages/sarutahiko/sarutahiko-agent/src/Sarutahiko/Agent/Registry.hs:
       - Define `ToolRegistryRec` over large-anon extensible records.
       - Implement registration, lookup, and capability permission checking.
     duration: "45m"
@@ -52,7 +52,7 @@ steps:
   - id: implement-session-engine
     name: Session persistence and prompt-cache safety
     action: |
-      In packages/sarutahiko-session/src/Sarutahiko/Session.hs:
+      In packages/sarutahiko/sarutahiko-session/src/Sarutahiko/Session.hs:
       - Connect to `hashigakari-sqlite` event store.
       - Implement conversation-tail reducer guaranteeing strict prompt-cache prefix preservation.
     duration: "45m"
@@ -60,15 +60,15 @@ steps:
   - id: implement-hooks-and-plugins
     name: Hook supervisor and capability-bounded plugin loader
     action: |
-      In packages/sarutahiko-hooks and packages/sarutahiko-plugins:
+      In packages/sarutahiko/sarutahiko-hooks and packages/sarutahiko/sarutahiko-plugins:
       - Implement fail-closed hook execution with strict timeouts.
       - Implement plugin manifest loader with capability allowlists and kill-lists.
     duration: "45m"
 
-  - id: verify-agent-core
+  - id: implement-agent-core
     name: Test suite and session replay verification
     action: |
-      In packages/sarutahiko-agent/test/Spec.hs:
+      In packages/sarutahiko/sarutahiko-agent/test/Spec.hs:
       - Add property tests verifying turn step bounded execution.
       - Replay recorded Hermes session fixture; verify bit-identical output.
     duration: "30m"

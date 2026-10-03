@@ -1,23 +1,23 @@
 packages:
     .
-    packages/kogaki-core
-    packages/kogaki-wire
-    packages/sarutahiko-fields
-    packages/sarutahiko-records
-    packages/sarutahiko-jsonrpc
-    packages/sarutahiko-schema
-    packages/sarutahiko-process
-    packages/sarutahiko-effect-signatures
-    packages/sarutahiko-effect-effectful
-    packages/sarutahiko-effect-polysemy
-    packages/sarutahiko-effect-testkit
+    packages/kogaki/kogaki-core
+    packages/kogaki/kogaki-wire
+    packages/sarutahiko/sarutahiko-fields
+    packages/sarutahiko/sarutahiko-records
+    packages/sarutahiko/sarutahiko-jsonrpc
+    packages/sarutahiko/sarutahiko-schema
+    packages/sarutahiko/sarutahiko-process
+    packages/sarutahiko/sarutahiko-effect-signatures
+    packages/sarutahiko/sarutahiko-effect-effectful
+    packages/sarutahiko/sarutahiko-effect-polysemy
+    packages/sarutahiko/sarutahiko-effect-testkit
+    packages/sarutahiko/sarutahiko-mcp
     packages/spikes/handlers-as-records
-    packages/sarutahiko-mcp
-    packages/yamaarashi
-    packages/yamaarashi-conduit
-    packages/yamaarashi-streamly
-    packages/yamaarashi-flow
-    packages/yamaarashi-spec
+    packages/yamaarashi/yamaarashi
+    packages/yamaarashi/yamaarashi-conduit
+    packages/yamaarashi/yamaarashi-streamly
+    packages/yamaarashi/yamaarashi-flow
+    packages/yamaarashi/yamaarashi-spec
 
 optional-packages:
     ../large-records-interfaces/large-anon

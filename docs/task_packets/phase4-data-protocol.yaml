@@ -16,17 +16,17 @@ dependencies:
   - phase3-surfaces-codeintel
 
 packages:
-  - packages/hashigakari-core
-  - packages/hashigakari-syntax
-  - packages/hashigakari-hasql
-  - packages/sarutahiko-format-dhall
+  - hashigakari-core
+  - hashigakari-syntax
+  - hashigakari-hasql
+  - sarutahiko-format-dhall
 
 steps:
   - id: create-data-skeletons
     name: Create package skeletons and cabal definitions
     action: |
-      In packages/hashigakari-core, packages/hashigakari-syntax,
-         packages/hashigakari-hasql, packages/sarutahiko-format-dhall:
+      In packages/hashigakari/hashigakari-core, packages/hashigakari/hashigakari-syntax,
+         packages/hashigakari/hashigakari-hasql, packages/sarutahiko/sarutahiko-format-dhall:
       - Create minimal cabal files importing commons.
       - Add dependencies on large-anon, sarutahiko-records, yamaarashi,
         yamaarashi-streamly, sarutahiko-effect-signatures.
@@ -36,7 +36,7 @@ steps:
   - id: implement-query-ast
     name: Implement row-typed query AST GADTs
     action: |
-      In packages/hashigakari-core/src/Hashigakari/Core/AST.hs:
+      In packages/hashigakari/hashigakari-core/src/Hashigakari/Core/AST.hs:
       - Define `Select (r :: [Column])`, `Projection`, `Where`, `Join`.
       - Use `Record (Column f) r` for column descriptors and `TriState` for partial patches.
     duration: "45m"
@@ -44,7 +44,7 @@ steps:
   - id: implement-dialect-syntax
     name: Implement dialect-indexed SQL compilation
     action: |
-      In packages/hashigakari-syntax/src/Hashigakari/Syntax.hs:
+      In packages/hashigakari/hashigakari-syntax/src/Hashigakari/Syntax.hs:
       - Implement type-level dialect tags (PostgresDialect, SqliteDialect, MysqlDialect).
       - Guarantee compile-time dialect portability ceilings.
     duration: "45m"
@@ -52,7 +52,7 @@ steps:
   - id: implement-hasql-backend
     name: Implement Hasql streaming execution
     action: |
-      In packages/hashigakari-hasql/src/Hashigakari/Hasql.hs:
+      In packages/hashigakari/hashigakari-hasql/src/Hashigakari/Hasql.hs:
       - Implement `HasqlEffect` yielding `Stepper m (Record Identity r)`.
       - Bracket connection pool and statement lifecycles.
     duration: "45m"
@@ -60,7 +60,7 @@ steps:
   - id: implement-dhall-bridge
     name: Implement Dhall row-typed bridge
     action: |
-      In packages/sarutahiko-format-dhall/src/Sarutahiko/Format/Dhall.hs:
+      In packages/sarutahiko/sarutahiko-format-dhall/src/Sarutahiko/Format/Dhall.hs:
       - Implement `evalDhallRow :: Text -> IO (Either DhallError (Record Identity r))`.
       - Bridge Dhall's typed records directly to `large-anon` rows.
     duration: "45m"
@@ -68,7 +68,7 @@ steps:
   - id: verify-data-tier
     name: Test suite and dialect verification
     action: |
-      In packages/hashigakari-core/test, packages/hashigakari-syntax/test, packages/sarutahiko-format-dhall/test:
+      In packages/hashigakari/hashigakari-core/test, packages/hashigakari/hashigakari-syntax/test, packages/sarutahiko/sarutahiko-format-dhall/test:
       - Verify AST compilation across Postgres, SQLite, and MySQL dialects.
       - Verify Dhall configuration files load directly into large-anon rows.
     duration: "30m"

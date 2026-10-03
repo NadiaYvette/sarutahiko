@@ -158,7 +158,7 @@ executeTaskStep wtDir tId = do
   case tId of
     "fix-kogaki-wire-lexer-nonempty" -> do
       putStrLn "  -> Applying Kogaki.Wire.Json.Lexer safe non-empty refactoring..."
-      let targetFile = wtDir </> "packages/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs"
+      let targetFile = wtDir </> "packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs"
       TIO.writeFile targetFile fixedLexerContent
     _ -> do
       -- Check if custom script exists
@@ -187,7 +187,7 @@ runVerificationGate wtDir packet = do
 
       -- 3. Audit check: zero calls to BSC.head, BS.tail, or !!
       putStrLn "  [Gate 3/3] Auditing Kogaki.Wire.Json.Lexer for zero partial functions..."
-      let targetFile = wtDir </> "packages/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs"
+      let targetFile = wtDir </> "packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs"
       (code, out, _) <- readProcess (proc "grep" ["-n", "-E", "BSC\\.head|BS\\.tail|!!", targetFile])
       case code of
         ExitFailure 1 ->

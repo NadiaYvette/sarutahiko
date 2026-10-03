@@ -18,13 +18,13 @@ dependencies:
   - phase1.5-02-utai-mock
 
 packages:
-  - packages/hokora
+  - hokora
 
 steps:
   - id: create-skeleton
     name: Package skeleton and dependencies setup
     action: |
-      In packages/hokora:
+      In packages/hokora/hokora:
       - Create hokora.cabal importing commons.
       - Add dependencies on hashigakari-sqlite, utai, sarutahiko-mcp,
         sarutahiko-jsonrpc, sarutahiko-effect-signatures, yamaarashi-flow.
@@ -34,7 +34,7 @@ steps:
   - id: implement-turn-loop
     name: Implement the ReAct turn program
     action: |
-      In packages/hokora/src/Hokora/Turn.hs:
+      In packages/hokora/hokora/src/Hokora/Turn.hs:
       - Implement `executeTurn :: (MonadModelAPI m, MonadEventStore m, MonadMCP m) => Text -> m Text`:
         1. Log user message to EventStore.
         2. Call ModelAPI -> response with tool call.
@@ -47,7 +47,7 @@ steps:
   - id: implement-session-reducer
     name: Implement conversation-tail reducer
     action: |
-      In packages/hokora/src/Hokora/Reducer.hs:
+      In packages/hokora/hokora/src/Hokora/Reducer.hs:
       - Pure fold over the event stream reconstructing active context window.
       - Verify prompt-cache prefix stability.
     duration: "30m"
@@ -55,14 +55,14 @@ steps:
   - id: implement-cli-and-tests
     name: Implement hokora-run executable and test suite
     action: |
-      In packages/hokora/app/Main.hs and packages/hokora/test/Spec.hs:
+      In packages/hokora/hokora/app/Main.hs and packages/hokora/hokora/test/Spec.hs:
       - Add executable `hokora-run` running a scripted turn.
       - Test end-to-end execution with Tasty/Hedgehog verifying all events
         are recorded in SQLite and final output matches expected mock generation.
     duration: "45m"
 
 success_criteria:
-  - `packages/hokora` compiles with zero warnings under `-Wall -Werror`.
+  - `hokora` compiles with zero warnings under `-Wall -Werror`.
   - `cabal v2-test hokora` passes 100%.
   - `cabal v2-run hokora:exe:hokora-run` executes a complete autonomous turn with exit-code 0.
   - Full validation of Phase 1.5 Skinny Spine proof.

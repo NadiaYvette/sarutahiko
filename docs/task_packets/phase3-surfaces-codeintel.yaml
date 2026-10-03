@@ -14,17 +14,17 @@ dependencies:
   - phase2-agent-core
 
 packages:
-  - packages/sarutahiko-tui
-  - packages/sarutahiko-gateway
-  - packages/sarutahiko-acp
-  - packages/sarutahiko-tags
+  - sarutahiko-tui
+  - sarutahiko-gateway
+  - sarutahiko-acp
+  - sarutahiko-tags
 
 steps:
   - id: create-surface-skeletons
     name: Create surface package skeletons
     action: |
-      In packages/sarutahiko-tui, packages/sarutahiko-gateway,
-         packages/sarutahiko-acp, packages/sarutahiko-tags:
+      In packages/sarutahiko/sarutahiko-tui, packages/sarutahiko/sarutahiko-gateway,
+         packages/sarutahiko/sarutahiko-acp, packages/sarutahiko/sarutahiko-tags:
       - Create minimal cabal files importing commons.
       - Add dependencies on sarutahiko-agent, sarutahiko-jsonrpc, kogaki-wire,
         yamaarashi-conduit, sarutahiko-effect-signatures.
@@ -34,7 +34,7 @@ steps:
   - id: implement-tui
     name: Implement Brick-based TUI surface
     action: |
-      In packages/sarutahiko-tui/src/Sarutahiko/TUI.hs:
+      In packages/sarutahiko/sarutahiko-tui/src/Sarutahiko/TUI.hs:
       - Implement TUI event loop speaking JSON-RPC to the agent core.
       - Maintain session state as a record (`TuiStateRec`).
       - Support streaming token rendering and keypress cancellation.
@@ -43,7 +43,7 @@ steps:
   - id: implement-gateway
     name: Implement multi-platform gateway
     action: |
-      In packages/sarutahiko-gateway/src/Sarutahiko/Gateway.hs:
+      In packages/sarutahiko/sarutahiko-gateway/src/Sarutahiko/Gateway.hs:
       - Define `GatewayEffect` abstracting over chat transports.
       - Implement HTTP webhook and WebSocket interpreters.
       - Resource-bracket client sockets with yamaarashi-conduit.
@@ -52,7 +52,7 @@ steps:
   - id: implement-acp
     name: Implement Agent Client Protocol for editor integration
     action: |
-      In packages/sarutahiko-acp/src/Sarutahiko/ACP.hs:
+      In packages/sarutahiko/sarutahiko-acp/src/Sarutahiko/ACP.hs:
       - Implement stdio JSON-RPC adapter forwarding requests to agent core.
       - Support Zed editor handshake and tool calling.
     duration: "30m"
@@ -60,7 +60,7 @@ steps:
   - id: implement-tags
     name: Implement ctags-compatible scope-stack tag extractor
     action: |
-      In packages/sarutahiko-tags/src/Sarutahiko/Tags.hs:
+      In packages/sarutahiko/sarutahiko-tags/src/Sarutahiko/Tags.hs:
       - Extract definition, reference, and module tags into row-typed records.
       - Emit JSON lines conforming to universal-ctags output format.
     duration: "45m"
@@ -68,7 +68,7 @@ steps:
   - id: verify-surfaces
     name: Test suite and surface verification
     action: |
-      In packages/sarutahiko-tui/test, packages/sarutahiko-gateway/test, packages/sarutahiko-tags/test:
+      In packages/sarutahiko/sarutahiko-tui/test, packages/sarutahiko/sarutahiko-gateway/test, packages/sarutahiko/sarutahiko-tags/test:
       - Run JSON-RPC roundtrip tests on all surface adapters.
       - Run tag extractor over sample Haskell and C source trees; verify ctags compatibility.
     duration: "30m"

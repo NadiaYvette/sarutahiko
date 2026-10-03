@@ -177,22 +177,29 @@ The following sequential decisions must be resolved to reconcile the revised Yam
       * `refactor-logical-string.yaml`: Structured `LogicalString` and UTF-8 codecs conforming to `KOGAKI_DESIGN.md` §3.
       * `phase2-agent-core.yaml`: Full agent core ReAct turn loop, tool registry, and session persistence.
       * `phase3-surfaces-codeintel.yaml`: TUI, Gateway, ACP surfaces, and ctags-compatible tag extractor.
-      * `phase4-data-protocol.yaml`: Full relational query AST, dialect syntax (Postgres, SQLite, MySQL, MongoDB, Redis, ODBC), Dhall row bridge, and streamly fusion.
-    - Cleaned up obsolete untracked `.keiro/tasks/`.
-    - Enhanced `yamaarashi-exec` in `packages/yamaarashi-flow/app/Main.hs` to automatically parse `packages:` from YAML and execute targeted package builds/tests and custom verification scripts in isolated worktrees.
+12. **Reorganized Repository into Component-Grouped Monorepo Structure [TASK-009-PREP]:**
+    - Grouped all packages under `packages/` into their canonical Noh component families under Pattern A (`packages/<component>/<full-package-name>`):
+      * `packages/kogaki/`: `kogaki-core`, `kogaki-wire`
+      * `packages/yamaarashi/`: `yamaarashi`, `yamaarashi-conduit`, `yamaarashi-streamly`, `yamaarashi-flow`, `yamaarashi-spec`
+      * `packages/sarutahiko/`: `sarutahiko-fields`, `sarutahiko-records`, `sarutahiko-schema`, `sarutahiko-process`, `sarutahiko-jsonrpc`, `sarutahiko-mcp`, `sarutahiko-effect-signatures`, `sarutahiko-effect-effectful`, `sarutahiko-effect-polysemy`, `sarutahiko-effect-testkit`
+      * Preserved `packages/spikes/handlers-as-records`
+    - Updated `cabal.project` to reference the new component-nested package paths.
+    - Updated `packages/yamaarashi/yamaarashi-flow/app/Main.hs` paths for `kogaki-wire` verification.
+    - Updated all task packets (`phase1.5-01-hashigakari-sqlite.yaml`, `phase1.5-02-utai-mock.yaml`, `phase1.5-03-hokora-slice.yaml`, `phase2-agent-core.yaml`, `phase3-surfaces-codeintel.yaml`, `phase4-data-protocol.yaml`, `refactor-logical-string.yaml`) to use package names in `packages:` and component paths in actions.
+    - Verified full compilation with `cabal v2-build all` and 100% test passes across all 6 suites (`kogaki-wire`, `sarutahiko-mcp`, `sarutahiko-jsonrpc`, `yamaarashi-spec`, `yamaarashi-flow`, `yamaarashi`).
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
 ### [TASK-009] Execute Phase 1.5 Packet 01: hashigakari-sqlite embedded carrier
-* **Objective:** Implement `packages/hashigakari-sqlite`, the embedded SQLite carrier for the event store and task queue, and verify its execution through `yamaarashi-exec`.
+* **Objective:** Implement `packages/hashigakari/hashigakari-sqlite`, the embedded SQLite carrier for the event store and task queue, and verify its execution through `yamaarashi-exec`.
 * **Deliverables:**
-  1. `packages/hashigakari-sqlite/hashigakari-sqlite.cabal`: Cabal package importing commons with `direct-sqlite` dependency.
-  2. `packages/hashigakari-sqlite/src/Hashigakari/Sqlite/Stepper.hs`: Existential `sqlite3_step` row stepper.
-  3. `packages/hashigakari-sqlite/src/Hashigakari/Sqlite/EventStore.hs`: SQLite interpreter for `EventStore` GADT.
-  4. `packages/hashigakari-sqlite/src/Hashigakari/Sqlite/TaskQueue.hs`: SQLite interpreter for `TaskQueue` GADT with atomic leases.
-  5. `packages/hashigakari-sqlite/test/Spec.hs`: Tasty/Hedgehog parity test suite against in-memory STM carrier.
+  1. `packages/hashigakari/hashigakari-sqlite/hashigakari-sqlite.cabal`: Cabal package importing commons with `direct-sqlite` dependency.
+  2. `packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/Stepper.hs`: Existential `sqlite3_step` row stepper.
+  3. `packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/EventStore.hs`: SQLite interpreter for `EventStore` GADT.
+  4. `packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/TaskQueue.hs`: SQLite interpreter for `TaskQueue` GADT with atomic leases.
+  5. `packages/hashigakari/hashigakari-sqlite/test/Spec.hs`: Tasty/Hedgehog parity test suite against in-memory STM carrier.
 * **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-01-hashigakari-sqlite.yaml`
 
 

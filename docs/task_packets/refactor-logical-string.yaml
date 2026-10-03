@@ -11,38 +11,38 @@ dependencies:
   - yamaarashi-05-dogfood-harness
 
 packages:
-  - packages/kogaki-core
-  - packages/kogaki-wire
+  - kogaki-core
+  - kogaki-wire
 
 steps:
   - id: define-logical-string
     name: Define LogicalString newtype in kogaki-core
     action: |
-      In packages/kogaki-core/src/Kogaki/Core/String.hs:
-      - Define `newtype LogicalString = LogicalString { getLogical :: Text }`
-        deriving newtype (Eq, Ord, Show, IsString, Semigroup, Monoid).
-      - Add safe UTF-8 boundary conversions:
-        `fromByteString :: ByteString -> Either UnicodeException LogicalString`
-        `toByteString   :: LogicalString -> ByteString`.
+      In packages/kogaki/kogaki-core/src/Kogaki/Core/String.hs:
+        - Define `newtype LogicalString = LogicalString { getLogical :: Text }`
+          deriving newtype (Eq, Ord, Show, IsString, Semigroup, Monoid).
+        - Add safe UTF-8 boundary conversions:
+          `fromByteString :: ByteString -> Either UnicodeException LogicalString`
+          `toByteString   :: LogicalString -> ByteString`.
     duration: "30m"
 
   - id: wire-boundary-conversion
     name: Integrate conversion points in kogaki-wire
     action: |
-      In packages/kogaki-wire:
-      - Update JSON token and SSE representations to produce `LogicalString` at the
-        domain boundary while retaining raw `ByteString` fast paths internally.
+      In packages/kogaki/kogaki-wire:
+        - Update JSON token and SSE representations to produce `LogicalString` at the
+          domain boundary while retaining raw `ByteString` fast paths internally.
     duration: "45m"
 
   - id: verify-logical-string
     name: Test suite and roundtrip verification
     action: |
-      In packages/kogaki-core/test/Spec.hs and packages/kogaki-wire:
-      - Verify round-trip `ByteString -> LogicalString -> ByteString` identity on valid UTF-8.
-      - Verify invalid byte sequences surface typed UnicodeException.
+      In packages/kogaki/kogaki-core/test/Spec.hs and packages/kogaki/kogaki-wire:
+        - Verify round-trip `ByteString -> LogicalString -> ByteString` identity on valid UTF-8.
+        - Verify invalid byte sequences surface typed UnicodeException.
     duration: "30m"
 
 success_criteria:
-  - `packages/kogaki-core` and `packages/kogaki-wire` compile with zero warnings under `-Wall -Werror`.
+  - `kogaki-core` and `kogaki-wire` compile with zero warnings under `-Wall -Werror`.
   - All tests pass via `cabal v2-test kogaki-core kogaki-wire`.
   - Zero partial functions or unvalidated byte conversions.
