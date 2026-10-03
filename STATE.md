@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T14:20:00+02:00
+* **Timestamp:** 2026-10-03T14:47:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `1b7ce19` (*Introduce LogicalString and UTF-8 codecs in kogaki-core*)
+* **HEAD Commit:** `a8b4b69` (*feat(yamaarashi-flow): add first-class Hermes leaf-worker delegation to yamaarashi-exec*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
