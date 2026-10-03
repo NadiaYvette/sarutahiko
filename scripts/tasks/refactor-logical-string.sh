@@ -584,7 +584,7 @@ lex_content = lex_content.replace(
 )
 lex_content = lex_content.replace(
     "import Data.Bits (shiftL, (.|.))\n",
-    "import Data.Bits (shiftL)\nimport Kogaki.Core.String (LogicalString, fromByteString, fromText)\n"
+    "import Data.Bits (shiftL, (.|.))\nimport Kogaki.Core.String (LogicalString, fromByteString, fromText)\n"
 )
 token_target = "  deriving stock (Eq, Show, Generic)\n"
 token_replacement = """  deriving stock (Eq, Show, Generic)
