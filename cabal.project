@@ -13,6 +13,11 @@ packages:
     packages/sarutahiko-effect-testkit
     packages/spikes/handlers-as-records
     packages/sarutahiko-mcp
+    packages/yamaarashi
+    packages/yamaarashi-conduit
+    packages/yamaarashi-streamly
+    packages/yamaarashi-flow
+    packages/yamaarashi-spec
 
 optional-packages:
     ../large-records-interfaces/large-anon

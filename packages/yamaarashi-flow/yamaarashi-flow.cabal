@@ -1,0 +1,40 @@
+cabal-version:      3.14
+name:               yamaarashi-flow
+version:            0.1.0.0
+synopsis:           Selective task DAG workflow orchestrator
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Development, Workflow
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:
+        Yamaarashi.Flow
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        bytestring >= 0.12,
+        selective >= 0.5,
+        algebraic-graphs >= 0.7,
+        large-anon,
+        sarutahiko-fields,
+        sarutahiko-records,
+        sarutahiko-effect-signatures,
+        yamaarashi
+    hs-source-dirs:   src

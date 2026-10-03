@@ -1,0 +1,36 @@
+cabal-version:      3.14
+name:               yamaarashi-spec
+version:            0.1.0.0
+synopsis:           Task specification AST, VirtualTree static over-approximation, and subdivision
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Development, Workflow
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:
+        Yamaarashi.Spec
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        selective >= 0.5,
+        recursion-schemes >= 5.2,
+        yamaarashi,
+        yamaarashi-flow
+    hs-source-dirs:   src

@@ -120,7 +120,7 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ---
 
-## 5. Recent Completed Actions (Design Reconciliation Phase)
+## 5. Recent Completed Actions (Design Reconciliation & Bootstrap Phase)
 
 1. **Reconciled `REUSE_REGISTER.md`:**
    - Admitted `selective` (§2.25), `algebraic-graphs` / `alga` (§2.26), and `recursion-schemes` (§2.27).
@@ -131,19 +131,25 @@ The following sequential decisions must be resolved to reconcile the revised Yam
    - Corrected goal drift: restored `hashigakari` as the canonical row-native persistence engine, incorporated the Façade Pattern, Selective workflow DAG, and `utai` + MCP sampling.
 4. **Synchronized `NIH_PLAN.md` & `PLAN.md`:**
    - Updated §3.5 and §3.6 layering contracts, Phase 4 package entries, and Invariants 4 & 5 to codify Selective workflow DAGs and the Façade Pattern.
+5. **Established Bootstrap Task Packets Series (`b54027b`):**
+   - Added `yamaarashi-01-skeletons.yaml` through `yamaarashi-05-dogfood-harness.yaml`.
+   - Cleaned obsolete packets and preserved `fix-kogaki-wire-lexer-nonempty.yaml`.
+6. **Executed Packet 01 — Yamaarashi Package Skeletons [TASK-003]:**
+   - Created minimal cabal packages and stub exposed modules for `yamaarashi`, `yamaarashi-conduit`, `yamaarashi-streamly`, `yamaarashi-flow`, and `yamaarashi-spec`.
+   - Registered all 5 packages in `cabal.project`.
+   - Verified clean toolchain build under GHC 9.12.2 / GHC2024 via `cabal v2-build packages/yamaarashi*` with zero errors and zero warnings (`-Wall -Werror`).
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-### [TASK-003] Yamaarashi Minimal Package Skeletons & Toolchain Verification
-* **Objective:** Create the canonical minimal cabal packages and exposed module skeletons for the revised Yamaarashi family adhering strictly to `TASK_PACKET_BEST_PRACTICES.md`.
+### [TASK-004] Yamaarashi Streaming Kernel & Boundary Adapters (Packet yamaarashi-02-streaming-kernel)
+* **Objective:** Implement the church-encoded element streaming kernel in `packages/yamaarashi`, boundary framing adapters in `packages/yamaarashi-conduit`, and hot-loop backend in `packages/yamaarashi-streamly`.
 * **Deliverables:**
-  1. `packages/yamaarashi`: Minimal GHC2024 cabal package with `Stream (Of a) m r` type stub.
-  2. `packages/yamaarashi-flow`: Minimal cabal package with dependencies on `selective`, `algebraic-graphs`, and `large-anon`.
-  3. `packages/yamaarashi-spec`: Minimal cabal package with dependencies on `recursion-schemes` and `selective`.
-  4. `packages/yamaarashi-conduit`: Minimal framing adapter stub package.
-  5. `packages/yamaarashi-streamly`: Minimal fused backend stub package.
-  6. Register in `cabal.project` and verify `cabal v2-build` passes with zero warnings (`-Wall -Werror`).
-* **Verification Command:** `cabal v2-build packages/yamaarashi*`
+  1. `packages/yamaarashi`: Define `Of a b`, `Stream (Of a) m r` (CPS/church-encoded free monad), core combinators (`yield`, `await`, `fold`, `map`, `filter`, `take`, `drop`), `unfoldStepper` bridging `Sarutahiko.Effect.Stepper`, and typed concurrency wrappers (`Serial`, `Async`, `Interleaved`, `Parallel`).
+  2. `packages/yamaarashi-conduit`: Bidirectional conversion (`streamToConduit`, `conduitToStream`), stdio JSON-RPC line framing (`linesConduit`, `jsonRpcFraming`), and deterministic cleanup.
+  3. `packages/yamaarashi-streamly`: In-process `SerialT` embedding (`toStreamly`, `fromStreamly`), and row folding combinators.
+  4. `packages/yamaarashi/test/Spec.hs`: Tasty/Hedgehog test suite verifying stream composition, folds, short-circuiting, and parity with `drainStepper`.
+* **Verification Command:** `cabal v2-test yamaarashi` and `cabal v2-build packages/yamaarashi*`
+
 
