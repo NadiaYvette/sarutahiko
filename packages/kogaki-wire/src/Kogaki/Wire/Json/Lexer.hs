@@ -94,113 +94,103 @@ lexJsonEither input = go (skipWhitespace input) []
     go !bs (InObject st : stackRest) =
       case st of
         ObjExpectKeyOrClose ->
-          let !trimmed = skipWhitespace bs
-          in if BS.null trimmed
-               then Left "Unexpected EOF: unclosed object"
-               else case BSC.head trimmed of
-                 '}' -> (TkObjectClose :) <$> go (skipWhitespace (BS.tail trimmed)) stackRest
-                 '"' -> parseKeyAndContinue trimmed stackRest
-                 c   -> Left ("Expected string key or '}', got: " <> T.singleton c)
+          case BSC.uncons (skipWhitespace bs) of
+            Nothing -> Left "Unexpected EOF: unclosed object"
+            Just ('}', rest) -> (TkObjectClose :) <$> go (skipWhitespace rest) stackRest
+            Just ('"', _)    -> parseKeyAndContinue (skipWhitespace bs) stackRest
+            Just (c, _)      -> Left ("Expected string key or '}', got: " <> T.singleton c)
 
         ObjExpectKey ->
-          let !trimmed = skipWhitespace bs
-          in if BS.null trimmed
-               then Left "Unexpected EOF: expected object key"
-               else case BSC.head trimmed of
-                 '"' -> parseKeyAndContinue trimmed stackRest
-                 c   -> Left ("Expected string key, got: " <> T.singleton c)
+          case BSC.uncons (skipWhitespace bs) of
+            Nothing -> Left "Unexpected EOF: expected object key"
+            Just ('"', _) -> parseKeyAndContinue (skipWhitespace bs) stackRest
+            Just (c, _)   -> Left ("Expected string key, got: " <> T.singleton c)
 
         ObjExpectColon ->
-          let !trimmed = skipWhitespace bs
-          in if BS.null trimmed
-               then Left "Unexpected EOF: expected ':'"
-               else case BSC.head trimmed of
-                 ':' -> go (skipWhitespace (BS.tail trimmed)) (InObject ObjExpectValue : stackRest)
-                 c   -> Left ("Expected ':', got: " <> T.singleton c)
+          case BSC.uncons (skipWhitespace bs) of
+            Nothing -> Left "Unexpected EOF: expected ':'"
+            Just (':', rest) -> go (skipWhitespace rest) (InObject ObjExpectValue : stackRest)
+            Just (c, _)      -> Left ("Expected ':', got: " <> T.singleton c)
 
         ObjExpectValue ->
           parseValue bs (InObject ObjExpectCommaOrClose : stackRest)
 
         ObjExpectCommaOrClose ->
-          let !trimmed = skipWhitespace bs
-          in if BS.null trimmed
-               then Left "Unexpected EOF: unclosed object"
-               else case BSC.head trimmed of
-                 '}' -> (TkObjectClose :) <$> go (skipWhitespace (BS.tail trimmed)) stackRest
-                 ',' -> go (skipWhitespace (BS.tail trimmed)) (InObject ObjExpectKey : stackRest)
-                 c   -> Left ("Expected ',' or '}', got: " <> T.singleton c)
+          case BSC.uncons (skipWhitespace bs) of
+            Nothing -> Left "Unexpected EOF: unclosed object"
+            Just ('}', rest) -> (TkObjectClose :) <$> go (skipWhitespace rest) stackRest
+            Just (',', rest) -> go (skipWhitespace rest) (InObject ObjExpectKey : stackRest)
+            Just (c, _)      -> Left ("Expected ',' or '}', got: " <> T.singleton c)
 
     go !bs (InArray st : stackRest) =
       case st of
         ArrExpectValueOrClose ->
-          let !trimmed = skipWhitespace bs
-          in if BS.null trimmed
-               then Left "Unexpected EOF: unclosed array"
-               else case BSC.head trimmed of
-                 ']' -> (TkArrayClose :) <$> go (skipWhitespace (BS.tail trimmed)) stackRest
-                 _   -> parseValue trimmed (InArray ArrExpectCommaOrClose : stackRest)
+          case BSC.uncons (skipWhitespace bs) of
+            Nothing -> Left "Unexpected EOF: unclosed array"
+            Just (']', rest) -> (TkArrayClose :) <$> go (skipWhitespace rest) stackRest
+            Just _           -> parseValue (skipWhitespace bs) (InArray ArrExpectCommaOrClose : stackRest)
 
         ArrExpectValue ->
           parseValue bs (InArray ArrExpectCommaOrClose : stackRest)
 
         ArrExpectCommaOrClose ->
-          let !trimmed = skipWhitespace bs
-          in if BS.null trimmed
-               then Left "Unexpected EOF: unclosed array"
-               else case BSC.head trimmed of
-                 ']' -> (TkArrayClose :) <$> go (skipWhitespace (BS.tail trimmed)) stackRest
-                 ',' -> go (skipWhitespace (BS.tail trimmed)) (InArray ArrExpectValue : stackRest)
-                 c   -> Left ("Expected ',' or ']', got: " <> T.singleton c)
+          case BSC.uncons (skipWhitespace bs) of
+            Nothing -> Left "Unexpected EOF: unclosed array"
+            Just (']', rest) -> (TkArrayClose :) <$> go (skipWhitespace rest) stackRest
+            Just (',', rest) -> go (skipWhitespace rest) (InArray ArrExpectValue : stackRest)
+            Just (c, _)      -> Left ("Expected ',' or ']', got: " <> T.singleton c)
 
     parseTopLevelValue :: ByteString -> Either Text [JsonToken]
     parseTopLevelValue !bs = parseValue bs []
 
     parseKeyAndContinue :: ByteString -> [Ctx] -> Either Text [JsonToken]
-    parseKeyAndContinue !trimmed !stackRest = do
-      (keyBytes, remainder) <- parseRawString (BS.tail trimmed)
-      let !nextStack = InObject ObjExpectColon : stackRest
-      (TkKey keyBytes :) <$> go (skipWhitespace remainder) nextStack
+    parseKeyAndContinue !trimmed !stackRest =
+      case BSC.uncons trimmed of
+        Just ('"', rest) -> do
+          (keyBytes, remainder) <- parseRawString rest
+          let !nextStack = InObject ObjExpectColon : stackRest
+          (TkKey keyBytes :) <$> go (skipWhitespace remainder) nextStack
+        _ -> Left "Expected string key starting with quote"
 
     parseValue :: ByteString -> [Ctx] -> Either Text [JsonToken]
     parseValue !rawBs !stack = do
       let !bs = skipWhitespace rawBs
-      if BS.null bs
-        then Left "Unexpected EOF: expected JSON value"
-        else case BSC.head bs of
-          '{' -> (TkObjectOpen :) <$> go (skipWhitespace (BS.tail bs)) (InObject ObjExpectKeyOrClose : stack)
-          '[' -> (TkArrayOpen :) <$> go (skipWhitespace (BS.tail bs)) (InArray ArrExpectValueOrClose : stack)
-          '"' -> do
-            (strBytes, remainder) <- parseRawString (BS.tail bs)
-            let !txt = TE.decodeUtf8With TEE.lenientDecode strBytes
-            (TkString txt :) <$> go (skipWhitespace remainder) stack
-          't'
-            | "true" `BS.isPrefixOf` bs ->
-                (TkBool True :) <$> go (skipWhitespace (BS.drop 4 bs)) stack
-            | otherwise -> Left "Malformed literal: expected 'true'"
-          'f'
-            | "false" `BS.isPrefixOf` bs ->
-                (TkBool False :) <$> go (skipWhitespace (BS.drop 5 bs)) stack
-            | otherwise -> Left "Malformed literal: expected 'false'"
-          'n'
-            | "null" `BS.isPrefixOf` bs ->
-                (TkNull :) <$> go (skipWhitespace (BS.drop 4 bs)) stack
-            | otherwise -> Left "Malformed literal: expected 'null'"
-          c | c == '-' || isDigit c -> do
-            (numTok, remainder) <- parseNumber bs
-            (numTok :) <$> go (skipWhitespace remainder) stack
-          c -> Left ("Unexpected character starting value: " <> T.singleton c)
+      case BSC.uncons bs of
+        Nothing -> Left "Unexpected EOF: expected JSON value"
+        Just ('{', rest) -> (TkObjectOpen :) <$> go (skipWhitespace rest) (InObject ObjExpectKeyOrClose : stack)
+        Just ('[', rest) -> (TkArrayOpen :) <$> go (skipWhitespace rest) (InArray ArrExpectValueOrClose : stack)
+        Just ('"', rest) -> do
+          (strBytes, remainder) <- parseRawString rest
+          let !txt = TE.decodeUtf8With TEE.lenientDecode strBytes
+          (TkString txt :) <$> go (skipWhitespace remainder) stack
+        Just ('t', _)
+          | "true" `BS.isPrefixOf` bs ->
+              (TkBool True :) <$> go (skipWhitespace (BS.drop 4 bs)) stack
+          | otherwise -> Left "Malformed literal: expected 'true'"
+        Just ('f', _)
+          | "false" `BS.isPrefixOf` bs ->
+              (TkBool False :) <$> go (skipWhitespace (BS.drop 5 bs)) stack
+          | otherwise -> Left "Malformed literal: expected 'false'"
+        Just ('n', _)
+          | "null" `BS.isPrefixOf` bs ->
+              (TkNull :) <$> go (skipWhitespace (BS.drop 4 bs)) stack
+          | otherwise -> Left "Malformed literal: expected 'null'"
+        Just (c, _)
+          | c == '-' || isDigit c -> do
+              (numTok, remainder) <- parseNumber bs
+              (numTok :) <$> go (skipWhitespace remainder) stack
+          | otherwise -> Left ("Unexpected character starting value: " <> T.singleton c)
 
 -- | Skip ASCII whitespace bytes (0x20, 0x09, 0x0A, 0x0D).
 skipWhitespace :: ByteString -> ByteString
-skipWhitespace bs = BS.dropWhile isSpace bs
+skipWhitespace bs = BS.dropWhile isSpaceByte bs
   where
-    isSpace w = w == 32 || w == 9 || w == 10 || w == 13
+    isSpaceByte w = w == 32 || w == 9 || w == 10 || w == 13
 
 -- | Parse a double-quoted JSON string (without opening quote), returning
 -- the unescaped UTF-8 byte payload and the remaining unparsed input.
 parseRawString :: ByteString -> Either Text (ByteString, ByteString)
 parseRawString input =
-  -- Fast scan for quote without escapes
   case BSC.elemIndex '"' input of
     Nothing -> Left "Unterminated string literal"
     Just quoteIdx ->
@@ -210,29 +200,26 @@ parseRawString input =
            else slowUnescape input []
 
 slowUnescape :: ByteString -> [ByteString] -> Either Text (ByteString, ByteString)
-slowUnescape !bs !acc
-  | BS.null bs = Left "Unterminated string literal during escape parsing"
-  | otherwise =
-      case BSC.head bs of
-        '"'  -> Right (BS.concat (reverse acc), BS.tail bs)
-        '\\' ->
-          let !rest = BS.tail bs
-          in if BS.null rest
-               then Left "Unexpected EOF following escape character '\\'"
-               else case BSC.head rest of
-                 '"'  -> slowUnescape (BS.tail rest) ("\"" : acc)
-                 '\\' -> slowUnescape (BS.tail rest) ("\\" : acc)
-                 '/'  -> slowUnescape (BS.tail rest) ("/" : acc)
-                 'b'  -> slowUnescape (BS.tail rest) ("\b" : acc)
-                 'f'  -> slowUnescape (BS.tail rest) ("\f" : acc)
-                 'n'  -> slowUnescape (BS.tail rest) ("\n" : acc)
-                 'r'  -> slowUnescape (BS.tail rest) ("\r" : acc)
-                 't'  -> slowUnescape (BS.tail rest) ("\t" : acc)
-                 'u'  -> parseUnicodeEscape (BS.tail rest) acc
-                 esc  -> Left ("Invalid escape character in string: \\" <> T.singleton esc)
-        _    ->
-          let (chunk, remainder) = BSC.span (\c -> c /= '"' && c /= '\\') bs
-          in slowUnescape remainder (chunk : acc)
+slowUnescape !bs !acc =
+  case BSC.uncons bs of
+    Nothing -> Left "Unterminated string literal during escape parsing"
+    Just ('"', rest) -> Right (BS.concat (reverse acc), rest)
+    Just ('\\', rest) ->
+      case BSC.uncons rest of
+        Nothing -> Left "Unexpected EOF following escape character '\\'"
+        Just ('"', rest2) -> slowUnescape rest2 ("\"" : acc)
+        Just ('\\', rest2) -> slowUnescape rest2 ("\\" : acc)
+        Just ('/', rest2)  -> slowUnescape rest2 ("/" : acc)
+        Just ('b', rest2)  -> slowUnescape rest2 ("\b" : acc)
+        Just ('f', rest2)  -> slowUnescape rest2 ("\f" : acc)
+        Just ('n', rest2)  -> slowUnescape rest2 ("\n" : acc)
+        Just ('r', rest2)  -> slowUnescape rest2 ("\r" : acc)
+        Just ('t', rest2)  -> slowUnescape rest2 ("\t" : acc)
+        Just ('u', rest2)  -> parseUnicodeEscape rest2 acc
+        Just (esc, _)      -> Left ("Invalid escape character in string: \\" <> T.singleton esc)
+    Just _ ->
+      let (chunk, remainder) = BSC.span (\c -> c /= '"' && c /= '\\') bs
+      in slowUnescape remainder (chunk : acc)
 
 parseUnicodeEscape :: ByteString -> [ByteString] -> Either Text (ByteString, ByteString)
 parseUnicodeEscape !bs !acc
@@ -242,7 +229,6 @@ parseUnicodeEscape !bs !acc
           remBs    = BS.drop 4 bs
       in case readHex hexSlice of
         [(code, "")] ->
-          -- Check for UTF-16 surrogate pair (0xD800 - 0xDBFF)
           if code >= 0xD800 && code <= 0xDBFF
             then if BS.length remBs >= 6 && BS.take 2 remBs == "\\u"
                    then let lowHex = BSC.unpack (BS.take 4 (BS.drop 2 remBs))
@@ -253,7 +239,6 @@ parseUnicodeEscape !bs !acc
                                    encoded = TE.encodeUtf8 (T.singleton (chr scalar))
                                in slowUnescape afterLow (encoded : acc)
                              _ ->
-                               -- Malformed low surrogate; fallback to single code point
                                let encoded = TE.encodeUtf8 (T.singleton (chr code))
                                in slowUnescape remBs (encoded : acc)
                    else
