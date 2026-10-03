@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T13:50:00+02:00
+* **Timestamp:** 2026-10-03T14:20:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `fad81ac` (*Integrate mono-traversable for type-level non-emptiness constraints*)
+* **HEAD Commit:** `1b7ce19` (*Introduce LogicalString and UTF-8 codecs in kogaki-core*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -202,14 +202,21 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Added `dispatchBatch` and `dispatchTypedBatch` for structural non-emptiness in JSON-RPC batching, returning spec-compliant `-32600 Invalid Request` on empty batches or empty methods without partial matches.
     - Enforced `SseFieldLabel` (`NonNull ByteString`) and `renderDataLine` in `Kogaki.Wire.SSE.Parser`, eliminating all partial operations (`BSC.head`, `BS.tail`).
     - Executed via `yamaarashi-exec`, passed all verification checks, and verified all 3 test suites (`test-kogaki-wire`, `test-jsonrpc`, `test-mcp`) passing 100% with zero warnings under `-Wall -Werror`.
+15. **Executed Pre-Phase 1.5 Sweep 03 — `LogicalString` and UTF-8 Codecs [TASK-011] (`1b7ce19`):**
+    - Introduced canonical `LogicalString` newtype over `Text` in `packages/kogaki/kogaki-core/src/Kogaki/Core/String.hs` with total boundary conversions (`fromByteString`, `fromByteStringLenient`, `toByteString`, `fromText`, `toText`) and `MonoTraversable` instance.
+    - Updated `Kogaki.Wire.Json.Decode` with row-native `FromJsonField` and `ToJsonField` instances for `LogicalString` and `NonNull LogicalString`.
+    - Integrated `tokenLogicalString` in `Kogaki.Wire.Json.Lexer` and `sseDataLogical` / `mkSseEventLogical` in `Kogaki.Wire.SSE.Parser`.
+    - Enforced zero partial functions across `kogaki-core` and `kogaki-wire`.
+    - Added Hedgehog property test suite in `packages/kogaki/kogaki-core/test/Spec.hs` (6/6 tests passing with 100 runs each).
+    - Executed cleanly via `yamaarashi-exec run docs/task_packets/refactor-logical-string.yaml` in isolated git worktree with SQLite event tracking, passed verification gates, and fast-forward merged to HEAD.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-### [TASK-011] Execute refactor-logical-string
-* **Objective:** Introduce `LogicalString` and UTF-8 codecs in `kogaki-core` per `KOGAKI_DESIGN.md` §3.
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/refactor-logical-string.yaml`
+> [!NOTE] Strategic Pause Boundary
+> Foundational refactors (Sweep 01 effect façade, Sweep 02 mono-traversable, Sweep 03 logical strings) are COMPLETE.
+> Pausing execution before entering Phase 1.5 (`phase1.5-01-hashigakari-sqlite`) to establish comprehensive token burn minimization strategies.
 
 ### [TASK-012] Execute Phase 1.5 Packet 01: phase1.5-01-hashigakari-sqlite
 * **Objective:** Implement `packages/hashigakari/hashigakari-sqlite` embedded carrier for event store and task queue.
@@ -222,7 +229,3 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 ### [TASK-014] Execute Phase 1.5 Packet 03: phase1.5-03-hokora-slice
 * **Objective:** Assemble Phase 1.5 Hokora autonomous turn vertical slice.
 * **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-03-hokora-slice.yaml`
-
-
-
-
