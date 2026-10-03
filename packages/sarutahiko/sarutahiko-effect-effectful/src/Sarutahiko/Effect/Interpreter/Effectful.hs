@@ -64,7 +64,6 @@ import Sarutahiko.Effect.Process
   , ChildProcessId (..)
   , Process (..)
   , ProcessConfig (..)
-  , ProcessSignal (..)
   )
 import Sarutahiko.Effect.Resource (Resource (..), ResourceKey (..))
 import Sarutahiko.Process.Capability (MonadProcess (..))

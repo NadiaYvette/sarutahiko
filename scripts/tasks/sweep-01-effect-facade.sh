@@ -528,7 +528,6 @@ import Sarutahiko.Effect.Process
   , ChildProcessId (..)
   , Process (..)
   , ProcessConfig (..)
-  , ProcessSignal (..)
   )
 import Sarutahiko.Effect.Resource (Resource (..), ResourceKey (..))
 import Sarutahiko.Process.Capability (MonadProcess (..))
@@ -941,7 +940,6 @@ import Sarutahiko.Effect.Log (LogSeverity (..), SomeRow (..))
 import Sarutahiko.Effect.Process
   ( ChildHandle (..)
   , ChildProcessId (..)
-  , ProcessConfig (..)
   , ProcessSignal (..)
   , defaultProcessConfig
   )

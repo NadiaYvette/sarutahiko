@@ -63,7 +63,6 @@ import Sarutahiko.Effect.Log (LogSeverity (..), SomeRow (..))
 import Sarutahiko.Effect.Process
   ( ChildHandle (..)
   , ChildProcessId (..)
-  , ProcessConfig (..)
   , ProcessSignal (..)
   , defaultProcessConfig
   )
