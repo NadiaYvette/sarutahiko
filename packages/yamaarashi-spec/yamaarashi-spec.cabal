@@ -25,6 +25,9 @@ library
     import:           commons
     exposed-modules:
         Yamaarashi.Spec
+        Yamaarashi.Spec.Types
+        Yamaarashi.Spec.VirtualTree
+        Yamaarashi.Spec.Subdivide
     build-depends:
         base >= 4.20 && < 5,
         containers >= 0.6,
@@ -34,3 +37,21 @@ library
         yamaarashi,
         yamaarashi-flow
     hs-source-dirs:   src
+
+test-suite yamaarashi-spec-test
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        selective >= 0.5,
+        recursion-schemes >= 5.2,
+        yamaarashi-flow,
+        yamaarashi-spec,
+        tasty,
+        hedgehog,
+        tasty-hedgehog
+

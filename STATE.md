@@ -150,20 +150,25 @@ The following sequential decisions must be resolved to reconcile the revised Yam
    - Defined canonical `Worktree` and `TaskQueue` GADT effect signatures in `packages/sarutahiko-effect-signatures`.
    - Defined open tagless capability typeclasses (`MonadWorktree`, `MonadTaskQueue`) in `packages/yamaarashi-flow/src/Yamaarashi/Flow/Capability.hs` under the project-wide Façade Pattern.
    - Added Tasty/Hedgehog test suite in `packages/yamaarashi-flow/test/Spec.hs` verifying mid-run resumption (A & B skipped from cache, only C executed), early cutoff (identical output hash prunes downstream nodes), cascading changes, and cycle rejection (all 4 tests passing with 100 iterations each).
-   - Verified clean compilation across all packages with zero warnings.
+    - Verified clean compilation across all packages with zero warnings.
+9. **Executed Packet 04 — Yamaarashi Spec Extraction & Task Subdivision [TASK-006]:**
+   - Implemented specification AST, inert resource descriptors, and `VirtualTree` in `packages/yamaarashi-spec/src/Yamaarashi/Spec/Types.hs`.
+   - Implemented Pass 1 ahead-of-time static analysis via `Control.Selective.Over` in `packages/yamaarashi-spec/src/Yamaarashi/Spec/VirtualTree.hs`, computing strict union over-approximations across conditional branches with zero IO.
+   - Implemented corecursive task subdivision via `recursion-schemes` (`hylo`) with `IsPrimitive` granularity scoring and task packet serialization in `packages/yamaarashi-spec/src/Yamaarashi/Spec/Subdivide.hs`.
+   - Added Tasty/Hedgehog property test suite in `packages/yamaarashi-spec/test/Spec.hs` (3/3 property tests passing with 100 runs each).
+   - Verified all 15 property tests across `yamaarashi`, `yamaarashi-flow`, and `yamaarashi-spec` pass with zero warnings under `-Wall -Werror`.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-### [TASK-006] Yamaarashi Spec Extraction & Task Subdivision (Packet yamaarashi-04-spec-extraction)
-* **Objective:** Implement `packages/yamaarashi-spec`, the specification extraction and analysis engine in the Yamaarashi family.
+### [TASK-007] Standalone Yamaarashi Runner & First Dogfood Target (Packet yamaarashi-05-dogfood-harness)
+* **Objective:** Deliver the standalone execution CLI (`yamaarashi-exec`) and execute the first dogfood task packet in an isolated worktree.
 * **Deliverables:**
-  1. `packages/yamaarashi-spec/src/Yamaarashi/Spec/Types.hs`: Spec AST, `TaskSpec`, and pure inert `ResourceDescriptor` (git repo, branch, worktree path, toolchains, sandbox policy).
-  2. `packages/yamaarashi-spec/src/Yamaarashi/Spec/VirtualTree.hs`: Pass 1 static dependency analysis using `Control.Selective.Over (Set ResourceDescriptor)` computing complete resource over-approximation with zero IO.
-  3. `packages/yamaarashi-spec/src/Yamaarashi/Spec/Subdivide.hs`: Recursive task subdivision via `recursion-schemes` (`ana`/`hylo`) and `IsPrimitive` granularity scoring emitting valid leaf task packets conforming to `TASK_PACKET_BEST_PRACTICES.md`.
-  4. `packages/yamaarashi-spec/test/Spec.hs`: Tasty/Hedgehog test suite verifying pure static over-approximation on multi-target specs and recursive task subdivision termination.
-* **Verification Command:** `cabal v2-test yamaarashi-spec` and `cabal v2-build packages/yamaarashi*`
+  1. `packages/yamaarashi-flow/app/Main.hs`: CLI executable `yamaarashi-exec` supporting `run <path>` command.
+  2. Git worktree management runner creating isolated branches and teardown via process isolation.
+  3. Dogfood Target: Execute `docs/task_packets/fix-kogaki-wire-lexer-nonempty.yaml` through `yamaarashi-exec`, verifying isolated worktree creation, build check, verification execution, commit generation, and clean worktree teardown.
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/fix-kogaki-wire-lexer-nonempty.yaml`
 
 
 

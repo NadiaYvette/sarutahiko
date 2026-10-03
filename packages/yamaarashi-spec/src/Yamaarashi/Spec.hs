@@ -1,12 +1,16 @@
 -- |
 -- Module      : Yamaarashi.Spec
--- Description : Task specification AST, VirtualTree extraction, and subdivision
+-- Description : Specification extraction, static over-approximation, and task subdivision
 --
--- Specification AST, ahead-of-time static analysis via Control.Selective.Over,
--- and recursive subdivision per YAMAARASHI_DESIGN.md.
+-- Top-level module for 'yamaarashi-spec' providing Pass 1 static dependency
+-- analysis via 'Control.Selective.Over' and corecursive task subdivision via
+-- 'recursion-schemes' per YAMAARASHI_DESIGN.md.
 module Yamaarashi.Spec
-  (
+  ( module Yamaarashi.Spec.Types
+  , module Yamaarashi.Spec.VirtualTree
+  , module Yamaarashi.Spec.Subdivide
   ) where
 
-import Yamaarashi ()
-import Yamaarashi.Flow ()
+import Yamaarashi.Spec.Subdivide
+import Yamaarashi.Spec.Types
+import Yamaarashi.Spec.VirtualTree
