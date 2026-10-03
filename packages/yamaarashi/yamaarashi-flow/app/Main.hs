@@ -11,6 +11,7 @@ import qualified Data.ByteString.Lazy as BSL
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TEE
 import qualified Data.Text.IO as TIO
 import System.Directory
   ( copyFile
@@ -27,16 +28,17 @@ import System.Timeout (timeout)
 
 -- | Parsed task packet envelope.
 data TaskPacket = TaskPacket
-  { packetId          :: !Text
-  , packetTitle       :: !Text
-  , packetDescription :: !Text
-  , packetPackages    :: ![Text]
-  , packetExecutor    :: !Text
-  , packetModel       :: !(Maybe Text)
-  , packetSkills      :: ![Text]
-  , packetMaxTurns    :: !(Maybe Int)
-  , packetRunBudget   :: !(Maybe Int)
-  , packetRawYaml     :: !Text
+  { packetId                :: !Text
+  , packetTitle             :: !Text
+  , packetDescription       :: !Text
+  , packetPackages          :: ![Text]
+  , packetExecutor          :: !Text
+  , packetModel             :: !(Maybe Text)
+  , packetSkills            :: ![Text]
+  , packetMaxTurns          :: !(Maybe Int)
+  , packetRunBudget         :: !(Maybe Int)
+  , packetMaxRepairAttempts :: !(Maybe Int)
+  , packetRawYaml           :: !Text
   } deriving (Show)
 
 main :: IO ()
@@ -108,17 +110,41 @@ runTaskPacket path = do
         logEvent dbPath (packetId packet) "WORKTREE_TEARDOWN" (T.pack wtDir)
 
   bracket provision teardown $ \wtDir -> do
-    -- Step 1: Execute Task Actions
-    putStrLn "=== [yamaarashi-exec] Executing task step ==="
-    logEvent dbPath (packetId packet) "STEP_STARTED" "Applying task modifications"
-    actualExec <- executeTaskStep wtDir packet dbPath
-    logEvent dbPath (packetId packet) "STEP_EXECUTED" ("Modifications applied successfully via " <> actualExec)
+    let maxAttempts = maybe 3 id (packetMaxRepairAttempts packet)
+        loop attempt mRepairPrompt = do
+          putStrLn $ "=== [yamaarashi-exec] Execution Cycle " ++ show attempt ++ " of " ++ show maxAttempts ++ " ==="
+          logEvent dbPath (packetId packet) "STEP_STARTED" ("Attempt " <> T.pack (show attempt) <> " started")
+          mExecRes <- executeTaskStep wtDir packet dbPath mRepairPrompt attempt
+          case mExecRes of
+            Left stepErr -> do
+              putStrLn $ "=== [yamaarashi-exec] Task step failed on attempt " ++ show attempt ++ ": " ++ T.unpack stepErr
+              logEvent dbPath (packetId packet) "STEP_FAILED" stepErr
+              if attempt < maxAttempts
+                then do
+                  let nextPrompt = buildRepairPrompt packet stepErr (attempt + 1) maxAttempts
+                  loop (attempt + 1) (Just nextPrompt)
+                else throwIO (userError $ "Task execution failed after " ++ show maxAttempts ++ " attempts: " ++ T.unpack stepErr)
+            Right actualExec -> do
+              logEvent dbPath (packetId packet) "STEP_EXECUTED" ("Modifications applied successfully via " <> actualExec <> " (attempt " <> T.pack (show attempt) <> ")")
+              putStrLn "=== [yamaarashi-exec] Running verification gate ==="
+              logEvent dbPath (packetId packet) "VERIFICATION_STARTED" ("Verification for attempt " <> T.pack (show attempt))
+              vRes <- runVerificationGate wtDir packet
+              case vRes of
+                Right () -> do
+                  logEvent dbPath (packetId packet) "VERIFICATION_PASSED" ("All build and audit checks passed on attempt " <> T.pack (show attempt))
+                  pure actualExec
+                Left verifyErr -> do
+                  putStrLn $ "=== [yamaarashi-exec] Verification gate failed on attempt " ++ show attempt ++ " ==="
+                  putStrLn (T.unpack verifyErr)
+                  logEvent dbPath (packetId packet) "VERIFICATION_FAILED" verifyErr
+                  if attempt < maxAttempts
+                    then do
+                      putStrLn $ "=== [yamaarashi-exec] Initiating repair cycle (" ++ show (attempt + 1) ++ "/" ++ show maxAttempts ++ ") ==="
+                      let nextPrompt = buildRepairPrompt packet verifyErr (attempt + 1) maxAttempts
+                      loop (attempt + 1) (Just nextPrompt)
+                    else throwIO (userError $ "Task failed verification after " ++ show maxAttempts ++ " attempts:\n" ++ T.unpack verifyErr)
 
-    -- Step 2: Verification Gate
-    putStrLn "=== [yamaarashi-exec] Running verification gate ==="
-    logEvent dbPath (packetId packet) "VERIFICATION_STARTED" "cabal v2-build & cabal v2-test"
-    runVerificationGate wtDir packet
-    logEvent dbPath (packetId packet) "VERIFICATION_PASSED" "All build and audit checks passed"
+    actualExec <- loop 1 Nothing
 
     -- Step 3: Git Commit
     putStrLn "=== [yamaarashi-exec] Creating git commit with attribution trailers ==="
@@ -185,12 +211,16 @@ parsePacket path txt = do
       pSkills = extractList "skills"
       pMaxTurnsRaw = findVal "max_turns"
       pBudgetRaw = findVal "run_budget"
+      pMaxRepairRaw = findVal "max_repair_attempts"
 
       pModel = if T.null pModelRaw then Nothing else Just pModelRaw
       pMaxTurns = case reads (T.unpack pMaxTurnsRaw) of
         [(n, "")] -> Just n
         _         -> Nothing
       pBudget = case reads (T.unpack pBudgetRaw) of
+        [(n, "")] -> Just n
+        _         -> Nothing
+      pMaxRepair = case reads (T.unpack pMaxRepairRaw) of
         [(n, "")] -> Just n
         _         -> Nothing
       pExec = if T.null pExecRaw then "auto" else pExecRaw
@@ -206,20 +236,22 @@ parsePacket path txt = do
       , packetSkills = pSkills
       , packetMaxTurns = pMaxTurns
       , packetRunBudget = pBudget
+      , packetMaxRepairAttempts = pMaxRepair
       , packetRawYaml = txt
       }
 
 -- | Execute task actions inside the isolated worktree directory.
--- Returns the executor name that ran the step ("agy", "hermes", "script", or "inline").
-executeTaskStep :: FilePath -> TaskPacket -> FilePath -> IO Text
-executeTaskStep wtDir packet dbPath = do
+-- Returns Right executorName on success ("agy", "hermes", "script", or "inline"),
+-- or Left errorMessage on failure.
+executeTaskStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
+executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
   let tId = packetId packet
   case tId of
     "fix-kogaki-wire-lexer-nonempty" -> do
       putStrLn "  -> Applying Kogaki.Wire.Json.Lexer safe non-empty refactoring..."
       let targetFile = wtDir </> "packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs"
       TIO.writeFile targetFile fixedLexerContent
-      pure "inline"
+      pure (Right "inline")
     _ -> do
       let customScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ ".sh"
       scriptExists <- doesFileExist customScript
@@ -227,44 +259,52 @@ executeTaskStep wtDir packet dbPath = do
       case execMode of
         "script" ->
           if scriptExists
-            then runScriptStep wtDir customScript >> pure "script"
-            else throwIO (userError $ "Explicit script executor requested, but script missing: " ++ customScript)
+            then runScriptStep wtDir customScript
+            else pure (Left $ "Explicit script executor requested, but script missing: " <> T.pack customScript)
         "hermes" ->
-          runHermesStep wtDir packet dbPath >> pure "hermes"
+          runHermesStep wtDir packet dbPath mRepairPrompt attempt
         "agy" ->
-          runAgyStep wtDir packet dbPath >> pure "agy"
+          runAgyStep wtDir packet dbPath mRepairPrompt attempt
         "auto" ->
           if scriptExists
-            then runScriptStep wtDir customScript >> pure "script"
-            else runAgyStep wtDir packet dbPath >> pure "agy"
+            then runScriptStep wtDir customScript
+            else runAgyStep wtDir packet dbPath mRepairPrompt attempt
         other ->
-          throwIO (userError $ "Unknown executor: " ++ T.unpack other ++ " (expected 'agy', 'hermes', 'script', or 'auto')")
+          pure (Left $ "Unknown executor: " <> other <> " (expected 'agy', 'hermes', 'script', or 'auto')")
 
 -- | Execute task script in the isolated worktree.
-runScriptStep :: FilePath -> FilePath -> IO ()
+runScriptStep :: FilePath -> FilePath -> IO (Either Text Text)
 runScriptStep wtDir scriptPath = do
   putStrLn $ "  -> Running task script: " ++ scriptPath
-  runProcess_ (setWorkingDir wtDir (proc "sh" [scriptPath]))
+  (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc "sh" [scriptPath]))
+  case code of
+    ExitSuccess -> pure (Right "script")
+    ExitFailure c -> do
+      let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
+      pure (Left $ "Task script " <> T.pack scriptPath <> " failed with code " <> T.pack (show c) <> ":\n" <> errText)
 
 -- | Delegate task execution to Antigravity CLI in non-interactive print mode.
-runAgyStep :: FilePath -> TaskPacket -> FilePath -> IO ()
-runAgyStep wtDir packet dbPath = do
+runAgyStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
+runAgyStep wtDir packet dbPath mRepairPrompt attempt = do
   mAgy <- findExecutable "agy"
   case mAgy of
-    Nothing -> throwIO (userError "Agy executor requested, but 'agy' executable was not found in PATH.")
+    Nothing -> pure (Left "Agy executor requested, but 'agy' executable was not found in PATH.")
     Just agyBin -> do
       let tId = packetId packet
           promptFile = wtDir </> ".worker-task-prompt.md"
-          promptContent = buildWorkerPrompt packet
+          promptContent = case mRepairPrompt of
+            Just rp -> rp
+            Nothing -> buildWorkerPrompt packet
           budgetSec = maybe 600 id (packetRunBudget packet)
           budgetStr = show budgetSec ++ "s"
           logDir = takeDirectory dbPath </> "logs"
-          workerLogFile = logDir </> (T.unpack tId ++ "-agy.log")
+          attemptSuffix = if attempt > 1 then "-attempt" ++ show attempt else ""
+          workerLogFile = logDir </> (T.unpack tId ++ "-agy" ++ attemptSuffix ++ ".log")
 
       createDirectoryIfMissing True logDir
       TIO.writeFile promptFile promptContent
-      logEvent dbPath tId "AGY_SPAWNED" ("Prompt written to " <> T.pack promptFile)
-      putStrLn $ "=== [yamaarashi-exec] Spawning Agy leaf worker in: " ++ wtDir ++ " ==="
+      logEvent dbPath tId "AGY_SPAWNED" ("Prompt written to " <> T.pack promptFile <> " (attempt " <> T.pack (show attempt) <> ")")
+      putStrLn $ "=== [yamaarashi-exec] Spawning Agy leaf worker (attempt " ++ show attempt ++ ") in: " ++ wtDir ++ " ==="
       putStrLn $ "=== [yamaarashi-exec] Log destination: " ++ workerLogFile ++ " ==="
 
       let modelArgs = case packetModel packet of
@@ -286,33 +326,37 @@ runAgyStep wtDir packet dbPath = do
         Nothing -> do
           let errMsg = "Agy execution timed out after " ++ show budgetSec ++ " seconds."
           logEvent dbPath tId "AGY_TIMEOUT" (T.pack errMsg)
-          throwIO (userError errMsg)
+          pure (Left $ T.pack errMsg)
         Just ExitSuccess -> do
-          logEvent dbPath tId "AGY_SUCCEEDED" "Agy task execution exited with code 0"
+          logEvent dbPath tId "AGY_SUCCEEDED" ("Agy task execution exited with code 0 (attempt " <> T.pack (show attempt) <> ")")
           putStrLn "=== [yamaarashi-exec] Agy leaf worker completed successfully ==="
+          pure (Right "agy")
         Just (ExitFailure code) -> do
           let errMsg = "Agy execution failed with exit code " ++ show code ++ " (see " ++ workerLogFile ++ ")"
           logEvent dbPath tId "AGY_FAILED" (T.pack errMsg)
-          throwIO (userError errMsg)
+          pure (Left $ T.pack errMsg)
 
 -- | Delegate task execution to a spawned Hermes leaf worker agent.
-runHermesStep :: FilePath -> TaskPacket -> FilePath -> IO ()
-runHermesStep wtDir packet dbPath = do
+runHermesStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
+runHermesStep wtDir packet dbPath mRepairPrompt attempt = do
   mHermes <- findExecutable "hermes"
   case mHermes of
-    Nothing -> throwIO (userError "Hermes executor requested, but 'hermes' executable was not found in PATH.")
+    Nothing -> pure (Left "Hermes executor requested, but 'hermes' executable was not found in PATH.")
     Just hermesBin -> do
       let tId = packetId packet
           promptFile = wtDir </> ".worker-task-prompt.md"
-          promptContent = buildWorkerPrompt packet
+          promptContent = case mRepairPrompt of
+            Just rp -> rp
+            Nothing -> buildWorkerPrompt packet
           budgetSec = maybe 900 id (packetRunBudget packet)
           logDir = takeDirectory dbPath </> "logs"
-          workerLogFile = logDir </> (T.unpack tId ++ "-hermes.log")
+          attemptSuffix = if attempt > 1 then "-attempt" ++ show attempt else ""
+          workerLogFile = logDir </> (T.unpack tId ++ "-hermes" ++ attemptSuffix ++ ".log")
 
       createDirectoryIfMissing True logDir
       TIO.writeFile promptFile promptContent
-      logEvent dbPath tId "HERMES_SPAWNED" ("Prompt written to " <> T.pack promptFile)
-      putStrLn $ "=== [yamaarashi-exec] Spawning Hermes leaf worker in: " ++ wtDir ++ " ==="
+      logEvent dbPath tId "HERMES_SPAWNED" ("Prompt written to " <> T.pack promptFile <> " (attempt " <> T.pack (show attempt) <> ")")
+      putStrLn $ "=== [yamaarashi-exec] Spawning Hermes leaf worker (attempt " ++ show attempt ++ ") in: " ++ wtDir ++ " ==="
       putStrLn $ "=== [yamaarashi-exec] Log destination: " ++ workerLogFile ++ " ==="
 
       let baseArgs =
@@ -348,14 +392,15 @@ runHermesStep wtDir packet dbPath = do
         Nothing -> do
           let errMsg = "Hermes execution timed out after " ++ show budgetSec ++ " seconds."
           logEvent dbPath tId "HERMES_TIMEOUT" (T.pack errMsg)
-          throwIO (userError errMsg)
+          pure (Left $ T.pack errMsg)
         Just ExitSuccess -> do
-          logEvent dbPath tId "HERMES_SUCCEEDED" "Hermes task execution exited with code 0"
+          logEvent dbPath tId "HERMES_SUCCEEDED" ("Hermes task execution exited with code 0 (attempt " <> T.pack (show attempt) <> ")")
           putStrLn "=== [yamaarashi-exec] Hermes leaf worker completed successfully ==="
+          pure (Right "hermes")
         Just (ExitFailure code) -> do
           let errMsg = "Hermes execution failed with exit code " ++ show code ++ " (see " ++ workerLogFile ++ ")"
           logEvent dbPath tId "HERMES_FAILED" (T.pack errMsg)
-          throwIO (userError errMsg)
+          pure (Left $ T.pack errMsg)
 
 -- | Construct structured prompt markdown for the spawned leaf worker.
 buildWorkerPrompt :: TaskPacket -> Text
@@ -392,51 +437,115 @@ buildWorkerPrompt packet = T.unlines
   , "5. Conclude cleanly: Once code is in place and verified, output your summary and exit."
   ]
 
+-- | Construct structured prompt markdown for repairing a failed verification attempt.
+buildRepairPrompt :: TaskPacket -> Text -> Int -> Int -> Text
+buildRepairPrompt packet errorOutput attempt maxAtt = T.unlines
+  [ "# Autonomous Task Repair: " <> packetTitle packet <> " (Attempt " <> T.pack (show attempt) <> "/" <> T.pack (show maxAtt) <> ")"
+  , ""
+  , "## Packet Identifier"
+  , packetId packet
+  , ""
+  , "## Context"
+  , "The previous implementation attempt left verification or compilation errors in the worktree."
+  , "All files created so far are preserved in your current working directory."
+  , ""
+  , "## Verification / Compiler Error Output"
+  , "```"
+  , errorOutput
+  , "```"
+  , ""
+  , "## Repair Directives"
+  , "1. Diagnose and fix the specific compilation, type mismatch, import, or test failure errors shown above."
+  , "2. DO NOT delete or recreate files from scratch unless necessary — apply targeted edits to the existing codebase."
+  , "3. Zero-Token Progressive Code Navigation:"
+  , "   - Use tags to check definitions: `grep -w \"^<Symbol>\" tags`"
+  , "   - Test compilation directly via `cabal v2-build`."
+  , "4. Operational Invariants & Ground Rules:"
+  , "   - GHC2024 & Zero Warnings: All Haskell code MUST compile cleanly with -Wall -Werror."
+  , "   - Avoid unused imports, incomplete patterns, or partial functions (no head, tail, fromJust, !!)."
+  , "5. Verification Pre-requisite: Before finishing, verify that your implementation builds"
+  , "   and passes tests via `cabal v2-build` and `cabal v2-test`."
+  , "6. Conclude cleanly: Once code is in place and verified, output your summary and exit."
+  ]
+
 -- | Verification gate: builds packages, runs tests, and audits code.
-runVerificationGate :: FilePath -> TaskPacket -> IO ()
+-- Returns Right () on success, or Left errorOutput on failure.
+runVerificationGate :: FilePath -> TaskPacket -> IO (Either Text ())
 runVerificationGate wtDir packet = do
   let tId = packetId packet
   case tId of
     "fix-kogaki-wire-lexer-nonempty" -> do
-      -- 1. Build check
       putStrLn "  [Gate 1/3] Building kogaki-wire..."
-      runProcess_ (setWorkingDir wtDir (proc "cabal" ["v2-build", "kogaki-wire"]))
-
-      -- 2. Test suite check
-      putStrLn "  [Gate 2/3] Running test-kogaki-wire..."
-      runProcess_ (setWorkingDir wtDir (proc "cabal" ["v2-test", "kogaki-wire"]))
-
-      -- 3. Audit check: zero calls to BSC.head, BS.tail, or !!
-      putStrLn "  [Gate 3/3] Auditing Kogaki.Wire.Json.Lexer for zero partial functions..."
-      let targetFile = wtDir </> "packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs"
-      (code, out, _) <- readProcess (proc "grep" ["-n", "-E", "BSC\\.head|BS\\.tail|!!", targetFile])
-      case code of
-        ExitFailure 1 ->
-          putStrLn "  [AUDIT PASS] Zero partial function calls found!"
-        ExitSuccess -> do
-          putStrLn $ "  [AUDIT FAIL] Found partial function calls in " ++ targetFile ++ ":\n" ++ BSC.unpack (BSC.toStrict out)
-          throwIO (userError "Audit failed: partial functions remain in Kogaki.Wire.Json.Lexer")
-        ExitFailure other ->
-          throwIO (userError $ "Grep audit exited with code: " ++ show other)
+      res1 <- runGateCmd wtDir "cabal" ["v2-build", "kogaki-wire"]
+      case res1 of
+        Left err -> pure (Left err)
+        Right () -> do
+          putStrLn "  [Gate 2/3] Running test-kogaki-wire..."
+          res2 <- runGateCmd wtDir "cabal" ["v2-test", "kogaki-wire"]
+          case res2 of
+            Left err -> pure (Left err)
+            Right () -> do
+              putStrLn "  [Gate 3/3] Auditing Kogaki.Wire.Json.Lexer for zero partial functions..."
+              let targetFile = wtDir </> "packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs"
+              (code, out, _) <- readProcess (proc "grep" ["-n", "-E", "BSC\\.head|BS\\.tail|!!", targetFile])
+              case code of
+                ExitFailure 1 -> do
+                  putStrLn "  [AUDIT PASS] Zero partial function calls found!"
+                  pure (Right ())
+                ExitSuccess -> do
+                  let outStr = BSC.unpack (BSC.toStrict out)
+                  putStrLn $ "  [AUDIT FAIL] Found partial function calls in " ++ targetFile ++ ":\n" ++ outStr
+                  pure (Left $ "Audit failed: partial functions remain in Kogaki.Wire.Json.Lexer:\n" <> T.pack outStr)
+                ExitFailure other ->
+                  pure (Left $ "Grep audit exited with code: " <> T.pack (show other))
     _ -> do
       let pkgs = packetPackages packet
-      if null pkgs
+      pkgRes <- if null pkgs
         then do
-          putStrLn "  [Gate 1/1] Running general cabal v2-build..."
-          runProcess_ (setWorkingDir wtDir (proc "cabal" ["v2-build"]))
+          putStrLn "  [Gate] Running general cabal v2-build..."
+          runGateCmd wtDir "cabal" ["v2-build"]
         else do
-          mapM_ (\pkg -> do
-            putStrLn $ "  [Gate] Building package: " ++ T.unpack pkg
-            runProcess_ (setWorkingDir wtDir (proc "cabal" ["v2-build", T.unpack pkg]))
-            ) pkgs
+          let checkPkgs [] = pure (Right ())
+              checkPkgs (p:ps) = do
+                putStrLn $ "  [Gate] Building package: " ++ T.unpack p
+                r <- runGateCmd wtDir "cabal" ["v2-build", T.unpack p]
+                case r of
+                  Left err -> pure (Left err)
+                  Right () -> checkPkgs ps
+          checkPkgs pkgs
 
-      let verifyScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ "-verify.sh"
-      hasVerify <- doesFileExist verifyScript
-      if hasVerify
-        then do
-          putStrLn $ "  [Gate] Running verification script: " ++ verifyScript
-          runProcess_ (setWorkingDir wtDir (proc "sh" [verifyScript]))
-        else pure ()
+      case pkgRes of
+        Left err -> pure (Left err)
+        Right () -> do
+          let verifyScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ "-verify.sh"
+          hasVerify <- doesFileExist verifyScript
+          if hasVerify
+            then do
+              putStrLn $ "  [Gate] Running verification script: " ++ verifyScript
+              runGateCmd wtDir "sh" [verifyScript]
+            else pure (Right ())
+
+-- | Execute a verification command and capture its output on failure.
+runGateCmd :: FilePath -> String -> [String] -> IO (Either Text ())
+runGateCmd workDir cmd args = do
+  (code, outBs, errBs) <- readProcess (setWorkingDir workDir (proc cmd args))
+  case code of
+    ExitSuccess -> do
+      putStrLn $ "  [Gate PASS] " ++ cmd ++ " " ++ unwords args
+      pure (Right ())
+    ExitFailure c -> do
+      let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
+          desc = T.pack cmd <> " " <> T.unwords (map T.pack args)
+      putStrLn $ "  [Gate FAIL] " ++ cmd ++ " " ++ unwords args ++ " (exit " ++ show c ++ ")"
+      pure (Left ("Command failed with exit code " <> T.pack (show c) <> " (" <> desc <> "):\n" <> errText))
+
+-- | Trim excessively long error outputs to avoid blowing up prompt budgets.
+trimErrorOutput :: Text -> Text
+trimErrorOutput txt =
+  let lns = T.lines txt
+  in if length lns > 200
+       then T.unlines (take 40 lns ++ ["\n... [truncated " <> T.pack (show (length lns - 200)) <> " lines of build output] ...\n"] ++ drop (length lns - 160) lns)
+       else txt
 
 -- | Create git commit in worktree with standard attribution trailers.
 createGitCommit :: FilePath -> TaskPacket -> Text -> IO Text
