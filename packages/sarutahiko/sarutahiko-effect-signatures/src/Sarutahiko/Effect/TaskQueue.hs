@@ -41,5 +41,7 @@ data TaskResult
 
 -- | Neutral TaskQueue GADT effect signature.
 data TaskQueue (m :: Type -> Type) :: Type -> Type where
+  EnqueueTask  :: !TaskId -> !TaskPacket -> TaskQueue m ()
   ClaimTask    :: !WorkerId -> TaskQueue m (Maybe TaskPacket)
   CompleteTask :: !TaskId -> !TaskResult -> TaskQueue m ()
+  FailTask     :: !TaskId -> !Text -> TaskQueue m ()
