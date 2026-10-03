@@ -73,6 +73,8 @@ executable yamaarashi-exec
         time >= 1.12,
         typed-process >= 0.2.10,
         yamaarashi-flow,
-        yamaarashi-spec
+        yamaarashi-spec,
+        sarutahiko-effect-signatures,
+        utai
 
 

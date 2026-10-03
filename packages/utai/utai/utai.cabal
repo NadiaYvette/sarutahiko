@@ -30,6 +30,7 @@ library
         Utai.Capability
         Utai.Mock
         Utai.Wire
+        Utai.Client
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,
@@ -44,6 +45,7 @@ library
         kogaki-core >= 0.1,
         kogaki-wire >= 0.1,
         transformers >= 0.6,
+        typed-process >= 0.2.11,
         yamaarashi
     hs-source-dirs:   src
 

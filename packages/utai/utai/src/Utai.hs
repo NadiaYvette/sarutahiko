@@ -11,9 +11,11 @@ module Utai
   , module Utai.Capability
   , module Utai.Mock
   , module Utai.Wire
+  , module Utai.Client
   ) where
 
 import Utai.Capability
+import Utai.Client
 import Utai.Mock
 import Utai.Types
 import Utai.Wire

@@ -24,9 +24,9 @@ dependencies:
 packages:
   - utai
 
-executor: hermes
-model: auto/best-coding
-run_budget: 900
+executor: utai
+model: mistral/codestral-latest
+run_budget: 300
 
 steps:
   - id: create-skeleton

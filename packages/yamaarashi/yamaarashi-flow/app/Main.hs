@@ -26,6 +26,18 @@ import System.FilePath (takeDirectory, (</>))
 import System.Process.Typed
 import System.Timeout (timeout)
 
+import Utai
+  ( CompletionReq (..)
+  , CompletionResp (..)
+  , Message (..)
+  , ProviderProfile (..)
+  , Role (..)
+  , callOpenAIWithFallback
+  , defaultModelOptions
+  , omnirouteProfile
+  , opencodeProfile
+  )
+
 -- | Parsed task packet envelope.
 data TaskPacket = TaskPacket
   { packetId                :: !Text
@@ -61,10 +73,11 @@ printHelp = do
   putStrLn "  --help             Show this help message"
   putStrLn ""
   putStrLn "Execution Engines (set in packet via 'executor:'):"
+  putStrLn "  executor: utai     Direct zero-cost model invocation via Utai native client (reliable, fast)."
   putStrLn "  executor: agy      Delegates turn execution to Antigravity CLI print mode (fast, robust)."
-  putStrLn "  executor: hermes   Delegates turn execution to a spawned Hermes leaf worker (--cli -Q)."
+  putStrLn "  executor: hermes   Delegates turn execution to a spawned Hermes leaf worker."
   putStrLn "  executor: script   Runs scripts/tasks/<id>.sh in the isolated worktree."
-  putStrLn "  executor: auto     Uses script if scripts/tasks/<id>.sh exists, else agy."
+  putStrLn "  executor: auto     Uses script if scripts/tasks/<id>.sh exists, else utai."
 
 -- | Execute a task packet through an isolated worktree with SQLite event tracking.
 runTaskPacket :: FilePath -> IO ()
@@ -261,6 +274,8 @@ executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
           if scriptExists
             then runScriptStep wtDir customScript
             else pure (Left $ "Explicit script executor requested, but script missing: " <> T.pack customScript)
+        "utai" ->
+          runUtaiStep wtDir packet dbPath mRepairPrompt attempt
         "hermes" ->
           runHermesStep wtDir packet dbPath mRepairPrompt attempt
         "agy" ->
@@ -268,9 +283,48 @@ executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
         "auto" ->
           if scriptExists
             then runScriptStep wtDir customScript
-            else runAgyStep wtDir packet dbPath mRepairPrompt attempt
+            else runUtaiStep wtDir packet dbPath mRepairPrompt attempt
         other ->
-          pure (Left $ "Unknown executor: " <> other <> " (expected 'agy', 'hermes', 'script', or 'auto')")
+          pure (Left $ "Unknown executor: " <> other <> " (expected 'utai', 'agy', 'hermes', 'script', or 'auto')")
+
+-- | Delegate task execution directly to Utai native LLM client.
+runUtaiStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
+runUtaiStep _wtDir packet dbPath mRepairPrompt attempt = do
+  let tId = packetId packet
+      promptContent = case mRepairPrompt of
+        Just rp -> rp
+        Nothing -> buildWorkerPrompt packet
+      targetModel = case packetModel packet of
+        Just m  -> m
+        Nothing -> "mistral/codestral-latest"
+
+  logEvent dbPath tId "UTAI_SPAWNED" ("Utai native client querying " <> targetModel <> " (attempt " <> T.pack (show attempt) <> ")")
+  putStrLn $ "=== [yamaarashi-exec] Querying native Utai client (model: " ++ T.unpack targetModel ++ ", attempt " ++ show attempt ++ ") ==="
+
+  let req = CompletionReq
+        { reqModel    = targetModel
+        , reqMessages = [Message RoleUser promptContent]
+        , reqTools    = []
+        , reqOptions  = defaultModelOptions
+        }
+      primaryProfile = omnirouteProfile { profileModels = [targetModel] }
+      fallbackProfiles = [primaryProfile, opencodeProfile]
+
+  mRes <- callOpenAIWithFallback fallbackProfiles req
+  case mRes of
+    Left err -> do
+      let errMsg = "Utai invocation failed: " <> err
+      logEvent dbPath tId "UTAI_FAILED" errMsg
+      pure (Left errMsg)
+    Right resp -> do
+      let logDir = takeDirectory dbPath </> "logs"
+          attemptSuffix = if attempt > 1 then "-attempt" ++ show attempt else ""
+          workerLogFile = logDir </> (T.unpack tId ++ "-utai" ++ attemptSuffix ++ ".log")
+      createDirectoryIfMissing True logDir
+      TIO.writeFile workerLogFile (respContent resp)
+      logEvent dbPath tId "UTAI_SUCCEEDED" ("Utai returned " <> T.pack (show (T.length (respContent resp))) <> " chars")
+      putStrLn "=== [yamaarashi-exec] Utai native invocation succeeded ==="
+      pure (Right "utai")
 
 -- | Execute task script in the isolated worktree.
 runScriptStep :: FilePath -> FilePath -> IO (Either Text Text)
@@ -558,6 +612,11 @@ createGitCommit wtDir packet actualExecutor = do
   runProcess_ (setWorkingDir wtDir (proc "git" ["add", "-A"]))
 
   let baseAttribution = case actualExecutor of
+        "utai" ->
+          let m = case packetModel packet of
+                Just mdl -> "Utai Native (" <> mdl <> ")"
+                Nothing  -> "Utai Native (mistral/codestral-latest)"
+          in "Assisted-by: " <> m <> "\nOrchestrated-by: Yamaarashi Flow Task Runner\n"
         "hermes" ->
           let m = case packetModel packet of
                 Just mdl -> "Hermes Agent (" <> mdl <> ")"
