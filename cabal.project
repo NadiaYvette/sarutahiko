@@ -21,6 +21,10 @@ packages:
     packages/hashigakari/hashigakari-sqlite
     packages/utai/utai
     packages/hokora/hokora
+    packages/sarutahiko/sarutahiko-session
+    packages/sarutahiko/sarutahiko-hooks
+    packages/sarutahiko/sarutahiko-plugins
+    packages/sarutahiko/sarutahiko-agent
 
 optional-packages:
     ../large-records-interfaces/large-anon

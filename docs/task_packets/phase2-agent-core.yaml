@@ -20,6 +20,10 @@ packages:
   - sarutahiko-hooks
   - sarutahiko-plugins
 
+executor: utai
+model: mistral/codestral-latest
+run_budget: 600
+
 steps:
   - id: create-agent-skeletons
     name: Create package skeletons and cabal definitions
