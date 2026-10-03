@@ -138,18 +138,25 @@ The following sequential decisions must be resolved to reconcile the revised Yam
    - Created minimal cabal packages and stub exposed modules for `yamaarashi`, `yamaarashi-conduit`, `yamaarashi-streamly`, `yamaarashi-flow`, and `yamaarashi-spec`.
    - Registered all 5 packages in `cabal.project`.
    - Verified clean toolchain build under GHC 9.12.2 / GHC2024 via `cabal v2-build packages/yamaarashi*` with zero errors and zero warnings (`-Wall -Werror`).
+7. **Executed Packet 02 — Yamaarashi Streaming Kernel & Boundary Adapters [TASK-004]:**
+   - Implemented church-encoded (CPS) free-monad streaming kernel `Stream (Of a) m r` with O(1) left-associated binds via Codensity, core combinators (`yield`, `await`, `inspect`, `next`, `fold`, `fold_`, `foldM`, `map`, `filter`, `take`, `drop`, `toList_`, etc.), existential `unfoldStepper` unrolling, and typed concurrency strategy wrappers (`Serial`, `Async`, `Interleaved`, `Parallel`) in `packages/yamaarashi`.
+   - Implemented boundary framing adapters (`streamToConduit`, `conduitToStream`, `linesConduit`, `jsonRpcFraming`, `bracketResource`, `bracketStream`) in `packages/yamaarashi-conduit`.
+   - Implemented fused in-process hot-loop embedding (`toStreamly`, `fromStreamly`, `foldRows`, `foldRowsM`) over `streamly-core` in `packages/yamaarashi-streamly`.
+   - Added Tasty/Hedgehog property test suite in `packages/yamaarashi/test/Spec.hs` verifying stream composition, folds, short-circuiting, and parity with `drainStepper` (all 8 properties passed with 100 iterations each).
+   - Verified clean build and zero warnings (`-Wall -Werror`) across all packages.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-### [TASK-004] Yamaarashi Streaming Kernel & Boundary Adapters (Packet yamaarashi-02-streaming-kernel)
-* **Objective:** Implement the church-encoded element streaming kernel in `packages/yamaarashi`, boundary framing adapters in `packages/yamaarashi-conduit`, and hot-loop backend in `packages/yamaarashi-streamly`.
+### [TASK-005] Yamaarashi Selective Workflow Orchestrator & Task DAG (Packet yamaarashi-03-selective-flow)
+* **Objective:** Implement `packages/yamaarashi-flow`, the macro-task workflow orchestrator in the Yamaarashi family, replacing porcupine ArrowFlow per YAMAARASHI_DESIGN.md.
 * **Deliverables:**
-  1. `packages/yamaarashi`: Define `Of a b`, `Stream (Of a) m r` (CPS/church-encoded free monad), core combinators (`yield`, `await`, `fold`, `map`, `filter`, `take`, `drop`), `unfoldStepper` bridging `Sarutahiko.Effect.Stepper`, and typed concurrency wrappers (`Serial`, `Async`, `Interleaved`, `Parallel`).
-  2. `packages/yamaarashi-conduit`: Bidirectional conversion (`streamToConduit`, `conduitToStream`), stdio JSON-RPC line framing (`linesConduit`, `jsonRpcFraming`), and deterministic cleanup.
-  3. `packages/yamaarashi-streamly`: In-process `SerialT` embedding (`toStreamly`, `fromStreamly`), and row folding combinators.
-  4. `packages/yamaarashi/test/Spec.hs`: Tasty/Hedgehog test suite verifying stream composition, folds, short-circuiting, and parity with `drainStepper`.
-* **Verification Command:** `cabal v2-test yamaarashi` and `cabal v2-build packages/yamaarashi*`
+  1. `packages/yamaarashi-flow/src/Yamaarashi/Flow/Types.hs`: Selective workflow AST, `TaskNode`, `TaskGraph` over `algebraic-graphs`, content-addressed cache keys, and determinism tags.
+  2. `packages/yamaarashi-flow/src/Yamaarashi/Flow/Scheduler.hs`: Clean-slate *Build Systems à la Carte* execution scheduler with topological execution, memoization at `$_` locations, and early cutoff.
+  3. `packages/yamaarashi-flow/src/Yamaarashi/Flow/Capability.hs`: Open tagless-final capability typeclasses (`MonadWorktree`, `MonadTaskQueue`) under the project-wide Façade Pattern.
+  4. `packages/yamaarashi-flow/test/Spec.hs`: Tasty/Hedgehog test suite asserting mid-run resumption (kill after B, re-run skips A & B and only runs C) and early cutoff.
+* **Verification Command:** `cabal v2-test yamaarashi-flow` and `cabal v2-build packages/yamaarashi*`
+
 
 

@@ -26,5 +26,20 @@ library
     exposed-modules:
         Yamaarashi
     build-depends:
-        base >= 4.20 && < 5
+        base >= 4.20 && < 5,
+        sarutahiko-effect-signatures >= 0.1
     hs-source-dirs:   src
+
+test-suite yamaarashi-test
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        yamaarashi,
+        sarutahiko-effect-signatures >= 0.1,
+        tasty,
+        hedgehog,
+        tasty-hedgehog
+

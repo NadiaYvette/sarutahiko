@@ -27,5 +27,7 @@ library
         Yamaarashi.Streamly
     build-depends:
         base >= 4.20 && < 5,
+        streamly-core,
         yamaarashi
     hs-source-dirs:   src
+
