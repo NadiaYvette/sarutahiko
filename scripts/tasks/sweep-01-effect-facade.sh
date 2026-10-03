@@ -242,9 +242,8 @@ module Sarutahiko.Process.Supervisor
 
 import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
 import Control.Exception (IOException, catch)
-import Control.Monad (unless)
 import qualified Data.ByteString as BS
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -944,6 +943,7 @@ import Sarutahiko.Effect.Process
   ( ChildHandle (..)
   , ChildProcessId (..)
   , ProcessConfig (..)
+  , ProcessSignal (..)
   , defaultProcessConfig
   )
 import Sarutahiko.Process.Capability (MonadProcess (..))
@@ -1015,7 +1015,7 @@ runProcessParity = do
     h <- spawnChild cfg
     out <- readStdout h
     c <- waitChild h
-    killChild h Sarutahiko.Effect.Process.SigTerm
+    killChild h SigTerm
     pure (h, out, c)
   effSt <- readIORef effRef
   let effRes = ProcessParityResult (childId effH) effOut effCode (Map.null (mockProcesses effSt))
@@ -1026,7 +1026,7 @@ runProcessParity = do
     h <- spawnChild cfg
     out <- readStdout h
     c <- waitChild h
-    killChild h Sarutahiko.Effect.Process.SigTerm
+    killChild h SigTerm
     pure (h, out, c)
   polySt <- readIORef polyRef
   let polyRes = ProcessParityResult (childId polyH) polyOut polyCode (Map.null (mockProcesses polySt))
@@ -1076,7 +1076,7 @@ main = do
   pt <- newProcessTable
   let cfg = (defaultProcessConfig "echo") { cmdArgs = ["hello_process"] }
   h <- spawnProcessIO pt cfg
-  out <- readStdoutIO pt h
+  _out <- readStdoutIO pt h
   code <- waitChildIO pt h
   closeChildHandlesIO pt h
   unless (code == ExitSuccess) $ do
