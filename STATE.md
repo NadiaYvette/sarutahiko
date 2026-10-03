@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T11:03:00+02:00
+* **Timestamp:** 2026-10-03T12:05:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `661e832` (*fix(kogaki-wire): replace unsafe head, tail, and indexing in Json lexer*)
+* **HEAD Commit:** `02e18e9` (*chore: remove redundant imports in Effectful and Parity modules*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -187,20 +187,18 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Updated `packages/yamaarashi/yamaarashi-flow/app/Main.hs` paths for `kogaki-wire` verification.
     - Updated all task packets (`phase1.5-01-hashigakari-sqlite.yaml`, `phase1.5-02-utai-mock.yaml`, `phase1.5-03-hokora-slice.yaml`, `phase2-agent-core.yaml`, `phase3-surfaces-codeintel.yaml`, `phase4-data-protocol.yaml`, `refactor-logical-string.yaml`) to use package names in `packages:` and component paths in actions.
     - Verified full compilation with `cabal v2-build all` and 100% test passes across all 6 suites (`kogaki-wire`, `sarutahiko-mcp`, `sarutahiko-jsonrpc`, `yamaarashi-spec`, `yamaarashi-flow`, `yamaarashi`).
+13. **Executed Pre-Phase 1.5 Sweep 01 — Effect Framework Neutrality via Façade Pattern [TASK-009] (`0a169e5`):**
+    - Promoted full subprocess lifecycle GADT (`Process m`) to `packages/sarutahiko/sarutahiko-effect-signatures` with zero concrete effect library dependencies (DECISION-002).
+    - Implemented tagless-final capability typeclass `MonadProcess` and bracketed runner `withSupervisedChild` in `packages/sarutahiko/sarutahiko-process/src/Sarutahiko/Process/Capability.hs`.
+    - Implemented pure POSIX supervisor and environment hygiene in `packages/sarutahiko/sarutahiko-process/src/Sarutahiko/Process/Supervisor.hs`.
+    - Purged direct `effectful-core` dependencies from `sarutahiko-process` and `sarutahiko-mcp`.
+    - Implemented dual-interpreter instances for `Eff es` and `Sem r` in `sarutahiko-effect-effectful` and `sarutahiko-effect-polysemy`.
+    - Verified dual-interpreter parity in `sarutahiko-effect-testkit` (Clock, Resource, Process, Log parity tests all 100% passing).
+    - Executed cleanly via `yamaarashi-exec run docs/task_packets/sweep-01-effect-facade.yaml` with zero warnings under `-Wall -Werror`.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
-
-### [TASK-009] Execute Pre-Phase 1.5 Sweep 01: sweep-01-effect-facade
-* **Objective:** Establish repository-wide effect framework neutrality under DECISION-002 (Façade Pattern). Reconcile the canonical `Process` GADT in `sarutahiko-effect-signatures`, define open `MonadProcess` capability typeclass in `sarutahiko-process`, relocate concrete interpreters to `sarutahiko-effect-effectful` and `sarutahiko-effect-polysemy`, and purge direct `effectful-core` dependencies from `sarutahiko-process` and `sarutahiko-mcp`.
-* **Deliverables:**
-  1. `packages/sarutahiko/sarutahiko-effect-signatures/src/Sarutahiko/Effect/Process.hs`: Unified neutral `Process` GADT.
-  2. `packages/sarutahiko/sarutahiko-process/src/Sarutahiko/Process.hs`: Open `MonadProcess` capability typeclass with tagless bracketed runner.
-  3. `packages/sarutahiko/sarutahiko-process/sarutahiko-process.cabal` & `packages/sarutahiko/sarutahiko-mcp/sarutahiko-mcp.cabal`: Zero `effectful-core` dependencies.
-  4. `packages/sarutahiko/sarutahiko-effect-effectful/` & `packages/sarutahiko/sarutahiko-effect-polysemy/`: Production interpreters and `MonadProcess` instances.
-  5. `packages/sarutahiko/sarutahiko-effect-testkit/`: Dual-interpreter parity property tests.
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/sweep-01-effect-facade.yaml`
 
 ### [TASK-010] Execute Pre-Phase 1.5 Sweep 02: sweep-02-mono-traversable-nonempty
 * **Objective:** Register and integrate `mono-traversable` across wire codecs and protocol packages for type-level non-emptiness guarantees (`Data.NonNull.NonNull`).
