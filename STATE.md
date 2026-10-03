@@ -106,8 +106,30 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ### [DECISION-006] Spec Extraction & Task Subdivision Package Structure
 * **Topic:** Spec extraction package location, granularity oracle, and library reuse.
-* **Questions:**
-  1. Package naming and path: `packages/yamaarashi-spec` vs. `packages/sarutahiko-spec`?
-  2. Admitting `selective`, `recursion-schemes`, and `algebraic-graphs` into `REUSE_REGISTER.md`.
-  3. Spec decomposition order: deterministic rules first (cross-target sweeps), falling back to MCP sampling for novel tasks.
-* **Status:** PENDING DISCUSSION
+* **Resolution:** **RESOLVED (BLESSED)**
+  1. **Package Scope & Placement (`packages/yamaarashi-spec`):**
+     - Sits within the Yamaarashi package family as `packages/yamaarashi-spec`.
+     - Models the specification AST, runs `Control.Selective.Over` for static `VirtualTree` resource over-approximation, and pairs code targets with verification harnesses.
+  2. **Library Admissions (`REUSE_REGISTER.md`):**
+     - `selective`: ADOPTED for selective workflow construction and ahead-of-time static dependency analysis.
+     - `algebraic-graphs` (`alga`): ADOPTED for pure algebraic representation and scheduling of task DAGs.
+     - `recursion-schemes`: ADOPTED for corecursive task unfolding (`ana`/`hylo`) and hierarchical decomposition with `IsPrimitive` granularity scoring.
+  3. **Decomposition Strategy:**
+     - Deterministic rule engines first (zero-token cross-target sweeps, toolchain matrices, test splits).
+     - Fallback to LLM planner via `utai` / MCP sampling only for novel, exploratory synthesis tasks.
+
+---
+
+## 5. Next Immediate Phase: Design Document Reconciliation
+
+With all 6 architectural decisions resolved and blessed, the active task queue transitions to updating the design corpus to align with the blessed architecture:
+
+1. **`docs/registers/REUSE_REGISTER.md`:**
+   - Add entries for `selective`, `algebraic-graphs`, `recursion-schemes`.
+   - Update Porcupine / Kernmantle entry (§2.12) to reflect superseding by Selective + Alga.
+2. **`docs/notes/YAMAARASHI_DESIGN.md`:**
+   - Update to codify the new Selective workflow orchestrator, Build Systems à la Carte scheduler, streaming mixture (`yamaarashi-conduit`, `yamaarashi-streamly`), and `yamaarashi-spec`.
+3. **`docs/notes/AGENTIC_TASK_MANAGEMENT_DESIGN.md`:**
+   - Reconcile the goal drift: restore `hashigakari` as canonical persistence, incorporate the Façade Pattern, and align with `utai` + MCP sampling.
+4. **`docs/notes/NIH_PLAN.md` & `PLAN.md`:**
+   - Update streaming and workflow layering contracts (§3.5, §3.6) and Phase package matrices.
