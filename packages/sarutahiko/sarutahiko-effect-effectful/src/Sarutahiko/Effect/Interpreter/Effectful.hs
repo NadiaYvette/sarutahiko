@@ -6,14 +6,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- |
 -- Module      : Sarutahiko.Effect.Interpreter.Effectful
 -- Description : Production and in-memory effectful interpreters for core signatures
---
--- Implements production and test interpreters for Clock, Resource, Process, and Log
--- satisfying dual-interpreter parity per EFFECT_CATALOG_DESIGN.md and PHASE_0_PLAN.md TP-0.6.
 module Sarutahiko.Effect.Interpreter.Effectful
   ( -- * Clock Interpreters
     runClockPure
@@ -40,10 +38,6 @@ module Sarutahiko.Effect.Interpreter.Effectful
   , sleepEff
   , allocateEff
   , releaseEff
-  , spawnProcessEff
-  , waitForProcessEff
-  , terminateProcessEff
-  , readProcessStdoutEff
   , logEntryEff
   ) where
 
@@ -58,32 +52,37 @@ import qualified Data.Text.Encoding as TE
 import Data.Time.Clock (NominalDiffTime, UTCTime, getCurrentTime, nominalDiffTimeToSeconds)
 import Data.Word (Word64)
 import GHC.Clock (getMonotonicTime)
+import System.Exit (ExitCode (..))
 
 import Effectful
 import Effectful.Dispatch.Dynamic
 
 import Sarutahiko.Effect.Clock (Clock (..))
-import Sarutahiko.Effect.Log (Log (..), LogSeverity, SomeRow (..))
+import Sarutahiko.Effect.Log (Log (..), LogSeverity (..), SomeRow (..))
 import Sarutahiko.Effect.Process
-  ( Process (..)
+  ( ChildHandle (..)
+  , ChildProcessId (..)
+  , Process (..)
   , ProcessConfig (..)
-  , ProcessExitCode (..)
-  , ProcessHandleId (..)
+  , ProcessSignal (..)
   )
 import Sarutahiko.Effect.Resource (Resource (..), ResourceKey (..))
-
-{-------------------------------------------------------------------------------
-  Dynamic Dispatch Declarations
--------------------------------------------------------------------------------}
+import Sarutahiko.Process.Capability (MonadProcess (..))
+import qualified Sarutahiko.Process.Supervisor as Sup
 
 type instance DispatchOf Clock    = Dynamic
 type instance DispatchOf Resource = Dynamic
 type instance DispatchOf Process  = Dynamic
 type instance DispatchOf Log      = Dynamic
 
-{-------------------------------------------------------------------------------
-  Smart Senders
--------------------------------------------------------------------------------}
+instance (Process :> es) => MonadProcess (Eff es) where
+  spawnChild        = send . SpawnChild
+  readStdout        = send . ReadStdout
+  writeStdin h bs   = send (WriteStdin h bs)
+  waitChild         = send . WaitChild
+  pollChild         = send . PollChild
+  killChild h sig   = send (KillChild h sig)
+  closeChildHandles = send . CloseChildHandles
 
 getCurrentTimeEff :: (Clock :> es) => Eff es UTCTime
 getCurrentTimeEff = send GetCurrentTime
@@ -100,54 +99,22 @@ allocateEff = send . Allocate
 releaseEff :: (Resource :> es) => ResourceKey -> Eff es ()
 releaseEff = send . Release
 
-spawnProcessEff :: (Process :> es) => ProcessConfig -> Eff es ProcessHandleId
-spawnProcessEff = send . SpawnProcess
-
-waitForProcessEff :: (Process :> es) => ProcessHandleId -> Eff es ProcessExitCode
-waitForProcessEff = send . WaitForProcess
-
-terminateProcessEff :: (Process :> es) => ProcessHandleId -> Eff es ()
-terminateProcessEff = send . TerminateProcess
-
-readProcessStdoutEff :: (Process :> es) => ProcessHandleId -> Eff es ByteString
-readProcessStdoutEff = send . ReadProcessStdout
-
 logEntryEff :: (Log :> es) => LogSeverity -> SomeRow -> Eff es ()
-logEntryEff s r = send (LogEntry s r)
+logEntryEff sev r = send (LogEntry sev r)
 
-{-------------------------------------------------------------------------------
-  Clock Interpreters
--------------------------------------------------------------------------------}
-
--- | In-memory Clock interpreter using an IORef holding current simulated monotonic time.
-runClockPure
-  :: (IOE :> es)
-  => UTCTime
-  -> IORef Double
-  -> Eff (Clock : es) a
-  -> Eff es a
+runClockPure :: (IOE :> es) => UTCTime -> IORef Double -> Eff (Clock : es) a -> Eff es a
 runClockPure fixedUtc timeRef = interpret $ \_ -> \case
-  GetCurrentTime -> pure fixedUtc
+  GetCurrentTime   -> pure fixedUtc
   GetMonotonicTime -> liftIO $ readIORef timeRef
-  Sleep dt -> liftIO $ modifyIORef' timeRef (+ realToFrac dt)
+  Sleep dt         -> liftIO $ modifyIORef' timeRef (+ realToFrac dt)
 
--- | Real IO Clock interpreter.
 runClockIO :: (IOE :> es) => Eff (Clock : es) a -> Eff es a
 runClockIO = interpret $ \_ -> \case
-  GetCurrentTime -> liftIO getCurrentTime
+  GetCurrentTime   -> liftIO getCurrentTime
   GetMonotonicTime -> liftIO getMonotonicTime
-  Sleep dt -> liftIO $ threadDelay (round (nominalDiffTimeToSeconds dt * 1e6))
+  Sleep dt         -> liftIO $ threadDelay (round (nominalDiffTimeToSeconds dt * 1e6))
 
-{-------------------------------------------------------------------------------
-  Resource Interpreters
--------------------------------------------------------------------------------}
-
--- | In-memory Resource interpreter tracking allocations and releases in an IORef.
-runResourcePure
-  :: (IOE :> es)
-  => IORef [Text]
-  -> Eff (Resource : es) a
-  -> Eff es a
+runResourcePure :: (IOE :> es) => IORef [Text] -> Eff (Resource : es) a -> Eff es a
 runResourcePure logRef = interpret $ \env -> \case
   Allocate finalizer -> do
     let key = ResourceKey 100
@@ -155,12 +122,11 @@ runResourcePure logRef = interpret $ \env -> \case
     localSeqUnlift env $ \unlift -> unlift finalizer
     pure key
   Release (ResourceKey k) ->
-    liftIO $ modifyIORef' logRef (\s -> ("released:" <> (showText k)) : s)
+    liftIO $ modifyIORef' logRef (\s -> ("released:" <> showText k) : s)
   where
     showText :: Word64 -> Text
     showText = T.pack . show
 
--- | Real IO Resource interpreter.
 runResourceIO :: Eff (Resource : es) a -> Eff es a
 runResourceIO = interpret $ \env -> \case
   Allocate finalizer -> do
@@ -168,74 +134,68 @@ runResourceIO = interpret $ \env -> \case
     pure (ResourceKey 1)
   Release _ -> pure ()
 
-{-------------------------------------------------------------------------------
-  Process Interpreters
--------------------------------------------------------------------------------}
-
 data MockProcessState = MockProcessState
   { mockSpawnCount :: !Word64
-  , mockProcesses  :: !(Map Word64 (ProcessConfig, ByteString, ProcessExitCode))
+  , mockProcesses  :: !(Map Word64 (ProcessConfig, ByteString, ExitCode))
   } deriving stock (Eq, Show)
 
 emptyMockProcessState :: MockProcessState
 emptyMockProcessState = MockProcessState 0 Map.empty
 
--- | Mock Process interpreter simulating subprocess execution in-memory.
 runProcessMock
   :: (IOE :> es)
   => IORef MockProcessState
   -> Eff (Process : es) a
   -> Eff es a
 runProcessMock ref = interpret $ \_ -> \case
-  SpawnProcess cfg -> liftIO $ do
+  SpawnChild cfg -> liftIO $ do
     st <- readIORef ref
     let newId = mockSpawnCount st + 1
-        fakeOutput = "mock_output_for:" <> TE.encodeUtf8 (procCommand cfg)
-        newProcs = Map.insert newId (cfg, fakeOutput, ExitSuccessCode) (mockProcesses st)
+        fakeOutput = "mock_output_for:" <> TE.encodeUtf8 (T.pack (cmdPath cfg))
+        newProcs = Map.insert newId (cfg, fakeOutput, ExitSuccess) (mockProcesses st)
     writeIORef ref (MockProcessState newId newProcs)
-    pure (ProcessHandleId newId)
-  WaitForProcess (ProcessHandleId pid) -> liftIO $ do
+    pure (ChildHandle (ChildProcessId newId) cfg)
+  ReadStdout (ChildHandle (ChildProcessId cid) _) -> liftIO $ do
     st <- readIORef ref
-    case Map.lookup pid (mockProcesses st) of
-      Just (_, _, code) -> pure code
-      Nothing           -> pure (ExitFailureCode 1)
-  TerminateProcess (ProcessHandleId pid) -> liftIO $ do
-    modifyIORef' ref $ \st ->
-      st { mockProcesses = Map.delete pid (mockProcesses st) }
-  ReadProcessStdout (ProcessHandleId pid) -> liftIO $ do
-    st <- readIORef ref
-    case Map.lookup pid (mockProcesses st) of
+    case Map.lookup cid (mockProcesses st) of
       Just (_, out, _) -> pure out
       Nothing          -> pure ""
+  WriteStdin _ _ -> pure ()
+  WaitChild (ChildHandle (ChildProcessId cid) _) -> liftIO $ do
+    st <- readIORef ref
+    case Map.lookup cid (mockProcesses st) of
+      Just (_, _, code) -> pure code
+      Nothing           -> pure (ExitFailure 1)
+  PollChild (ChildHandle (ChildProcessId cid) _) -> liftIO $ do
+    st <- readIORef ref
+    case Map.lookup cid (mockProcesses st) of
+      Just (_, _, code) -> pure (Just code)
+      Nothing           -> pure (Just (ExitFailure 1))
+  KillChild (ChildHandle (ChildProcessId cid) _) _ -> liftIO $ do
+    modifyIORef' ref $ \st ->
+      st { mockProcesses = Map.delete cid (mockProcesses st) }
+  CloseChildHandles _ -> pure ()
 
--- | Production Process interpreter placeholder.
-runProcessIO :: Eff (Process : es) a -> Eff es a
-runProcessIO = interpret $ \_ -> \case
-  SpawnProcess _ -> pure (ProcessHandleId 1)
-  WaitForProcess _ -> pure ExitSuccessCode
-  TerminateProcess _ -> pure ()
-  ReadProcessStdout _ -> pure "ok"
-
-{-------------------------------------------------------------------------------
-  Log Interpreters
--------------------------------------------------------------------------------}
+runProcessIO :: (IOE :> es) => Sup.ProcessTable -> Eff (Process : es) a -> Eff es a
+runProcessIO pt = interpret $ \_ -> \case
+  SpawnChild cfg        -> liftIO $ Sup.spawnProcessIO pt cfg
+  ReadStdout h          -> liftIO $ Sup.readStdoutIO pt h
+  WriteStdin h bs       -> liftIO $ Sup.writeStdinIO pt h bs
+  WaitChild h           -> liftIO $ Sup.waitChildIO pt h
+  PollChild h           -> liftIO $ Sup.pollChildIO pt h
+  KillChild h sig       -> liftIO $ Sup.killChildIO pt h sig
+  CloseChildHandles h   -> liftIO $ Sup.closeChildHandlesIO pt h
 
 data LoggedRecord = LoggedRecord
   { logRecSeverity :: !LogSeverity
   , logRecTag      :: !Text
   } deriving stock (Eq, Show)
 
--- | In-memory Log interpreter collecting log entries into an IORef.
-runLogPure
-  :: (IOE :> es)
-  => IORef [LoggedRecord]
-  -> Eff (Log : es) a
-  -> Eff es a
+runLogPure :: (IOE :> es) => IORef [LoggedRecord] -> Eff (Log : es) a -> Eff es a
 runLogPure ref = interpret $ \_ -> \case
   LogEntry sev (SomeRow tag _) -> liftIO $ do
     modifyIORef' ref (LoggedRecord sev tag :)
 
--- | Production Log interpreter printing to stdout.
 runLogIO :: (IOE :> es) => Eff (Log : es) a -> Eff es a
 runLogIO = interpret $ \_ -> \case
   LogEntry sev (SomeRow tag _) -> liftIO $ do

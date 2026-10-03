@@ -5,13 +5,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 -- |
 -- Module      : Sarutahiko.Effect.Interpreter.Polysemy
 -- Description : Polysemy seam compatibility interpreters for core signatures
---
--- Implements Polysemy interpreters for Clock, Resource, Process, and Log
--- satisfying dual-interpreter parity per EFFECT_CATALOG_DESIGN.md and PHASE_0_PLAN.md TP-0.6.
 module Sarutahiko.Effect.Interpreter.Polysemy
   ( -- * Clock Interpreters
     runClockPurePoly
@@ -35,15 +34,10 @@ module Sarutahiko.Effect.Interpreter.Polysemy
   , sleepPoly
   , allocatePoly
   , releasePoly
-  , spawnProcessPoly
-  , waitForProcessPoly
-  , terminateProcessPoly
-  , readProcessStdoutPoly
   , logEntryPoly
   ) where
 
 import Control.Concurrent (threadDelay)
-import Data.ByteString (ByteString)
 import Data.IORef (IORef, modifyIORef', readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -52,6 +46,7 @@ import qualified Data.Text.Encoding as TE
 import Data.Time.Clock (NominalDiffTime, UTCTime, getCurrentTime, nominalDiffTimeToSeconds)
 import Data.Word (Word64)
 import GHC.Clock (getMonotonicTime)
+import System.Exit (ExitCode (..))
 
 import qualified Polysemy as P
 
@@ -60,82 +55,63 @@ import Sarutahiko.Effect.Interpreter.Effectful
   ( LoggedRecord (..)
   , MockProcessState (..)
   )
-import Sarutahiko.Effect.Log (Log (..), LogSeverity, SomeRow (..))
+import Sarutahiko.Effect.Log (Log (..), LogSeverity (..), SomeRow (..))
 import Sarutahiko.Effect.Process
-  ( Process (..)
+  ( ChildHandle (..)
+  , ChildProcessId (..)
+  , Process (..)
   , ProcessConfig (..)
-  , ProcessExitCode (..)
-  , ProcessHandleId (..)
   )
 import Sarutahiko.Effect.Resource (Resource (..), ResourceKey (..))
+import Sarutahiko.Process.Capability (MonadProcess (..))
+import qualified Sarutahiko.Process.Supervisor as Sup
 
-{-------------------------------------------------------------------------------
-  Smart Senders
--------------------------------------------------------------------------------}
+instance (P.Member Process r) => MonadProcess (P.Sem r) where
+  spawnChild        = P.send . SpawnChild
+  readStdout        = P.send . ReadStdout
+  writeStdin h bs   = P.send (WriteStdin h bs)
+  waitChild         = P.send . WaitChild
+  pollChild         = P.send . PollChild
+  killChild h sig   = P.send (KillChild h sig)
+  closeChildHandles = P.send . CloseChildHandles
 
-getCurrentTimePoly :: P.Member Clock r => P.Sem r UTCTime
+getCurrentTimePoly :: (P.Member Clock r) => P.Sem r UTCTime
 getCurrentTimePoly = P.send GetCurrentTime
 
-getMonotonicTimePoly :: P.Member Clock r => P.Sem r Double
+getMonotonicTimePoly :: (P.Member Clock r) => P.Sem r Double
 getMonotonicTimePoly = P.send GetMonotonicTime
 
-sleepPoly :: P.Member Clock r => NominalDiffTime -> P.Sem r ()
+sleepPoly :: (P.Member Clock r) => NominalDiffTime -> P.Sem r ()
 sleepPoly = P.send . Sleep
 
-allocatePoly :: P.Member Resource r => P.Sem r () -> P.Sem r ResourceKey
+allocatePoly :: (P.Member Resource r) => P.Sem r () -> P.Sem r ResourceKey
 allocatePoly = P.send . Allocate
 
-releasePoly :: P.Member Resource r => ResourceKey -> P.Sem r ()
+releasePoly :: (P.Member Resource r) => ResourceKey -> P.Sem r ()
 releasePoly = P.send . Release
 
-spawnProcessPoly :: P.Member Process r => ProcessConfig -> P.Sem r ProcessHandleId
-spawnProcessPoly = P.send . SpawnProcess
+logEntryPoly :: (P.Member Log r) => LogSeverity -> SomeRow -> P.Sem r ()
+logEntryPoly sev r = P.send (LogEntry sev r)
 
-waitForProcessPoly :: P.Member Process r => ProcessHandleId -> P.Sem r ProcessExitCode
-waitForProcessPoly = P.send . WaitForProcess
-
-terminateProcessPoly :: P.Member Process r => ProcessHandleId -> P.Sem r ()
-terminateProcessPoly = P.send . TerminateProcess
-
-readProcessStdoutPoly :: P.Member Process r => ProcessHandleId -> P.Sem r ByteString
-readProcessStdoutPoly = P.send . ReadProcessStdout
-
-logEntryPoly :: P.Member Log r => LogSeverity -> SomeRow -> P.Sem r ()
-logEntryPoly s r = P.send (LogEntry s r)
-
-{-------------------------------------------------------------------------------
-  Clock Interpreters
--------------------------------------------------------------------------------}
-
--- | In-memory Clock interpreter using an IORef holding current simulated monotonic time.
 runClockPurePoly
-  :: P.Member (P.Embed IO) r
+  :: (P.Member (P.Embed IO) r)
   => UTCTime
   -> IORef Double
   -> P.Sem (Clock : r) a
   -> P.Sem r a
 runClockPurePoly fixedUtc timeRef = P.interpret $ \case
-  GetCurrentTime -> pure fixedUtc
+  GetCurrentTime   -> pure fixedUtc
   GetMonotonicTime -> P.embed $ readIORef timeRef
-  Sleep dt -> P.embed $ modifyIORef' timeRef (+ realToFrac dt)
+  Sleep dt         -> P.embed $ modifyIORef' timeRef (+ realToFrac dt)
 
--- | Real IO Clock interpreter.
-runClockIOPoly
-  :: P.Member (P.Embed IO) r
-  => P.Sem (Clock : r) a
-  -> P.Sem r a
+runClockIOPoly :: (P.Member (P.Embed IO) r) => P.Sem (Clock : r) a -> P.Sem r a
 runClockIOPoly = P.interpret $ \case
-  GetCurrentTime -> P.embed getCurrentTime
+  GetCurrentTime   -> P.embed getCurrentTime
   GetMonotonicTime -> P.embed getMonotonicTime
-  Sleep dt -> P.embed $ threadDelay (round (nominalDiffTimeToSeconds dt * 1e6))
+  Sleep dt         -> P.embed $ threadDelay (round (nominalDiffTimeToSeconds dt * 1e6))
 
-{-------------------------------------------------------------------------------
-  Resource Interpreters
--------------------------------------------------------------------------------}
-
--- | In-memory Resource interpreter tracking allocations and releases in an IORef.
 runResourcePurePoly
-  :: P.Member (P.Embed IO) r
+  :: (P.Member (P.Embed IO) r)
   => IORef [Text]
   -> P.Sem (Resource : r) a
   -> P.Sem r a
@@ -153,10 +129,7 @@ runResourcePurePoly logRef = P.interpretH $ \case
     showText :: Word64 -> Text
     showText = T.pack . show
 
--- | Real IO Resource interpreter.
-runResourceIOPoly
-  :: P.Sem (Resource : r) a
-  -> P.Sem r a
+runResourceIOPoly :: P.Sem (Resource : r) a -> P.Sem r a
 runResourceIOPoly = P.interpretH $ \case
   Allocate finalizer -> do
     f' <- P.runT finalizer
@@ -164,55 +137,56 @@ runResourceIOPoly = P.interpretH $ \case
     P.pureT (ResourceKey 1)
   Release _ -> P.pureT ()
 
-{-------------------------------------------------------------------------------
-  Process Interpreters
--------------------------------------------------------------------------------}
-
--- | Mock Process interpreter simulating subprocess execution in-memory.
 runProcessMockPoly
-  :: P.Member (P.Embed IO) r
+  :: (P.Member (P.Embed IO) r)
   => IORef MockProcessState
   -> P.Sem (Process : r) a
   -> P.Sem r a
 runProcessMockPoly ref = P.interpret $ \case
-  SpawnProcess cfg -> P.embed $ do
+  SpawnChild cfg -> P.embed $ do
     st <- readIORef ref
     let newId = mockSpawnCount st + 1
-        fakeOutput = "mock_output_for:" <> TE.encodeUtf8 (procCommand cfg)
-        newProcs = Map.insert newId (cfg, fakeOutput, ExitSuccessCode) (mockProcesses st)
+        fakeOutput = "mock_output_for:" <> TE.encodeUtf8 (T.pack (cmdPath cfg))
+        newProcs = Map.insert newId (cfg, fakeOutput, ExitSuccess) (mockProcesses st)
     writeIORef ref (MockProcessState newId newProcs)
-    pure (ProcessHandleId newId)
-  WaitForProcess (ProcessHandleId pid) -> P.embed $ do
+    pure (ChildHandle (ChildProcessId newId) cfg)
+  ReadStdout (ChildHandle (ChildProcessId cid) _) -> P.embed $ do
     st <- readIORef ref
-    case Map.lookup pid (mockProcesses st) of
-      Just (_, _, code) -> pure code
-      Nothing           -> pure (ExitFailureCode 1)
-  TerminateProcess (ProcessHandleId pid) -> P.embed $ do
-    modifyIORef' ref $ \st ->
-      st { mockProcesses = Map.delete pid (mockProcesses st) }
-  ReadProcessStdout (ProcessHandleId pid) -> P.embed $ do
-    st <- readIORef ref
-    case Map.lookup pid (mockProcesses st) of
+    case Map.lookup cid (mockProcesses st) of
       Just (_, out, _) -> pure out
       Nothing          -> pure ""
+  WriteStdin _ _ -> pure ()
+  WaitChild (ChildHandle (ChildProcessId cid) _) -> P.embed $ do
+    st <- readIORef ref
+    case Map.lookup cid (mockProcesses st) of
+      Just (_, _, code) -> pure code
+      Nothing           -> pure (ExitFailure 1)
+  PollChild (ChildHandle (ChildProcessId cid) _) -> P.embed $ do
+    st <- readIORef ref
+    case Map.lookup cid (mockProcesses st) of
+      Just (_, _, code) -> pure (Just code)
+      Nothing           -> pure (Just (ExitFailure 1))
+  KillChild (ChildHandle (ChildProcessId cid) _) _ -> P.embed $ do
+    modifyIORef' ref $ \st ->
+      st { mockProcesses = Map.delete cid (mockProcesses st) }
+  CloseChildHandles _ -> pure ()
 
--- | Production Process interpreter placeholder.
 runProcessIOPoly
-  :: P.Sem (Process : r) a
+  :: (P.Member (P.Embed IO) r)
+  => Sup.ProcessTable
+  -> P.Sem (Process : r) a
   -> P.Sem r a
-runProcessIOPoly = P.interpret $ \case
-  SpawnProcess _ -> pure (ProcessHandleId 1)
-  WaitForProcess _ -> pure ExitSuccessCode
-  TerminateProcess _ -> pure ()
-  ReadProcessStdout _ -> pure "ok"
+runProcessIOPoly pt = P.interpret $ \case
+  SpawnChild cfg        -> P.embed $ Sup.spawnProcessIO pt cfg
+  ReadStdout h          -> P.embed $ Sup.readStdoutIO pt h
+  WriteStdin h bs       -> P.embed $ Sup.writeStdinIO pt h bs
+  WaitChild h           -> P.embed $ Sup.waitChildIO pt h
+  PollChild h           -> P.embed $ Sup.pollChildIO pt h
+  KillChild h sig       -> P.embed $ Sup.killChildIO pt h sig
+  CloseChildHandles h   -> P.embed $ Sup.closeChildHandlesIO pt h
 
-{-------------------------------------------------------------------------------
-  Log Interpreters
--------------------------------------------------------------------------------}
-
--- | In-memory Log interpreter collecting log entries into an IORef.
 runLogPurePoly
-  :: P.Member (P.Embed IO) r
+  :: (P.Member (P.Embed IO) r)
   => IORef [LoggedRecord]
   -> P.Sem (Log : r) a
   -> P.Sem r a
@@ -220,11 +194,7 @@ runLogPurePoly ref = P.interpret $ \case
   LogEntry sev (SomeRow tag _) -> P.embed $ do
     modifyIORef' ref (LoggedRecord sev tag :)
 
--- | Production Log interpreter printing to stdout.
-runLogIOPoly
-  :: P.Member (P.Embed IO) r
-  => P.Sem (Log : r) a
-  -> P.Sem r a
+runLogIOPoly :: (P.Member (P.Embed IO) r) => P.Sem (Log : r) a -> P.Sem r a
 runLogIOPoly = P.interpret $ \case
   LogEntry sev (SomeRow tag _) -> P.embed $ do
     putStrLn $ "[" ++ show sev ++ "] " ++ T.unpack tag

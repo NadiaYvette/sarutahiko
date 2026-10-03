@@ -35,7 +35,7 @@ library
         effectful-core >= 2.3,
         polysemy >= 1.9,
         large-anon,
-        sarutahiko-records >= 0.1,
+        sarutahiko-records, sarutahiko-process >= 0.1,
         sarutahiko-effect-signatures >= 0.1,
         sarutahiko-effect-effectful >= 0.1,
         sarutahiko-effect-polysemy >= 0.1

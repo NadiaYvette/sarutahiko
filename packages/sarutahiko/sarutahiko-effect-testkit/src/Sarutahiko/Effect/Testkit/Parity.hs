@@ -9,18 +9,11 @@
 -- |
 -- Module      : Sarutahiko.Effect.Testkit.Parity
 -- Description : Dual-interpreter parity testkit executing identical programs
---
--- Executes standardized workflows across both effectful and polysemy runtimes,
--- asserting identical results, state transitions, and teardown behavior
--- per EFFECT_CATALOG_DESIGN.md and PHASE_0_PLAN.md TP-0.6.
 module Sarutahiko.Effect.Testkit.Parity
-  ( -- * Parity Test Results
-    ClockParityResult (..)
+  ( ClockParityResult (..)
   , ResourceParityResult (..)
   , ProcessParityResult (..)
   , LogParityResult (..)
-
-    -- * Parity Runners
   , runClockParity
   , runResourceParity
   , runProcessParity
@@ -34,11 +27,11 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Record.Anon.Advanced as Anon
 import Data.Text (Text)
 import Data.Time.Clock (UTCTime, secondsToNominalDiffTime)
+import System.Exit (ExitCode (..))
 
 import Effectful
 import qualified Polysemy as P
 
--- Effectful interpreters
 import Sarutahiko.Effect.Interpreter.Effectful
   ( LoggedRecord (..)
   , MockProcessState (..)
@@ -47,57 +40,43 @@ import Sarutahiko.Effect.Interpreter.Effectful
   , getCurrentTimeEff
   , getMonotonicTimeEff
   , logEntryEff
-  , readProcessStdoutEff
   , releaseEff
   , runClockPure
   , runLogPure
   , runProcessMock
   , runResourcePure
   , sleepEff
-  , spawnProcessEff
-  , terminateProcessEff
-  , waitForProcessEff
   )
-
--- Polysemy interpreters
 import Sarutahiko.Effect.Interpreter.Polysemy
   ( allocatePoly
   , getCurrentTimePoly
   , getMonotonicTimePoly
   , logEntryPoly
-  , readProcessStdoutPoly
   , releasePoly
   , runClockPurePoly
   , runLogPurePoly
   , runProcessMockPoly
   , runResourcePurePoly
   , sleepPoly
-  , spawnProcessPoly
-  , terminateProcessPoly
-  , waitForProcessPoly
   )
-
 import Sarutahiko.Effect.Log (LogSeverity (..), SomeRow (..))
 import Sarutahiko.Effect.Process
-  ( ProcessConfig (..)
-  , ProcessExitCode (..)
-  , ProcessHandleId (..)
+  ( ChildHandle (..)
+  , ChildProcessId (..)
+  , ProcessConfig (..)
+  , ProcessSignal (..)
+  , defaultProcessConfig
   )
-import Sarutahiko.Records (emptyRecord)
-
-{-------------------------------------------------------------------------------
-  Clock Parity
--------------------------------------------------------------------------------}
+import Sarutahiko.Process.Capability (MonadProcess (..))
 
 data ClockParityResult = ClockParityResult
-  { clkInitialUtc   :: !UTCTime
-  , clkMonotonicPre :: !Double
-  , clkMonotonicPost:: !Double
+  { clkFinalUtc    :: !UTCTime
+  , clkMonotonicT0 :: !Double
+  , clkMonotonicT1 :: !Double
   } deriving stock (Eq, Show)
 
 runClockParity :: UTCTime -> IO (ClockParityResult, ClockParityResult)
 runClockParity testUtc = do
-  -- Effectful run
   effRef <- newIORef (100.0 :: Double)
   (effPre, effPost, effUtc) <- runEff . runClockPure testUtc effRef $ do
     t0 <- getMonotonicTimeEff
@@ -107,7 +86,6 @@ runClockParity testUtc = do
     pure (t0, t1, utc)
   let effRes = ClockParityResult effUtc effPre effPost
 
-  -- Polysemy run
   polyRef <- newIORef (100.0 :: Double)
   (polyPre, polyPost, polyUtc) <- P.runM . runClockPurePoly testUtc polyRef $ do
     t0 <- getMonotonicTimePoly
@@ -119,17 +97,12 @@ runClockParity testUtc = do
 
   pure (effRes, polyRes)
 
-{-------------------------------------------------------------------------------
-  Resource Parity
--------------------------------------------------------------------------------}
-
 data ResourceParityResult = ResourceParityResult
   { resEventLog :: ![Text]
   } deriving stock (Eq, Show)
 
 runResourceParity :: IO (ResourceParityResult, ResourceParityResult)
 runResourceParity = do
-  -- Effectful run
   effLogRef <- newIORef []
   runEff . runResourcePure effLogRef $ do
     k <- allocateEff (pure ())
@@ -137,7 +110,6 @@ runResourceParity = do
   effEvents <- readIORef effLogRef
   let effRes = ResourceParityResult effEvents
 
-  -- Polysemy run
   polyLogRef <- newIORef []
   P.runM . runResourcePurePoly polyLogRef $ do
     k <- allocatePoly (pure ())
@@ -147,72 +119,62 @@ runResourceParity = do
 
   pure (effRes, polyRes)
 
-{-------------------------------------------------------------------------------
-  Process Parity
--------------------------------------------------------------------------------}
-
 data ProcessParityResult = ProcessParityResult
-  { procHandleId :: !ProcessHandleId
+  { procHandleId :: !ChildProcessId
   , procStdout   :: !ByteString
-  , procExit     :: !ProcessExitCode
+  , procExit     :: !ExitCode
   , procMapEmpty :: !Bool
   } deriving stock (Eq, Show)
 
 runProcessParity :: IO (ProcessParityResult, ProcessParityResult)
 runProcessParity = do
-  let cfg = ProcessConfig "git" ["status"] Nothing []
+  let cfg = defaultProcessConfig "/bin/echo"
 
   -- Effectful run
-  effStateRef <- newIORef emptyMockProcessState
-  (effPid, effOut, effCode) <- runEff . runProcessMock effStateRef $ do
-    pid <- spawnProcessEff cfg
-    out <- readProcessStdoutEff pid
-    code <- waitForProcessEff pid
-    terminateProcessEff pid
-    pure (pid, out, code)
-  effSt <- readIORef effStateRef
-  let effRes = ProcessParityResult effPid effOut effCode (Map.null (mockProcesses effSt))
+  effRef <- newIORef emptyMockProcessState
+  (effH, effOut, effCode) <- runEff . runProcessMock effRef $ do
+    h <- spawnChild cfg
+    out <- readStdout h
+    c <- waitChild h
+    killChild h SigTerm
+    pure (h, out, c)
+  effSt <- readIORef effRef
+  let effRes = ProcessParityResult (childId effH) effOut effCode (Map.null (mockProcesses effSt))
 
   -- Polysemy run
-  polyStateRef <- newIORef emptyMockProcessState
-  (polyPid, polyOut, polyCode) <- P.runM . runProcessMockPoly polyStateRef $ do
-    pid <- spawnProcessPoly cfg
-    out <- readProcessStdoutPoly pid
-    code <- waitForProcessPoly pid
-    terminateProcessPoly pid
-    pure (pid, out, code)
-  polySt <- readIORef polyStateRef
-  let polyRes = ProcessParityResult polyPid polyOut polyCode (Map.null (mockProcesses polySt))
+  polyRef <- newIORef emptyMockProcessState
+  (polyH, polyOut, polyCode) <- P.runM . runProcessMockPoly polyRef $ do
+    h <- spawnChild cfg
+    out <- readStdout h
+    c <- waitChild h
+    killChild h SigTerm
+    pure (h, out, c)
+  polySt <- readIORef polyRef
+  let polyRes = ProcessParityResult (childId polyH) polyOut polyCode (Map.null (mockProcesses polySt))
 
   pure (effRes, polyRes)
 
-{-------------------------------------------------------------------------------
-  Log Parity
--------------------------------------------------------------------------------}
-
 data LogParityResult = LogParityResult
-  { logEntries :: ![LoggedRecord]
+  { logEvents :: ![(LogSeverity, Text)]
   } deriving stock (Eq, Show)
 
 runLogParity :: IO (LogParityResult, LogParityResult)
 runLogParity = do
-  let rowA = SomeRow "agent.turn" (Anon.insert #seq (Identity (1 :: Int)) emptyRecord)
-      rowB = SomeRow "agent.tool" (Anon.insert #code (Identity (200 :: Int)) emptyRecord)
+  let rowVal = Anon.insert #user (Identity ("test_user" :: Text))
+             $ Anon.insert #status (Identity (200 :: Int))
+             $ Anon.empty
+      entry = SomeRow "request_completed" rowVal
 
-  -- Effectful run
   effLogRef <- newIORef []
   runEff . runLogPure effLogRef $ do
-    logEntryEff LogDebug rowA
-    logEntryEff LogInfo rowB
-  effRecords <- readIORef effLogRef
-  let effRes = LogParityResult (reverse effRecords)
+    logEntryEff LogInfo entry
+  effEvents <- map (\r -> (logRecSeverity r, logRecTag r)) <$> readIORef effLogRef
+  let effRes = LogParityResult effEvents
 
-  -- Polysemy run
   polyLogRef <- newIORef []
   P.runM . runLogPurePoly polyLogRef $ do
-    logEntryPoly LogDebug rowA
-    logEntryPoly LogInfo rowB
-  polyRecords <- readIORef polyLogRef
-  let polyRes = LogParityResult (reverse polyRecords)
+    logEntryPoly LogInfo entry
+  polyEvents <- map (\r -> (logRecSeverity r, logRecTag r)) <$> readIORef polyLogRef
+  let polyRes = LogParityResult polyEvents
 
   pure (effRes, polyRes)

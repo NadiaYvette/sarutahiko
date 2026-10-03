@@ -25,13 +25,13 @@ library
     import:           commons
     exposed-modules:
         Sarutahiko.Process
-        Sarutahiko.Process.Signature
-        Sarutahiko.Process.Interpreter
+        Sarutahiko.Process.Capability
+        Sarutahiko.Process.Supervisor
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,
         containers >= 0.6,
-        effectful-core >= 2.3,
+        exceptions >= 0.10,
         process >= 1.6,
         text >= 2.1,
         time >= 1.12,
@@ -49,9 +49,10 @@ test-suite test-process
         base >= 4.20 && < 5,
         bytestring >= 0.12,
         containers >= 0.6,
-        effectful-core >= 2.3,
+        exceptions >= 0.10,
         process >= 1.6,
         text >= 2.1,
         time >= 1.12,
         unix >= 2.8,
+        sarutahiko-effect-signatures,
         sarutahiko-process

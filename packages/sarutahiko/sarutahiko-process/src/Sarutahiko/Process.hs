@@ -1,12 +1,15 @@
 -- |
 -- Module      : Sarutahiko.Process
--- Description : Resource-bracketed subprocess supervisor with deadline kills
+-- Description : Subprocess supervisor and tagless capability façade
 --
--- Re-exports the process effect signature, smart senders, and production interpreter.
+-- Re-exports the canonical Process GADT from 'sarutahiko-effect-signatures',
+-- the open 'MonadProcess' capability typeclass, and pure POSIX supervisor.
 module Sarutahiko.Process
-  ( module Sarutahiko.Process.Signature
-  , module Sarutahiko.Process.Interpreter
+  ( module Sarutahiko.Effect.Process
+  , module Sarutahiko.Process.Capability
+  , module Sarutahiko.Process.Supervisor
   ) where
 
-import Sarutahiko.Process.Interpreter
-import Sarutahiko.Process.Signature
+import Sarutahiko.Effect.Process
+import Sarutahiko.Process.Capability
+import Sarutahiko.Process.Supervisor

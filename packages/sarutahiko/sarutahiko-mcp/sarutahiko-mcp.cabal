@@ -40,7 +40,6 @@ library
         sarutahiko-jsonrpc,
         sarutahiko-schema,
         sarutahiko-process,
-        effectful-core >= 2.3
     hs-source-dirs:   src
 
 test-suite test-mcp
@@ -62,7 +61,6 @@ test-suite test-mcp
         sarutahiko-schema,
         sarutahiko-process,
         sarutahiko-mcp,
-        effectful-core >= 2.3,
         tasty,
         hedgehog,
         tasty-hedgehog
