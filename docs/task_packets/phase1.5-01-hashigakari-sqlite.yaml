@@ -24,7 +24,6 @@ packages:
   - hashigakari-sqlite
 
 executor: agy
-model: gemini-3.8-flash
 run_budget: 600
 
 steps:

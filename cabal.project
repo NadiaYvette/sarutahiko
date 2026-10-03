@@ -20,6 +20,7 @@ packages:
     packages/yamaarashi/yamaarashi-spec
     packages/hashigakari/hashigakari-sqlite
     packages/utai/utai
+    packages/hokora/hokora
 
 optional-packages:
     ../large-records-interfaces/large-anon

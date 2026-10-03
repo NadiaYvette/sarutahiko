@@ -20,6 +20,10 @@ dependencies:
 packages:
   - hokora
 
+executor: utai
+model: mistral/codestral-latest
+run_budget: 300
+
 steps:
   - id: create-skeleton
     name: Package skeleton and dependencies setup

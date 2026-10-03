@@ -25,7 +25,6 @@ packages:
   - utai
 
 executor: utai
-model: mistral/codestral-latest
 run_budget: 300
 
 steps:
