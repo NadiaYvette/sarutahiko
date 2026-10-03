@@ -6,8 +6,11 @@
 -- zero intermediate AST allocation, direct row slot hydration, and byte-faithful
 -- SSE event streaming.
 module Kogaki.Wire
-  ( -- * JSON Token Lexer
-    module Kogaki.Wire.Json.Lexer
+  ( -- * Core String & Boundary Conversions
+    module Kogaki.Core.String
+
+    -- * JSON Token Lexer
+  , module Kogaki.Wire.Json.Lexer
 
     -- * Row-Native JSON Decoding & Encoding
   , module Kogaki.Wire.Json.Decode
@@ -16,6 +19,7 @@ module Kogaki.Wire
   , module Kogaki.Wire.SSE.Parser
   ) where
 
+import Kogaki.Core.String
 import Kogaki.Wire.Json.Decode
 import Kogaki.Wire.Json.Lexer
 import Kogaki.Wire.SSE.Parser

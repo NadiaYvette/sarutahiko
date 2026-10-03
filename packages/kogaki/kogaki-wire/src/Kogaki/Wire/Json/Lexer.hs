@@ -16,12 +16,16 @@ module Kogaki.Wire.Json.Lexer
   ( -- * Tokens
     JsonToken (..)
 
+    -- * Domain Conversion
+  , tokenLogicalString
+
     -- * Lexing
   , lexJson
   , lexJsonEither
   ) where
 
 import Data.Bits (shiftL, (.|.))
+import Kogaki.Core.String (LogicalString, fromByteString, fromText)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -50,6 +54,16 @@ data JsonToken
   | TkBool !Bool
   | TkNull
   deriving stock (Eq, Show, Generic)
+
+-- | Extract a domain 'LogicalString' from a 'JsonToken' representing a string or key.
+--
+-- @since 0.1.0.0
+tokenLogicalString :: JsonToken -> Maybe LogicalString
+tokenLogicalString (TkString t) = Just (fromText t)
+tokenLogicalString (TkKey bs)   = case fromByteString bs of
+  Right ls -> Just ls
+  Left _   -> Nothing
+tokenLogicalString _            = Nothing
 
 -- | Lex a JSON byte stream into a list of tokens. Returns an empty
 -- list if the input is malformed or empty.

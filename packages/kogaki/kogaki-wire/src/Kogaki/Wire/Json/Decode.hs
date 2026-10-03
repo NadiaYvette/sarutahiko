@@ -65,6 +65,13 @@ import Data.Record.Anon.Advanced
   , sequenceA
   )
 
+import Data.NonNull (NonNull, fromNullable, toNullable)
+import Kogaki.Core.String
+  ( LogicalString
+  , fromByteString
+  , fromText
+  , toByteString
+  )
 import Kogaki.Wire.Json.Lexer (JsonToken (..), lexJson, lexJsonEither)
 import Sarutahiko.Fields.Datum (SchemaVersion (..))
 import Sarutahiko.Records.Envelope (RowKind (..), WireEnvelope (..))
@@ -105,6 +112,28 @@ instance FromJsonField Text where
 
 instance ToJsonField Text where
   encodeField t = Just ("\"" <> escapeJsonString (TE.encodeUtf8 t) <> "\"")
+
+instance FromJsonField LogicalString where
+  decodeField Nothing = Left "Missing required logical string field"
+  decodeField (Just [TkString t]) = Right (fromText t)
+  decodeField (Just [TkKey k]) =
+    case fromByteString k of
+      Left err -> Left (T.pack (show err))
+      Right ls -> Right ls
+  decodeField (Just _) = Left "TypeMismatch: expected String"
+
+instance ToJsonField LogicalString where
+  encodeField ls = Just ("\"" <> escapeJsonString (toByteString ls) <> "\"")
+
+instance FromJsonField (NonNull LogicalString) where
+  decodeField mToks = do
+    ls <- decodeField mToks
+    case fromNullable ls of
+      Nothing -> Left "Expected non-empty logical string"
+      Just nn -> Right nn
+
+instance ToJsonField (NonNull LogicalString) where
+  encodeField nn = encodeField (toNullable nn)
 
 instance FromJsonField ByteString where
   decodeField Nothing = Left "Missing required bytestring field"

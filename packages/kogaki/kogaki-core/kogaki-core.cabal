@@ -23,10 +23,28 @@ common commons
 
 library
     import:           commons
-    exposed-modules:  Kogaki.Core
+    exposed-modules:
+        Kogaki.Core
+        Kogaki.Core.String
     build-depends:
         base >= 4.20 && < 5,
         text >= 2.1,
         bytestring >= 0.12,
-        primitive >= 0.9
+        primitive >= 0.9,
+        mono-traversable >= 1.0.17
     hs-source-dirs:   src
+
+test-suite test-kogaki-core
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        text >= 2.1,
+        bytestring >= 0.12,
+        kogaki-core,
+        mono-traversable >= 1.0.17,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

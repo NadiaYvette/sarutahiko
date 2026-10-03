@@ -11,7 +11,8 @@
 -- (SSE Round-Trip Equivalence): zero-copy, newline-delimited framing
 -- for Server-Sent Events over raw byte streams without requiring heavyweight
 -- web servers or framework dependencies.
--- Enforces type-level non-emptiness constraints via 'Data.NonNull.NonNull'.
+-- Enforces type-level non-emptiness constraints via 'Data.NonNull.NonNull'
+-- and domain boundary representation via 'LogicalString'.
 module Kogaki.Wire.SSE.Parser
   ( -- * Core Event Type
     SseEvent (..)
@@ -20,6 +21,10 @@ module Kogaki.Wire.SSE.Parser
   , SseFieldLabel
   , mkFieldLabel
   , renderDataLine
+
+    -- * Logical String Conversions
+  , sseDataLogical
+  , mkSseEventLogical
 
     -- * Stream Parsing & Rendering
   , parseSseStream
@@ -32,11 +37,16 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import Data.Maybe (isJust)
 import Data.NonNull (NonNull, fromNullable, toNullable)
-import Data.Text (Text)
-import qualified Data.Text.Encoding as TE
-import qualified Data.Text.Encoding.Error as TEE
 import GHC.Generics (Generic)
 import Text.Read (readMaybe)
+
+import Kogaki.Core.String
+  ( LogicalString
+  , UnicodeException
+  , fromByteString
+  , fromByteStringLenient
+  , toByteString
+  )
 
 -- | Non-empty byte sequence representing an SSE field label (e.g. "id", "event", "data").
 type SseFieldLabel = NonNull ByteString
@@ -53,11 +63,23 @@ renderDataLine line = "data: " <> toNullable line <> "\n"
 --
 -- @since 0.1.0.0
 data SseEvent = SseEvent
-  { sseId    :: !(Maybe Text)
-  , sseEvent :: !(Maybe Text)
+  { sseId    :: !(Maybe LogicalString)
+  , sseEvent :: !(Maybe LogicalString)
   , sseData  :: !ByteString
   , sseRetry :: !(Maybe Int)
   } deriving stock (Eq, Show, Generic)
+
+-- | Extract data payload as domain 'LogicalString' if valid UTF-8.
+--
+-- @since 0.1.0.0
+sseDataLogical :: SseEvent -> Either UnicodeException LogicalString
+sseDataLogical = fromByteString . sseData
+
+-- | Construct an 'SseEvent' from a 'LogicalString' data payload.
+--
+-- @since 0.1.0.0
+mkSseEventLogical :: Maybe LogicalString -> Maybe LogicalString -> LogicalString -> Maybe Int -> SseEvent
+mkSseEventLogical mId mEv d mRet = SseEvent mId mEv (toByteString d) mRet
 
 -- | Parse a stream of raw bytes into a list of 'SseEvent' frames according
 -- to the W3C Server-Sent Events specification.
@@ -67,8 +89,8 @@ parseSseStream :: ByteString -> [SseEvent]
 parseSseStream input = go (splitLines input) Nothing Nothing [] Nothing
   where
     go :: [ByteString]
-       -> Maybe Text
-       -> Maybe Text
+       -> Maybe LogicalString
+       -> Maybe LogicalString
        -> [ByteString]
        -> Maybe Int
        -> [SseEvent]
@@ -105,10 +127,14 @@ parseSseStream input = go (splitLines input) Nothing Nothing [] Nothing
             Just fieldLabel ->
               case toNullable fieldLabel of
                 "id" ->
-                  let !newId = Just (TE.decodeUtf8With TEE.lenientDecode val)
+                  let !newId = case fromByteString val of
+                        Right ls -> Just ls
+                        Left _   -> Just (fromByteStringLenient val)
                   in go rest newId mEv dataLines mRet
                 "event" ->
-                  let !newEv = Just (TE.decodeUtf8With TEE.lenientDecode val)
+                  let !newEv = case fromByteString val of
+                        Right ls -> Just ls
+                        Left _   -> Just (fromByteStringLenient val)
                   in go rest mId newEv dataLines mRet
                 "retry" ->
                   let !newRetry = readMaybe (BSC.unpack val)
@@ -156,8 +182,8 @@ splitLines bs
 renderSseEvent :: SseEvent -> ByteString
 renderSseEvent (SseEvent mId mEv d mRet) =
   BS.concat
-    [ maybe "" (\i -> "id: " <> TE.encodeUtf8 i <> "\n") mId
-    , maybe "" (\e -> "event: " <> TE.encodeUtf8 e <> "\n") mEv
+    [ maybe "" (\i -> "id: " <> toByteString i <> "\n") mId
+    , maybe "" (\e -> "event: " <> toByteString e <> "\n") mEv
     , maybe "" (\r -> "retry: " <> BSC.pack (show r) <> "\n") mRet
     , renderData d
     , "\n"

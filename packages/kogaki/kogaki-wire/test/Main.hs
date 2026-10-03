@@ -32,29 +32,33 @@ import Kogaki.Wire.Json.Lexer
   , lexJson
   , lexJsonEither
   )
+import Kogaki.Core.String (LogicalString (..))
 import Kogaki.Wire.SSE.Parser
   ( SseEvent (..)
   , parseSseStream
   , renderSseEvent
   , renderSseStream
+  , sseDataLogical
   )
 import Sarutahiko.Fields.Datum (SchemaVersion (..))
 import Sarutahiko.Records.Envelope (WireEnvelope (..))
 import Sarutahiko.Records.HKD.TriState (TriState (..))
 
--- | Main test runner supporting pattern filters (-p /JsonLexer/, -p /SseRoundTrip/).
+-- | Main test runner supporting pattern filters (-p /JsonLexer/, -p /SseRoundTrip/, -p /LogicalString/).
 main :: IO ()
 main = do
   args <- getArgs
   let runAll = null args
       runJson = runAll || any (List.isInfixOf "JsonLexer") args
       runSse  = runAll || any (List.isInfixOf "SseRoundTrip") args
+      runLogical = runAll || any (List.isInfixOf "LogicalString") args
 
   putStrLn "=== Running kogaki-wire Property & Invariant Suite (TP-1.1) ==="
   rJson <- if runJson then testJsonLexerAndDecoder else pure True
   rSse  <- if runSse  then testSseRoundTripEquivalence else pure True
+  rLogical <- if runLogical then testLogicalStringIntegration else pure True
 
-  if rJson && rSse
+  if rJson && rSse && rLogical
     then do
       putStrLn "\nAll kogaki-wire invariant tests PASSED."
       exitSuccess
@@ -283,3 +287,53 @@ testSseOptionalFieldsHandling = do
       parsed = parseSseStream rendered
   assertBool "Invariant 2: bare SSE data payload with omitted optional fields roundtrips cleanly"
     (parsed == [evt])
+
+-- | Test LogicalString integration across JSON rows and SSE events.
+testLogicalStringIntegration :: IO Bool
+testLogicalStringIntegration = do
+  putStrLn "\n--- LogicalString & UTF-8 Codec Invariants ---"
+  results <- sequence
+    [ testLogicalStringRowDecodeEncode
+    , testSseLogicalPayload
+    ]
+  pure (and results)
+
+type LogicalRow = '["code" ':= LogicalString, "title" ':= LogicalString]
+
+testLogicalStringRowDecodeEncode :: IO Bool
+testLogicalStringRowDecodeEncode = do
+  let rawJson = "{\"code\":\"KOGAKI-001\",\"title\":\"Sarutahiko\"}"
+      mDecoded = decodeJsonRow @LogicalRow rawJson
+  case mDecoded of
+    Nothing -> do
+      putStrLn "Failed to decode row with LogicalString"
+      pure False
+    Just recRow -> do
+      let codeVal  = runIdentity (getRecordField #code recRow)
+          titleVal = runIdentity (getRecordField #title recRow)
+          encoded  = encodeJsonRow recRow
+      b1 <- assertBool "LogicalString: field decoded correctly"
+              (codeVal == "KOGAKI-001" && titleVal == "Sarutahiko")
+      b2 <- assertBool "LogicalString: row round-trips to equivalent canonical JSON"
+              (encoded == rawJson)
+      pure (b1 && b2)
+
+testSseLogicalPayload :: IO Bool
+testSseLogicalPayload = do
+  let validEvt = SseEvent Nothing Nothing "hello world" Nothing
+      invalidEvt = SseEvent Nothing Nothing "\xFF\xFE\x00" Nothing
+  case sseDataLogical validEvt of
+    Left _ -> do
+      putStrLn "Failed to decode valid UTF-8 SSE payload to LogicalString"
+      pure False
+    Right (LogicalString t) -> do
+      b1 <- assertBool "SSE: sseDataLogical extracts correct LogicalString from payload"
+              (t == "hello world")
+      case sseDataLogical invalidEvt of
+        Left _  -> do
+          b2 <- assertBool "SSE: sseDataLogical surfaces typed UnicodeException on invalid UTF-8 payload"
+                  True
+          pure (b1 && b2)
+        Right _ -> do
+          putStrLn "Unexpectedly decoded invalid UTF-8 SSE payload"
+          pure False
