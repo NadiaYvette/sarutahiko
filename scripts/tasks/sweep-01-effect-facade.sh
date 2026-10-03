@@ -710,7 +710,6 @@ module Sarutahiko.Effect.Interpreter.Polysemy
   ) where
 
 import Control.Concurrent (threadDelay)
-import Data.ByteString (ByteString)
 import Data.IORef (IORef, modifyIORef', readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -734,7 +733,6 @@ import Sarutahiko.Effect.Process
   , ChildProcessId (..)
   , Process (..)
   , ProcessConfig (..)
-  , ProcessSignal (..)
   )
 import Sarutahiko.Effect.Resource (Resource (..), ResourceKey (..))
 import Sarutahiko.Process.Capability (MonadProcess (..))
@@ -1047,13 +1045,13 @@ runLogParity = do
 
   effLogRef <- newIORef []
   runEff . runLogPure effLogRef $ do
-    logEntryEff Info entry
+    logEntryEff LogInfo entry
   effEvents <- map (\r -> (logRecSeverity r, logRecTag r)) <$> readIORef effLogRef
   let effRes = LogParityResult effEvents
 
   polyLogRef <- newIORef []
   P.runM . runLogPurePoly polyLogRef $ do
-    logEntryPoly Info entry
+    logEntryPoly LogInfo entry
   polyEvents <- map (\r -> (logRecSeverity r, logRecTag r)) <$> readIORef polyLogRef
   let polyRes = LogParityResult polyEvents
 
