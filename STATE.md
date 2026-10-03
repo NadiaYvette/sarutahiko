@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T22:15:00+02:00
-* **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `23983d4` (*Assemble Phase 1.5 Hokora autonomous turn vertical slice*)
+* **Timestamp:** 2026-10-03T22:37:00+02:00
+* **Git Branch:** `master`
+* **HEAD Commit:** `257e142` (*docs(state): record Phase 1.5 Hokora completion and advance frontier to phase2-agent-core*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
