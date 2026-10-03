@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T22:37:00+02:00
+* **Timestamp:** 2026-10-03T23:30:00+02:00
 * **Git Branch:** `master`
-* **HEAD Commit:** `257e142` (*docs(state): record Phase 1.5 Hokora completion and advance frontier to phase2-agent-core*)
+* **HEAD Commit:** `04ab7f8` (*Build the full Agent Core (turn loop, tool registry, session persistence, hooks)*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -269,15 +269,29 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Thesis measurement: Hokora delivered in **664 lines core / 891 total lines** (well within budget ≤2,000 lines).
     - Executed cleanly via `yamaarashi-exec run docs/task_packets/phase1.5-03-hokora-slice.yaml` using native zero-cost `utai` executor, passed verification gates, and fast-forward merged to HEAD.
     - **Phase 1.5 (Skinny Spine Proof) is now COMPLETE!**
+19. **Executed Phase 2 — Agent Core (`sarutahiko-session`, `sarutahiko-hooks`, `sarutahiko-plugins`, `sarutahiko-agent`) [TASK-015] (`eb16222` / `04ab7f8`):**
+    - Implemented full 4-package Tier 2 agent core per `NIH_PLAN.md` §2 and DECISION-007 (The Layered Split):
+      * `packages/sarutahiko/sarutahiko-session`: Session persistence (`utaibon` 謡本) backed by `hashigakari-sqlite`, conversation-tail reducer guaranteeing strict prompt-cache prefix preservation, and deterministic `fnv1a64Hex` hashing. (3 Hedgehog properties passing 100%).
+      * `packages/sarutahiko/sarutahiko-hooks`: Subprocess hook supervisor with fail-closed `sigKILL` hard deadline enforcement, safe mode consent checking, and pre-approved command execution. (4 Hedgehog properties passing 100%).
+      * `packages/sarutahiko/sarutahiko-plugins`: Manifest validation against capability allowlists and kill-lists. (4 Hedgehog properties passing 100%).
+      * `packages/sarutahiko/sarutahiko-agent`: Dynamic extensible-record tool registry (`ToolRegistry`), bounded ReAct turn program ($N \le 10$), multi-turn conversation loop, and standalone CLI executable `sarutahiko`. (5 Hedgehog properties passing 100%).
+    - Authored comprehensive verification script `scripts/tasks/phase2-agent-core-verify.sh` auditing all 4 packages, all 16 property tests, and CLI execution.
+    - Executed cleanly via `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase2-agent-core.yaml` using zero-cost native `utai` executor with local OmniRoute (`mistral/codestral-latest`).
+    - Passed all verification gates, generated commit `04ab7f8` with attribution trailers, and fast-forward merged to `master`.
+    - **Phase 2 (Agent Core) is now COMPLETE!**
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-> [!NOTE] Phase 1.5 COMPLETE & Skinny Spine Protocol Proven
-> All three Phase 1.5 packets (`hashigakari-sqlite`, `utai-mock`, and `hokora-slice`) are COMPLETE and VERIFIED.
-> Operational frontier is advanced to Phase 2 (`phase2-agent-core`).
+> [!NOTE] Phase 2 COMPLETE & Agent Core Operational
+> All four Phase 2 packages (`sarutahiko-session`, `sarutahiko-hooks`, `sarutahiko-plugins`, `sarutahiko-agent`) are COMPLETE and VERIFIED with 16/16 Hedgehog property tests passing.
+> Operational frontier is advanced to Phase 3 (`phase3-surfaces-codeintel`).
 
-### [TASK-015] Execute Phase 2: phase2-agent-core
-* **Objective:** Implement full agent core ReAct turn loop, tool registry, session persistence, and multi-turn conversation execution (`docs/task_packets/phase2-agent-core.yaml`).
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase2-agent-core.yaml`
+### [TASK-016] Execute Phase 3: phase3-surfaces-codeintel
+* **Objective:** Implement user surfaces (Rich TUI / Brick, Gateway JSON-RPC / MCP server) and code intelligence (ctags-compatible tag extractor, AST symbol navigation) per `docs/task_packets/phase3-surfaces-codeintel.yaml`.
+* **Target Packages:**
+  - `sarutahiko-tui`
+  - `sarutahiko-gateway`
+  - `sarutahiko-codeintel`
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase3-surfaces-codeintel.yaml`

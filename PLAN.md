@@ -28,9 +28,9 @@ Phase 1: Protocol Codecs & Algebraic Effect Catalog           [COMPLETED]
    ▼
 Phase 1.5: Hokora Vertical Slice (Skinny Spine Proof)          [COMPLETED]
    ▼
-Phase 2: Full Agent Core & Memory Engine (utaibon)            [NEXT]
+Phase 2: Full Agent Core & Memory Engine (utaibon)            [COMPLETED]
    ▼
-Phase 3: Observability (kagami-ita) & Surfaces (Rich TUI)      [QUEUED]
+Phase 3: Observability (kagami-ita) & Surfaces (Rich TUI)      [NEXT]
    ▼
 Phase 4: Code Intelligence & Typed Model Arena                 [QUEUED]
 ```
@@ -71,4 +71,29 @@ Phase 1 establishes the row-typed protocol foundations:
    - 100% passing Hedgehog properties across `hashigakari-sqlite`, `utai`, and `hokora`.
 3. Thesis measurement: **VERIFIED**
    - Hokora delivered full capability in **664 lines core / 891 total lines** (well within budget ≤2,000 lines).
+
+---
+
+## 5. Phase 2 Agent Core Acceptance [COMPLETED]
+
+1. **Session Engine (`sarutahiko-session`):** **VERIFIED**
+   - Session persistence (`utaibon` 謡本) backed by `hashigakari-sqlite`.
+   - Pure conversation-tail reducer guaranteeing strict prompt-cache prefix preservation.
+   - Deterministic `fnv1a64Hex` hashing and replay parity verified across database reloads.
+2. **Hook Execution & Process Supervision (`sarutahiko-hooks`):** **VERIFIED**
+   - External hook subprocess supervisor with fail-closed `sigKILL` hard deadline enforcement.
+   - Safe mode consent checking and pre-approved command execution.
+3. **Capability-Bounded Plugin System (`sarutahiko-plugins`):** **VERIFIED**
+   - Plugin manifest parser adhering to zero-transitive-bloat Kogaki wire codecs.
+   - Manifest validation against capability allowlists and kill-lists.
+4. **Agent Core & Multi-Turn Turn Engine (`sarutahiko-agent`):** **VERIFIED**
+   - Dynamic extensible-record tool registry (`ToolRegistry`).
+   - Interpreted ReAct-style agent turn program with bounded iteration ($N \le 10$).
+   - Multi-turn conversation persistence over SQLite event streams.
+   - Standalone CLI executable `sarutahiko` supporting one-shot and multi-turn execution.
+5. **Verification & Audit Gate:** **VERIFIED**
+   - 16/16 Hedgehog properties passing 100% across all 4 packages with zero warnings under `-Wall -Werror`.
+   - Verification script `scripts/tasks/phase2-agent-core-verify.sh` verified end-to-end.
+   - Task packet `docs/task_packets/phase2-agent-core.yaml` verified via `yamaarashi-exec` using zero-cost native `utai` executor.
+
 
