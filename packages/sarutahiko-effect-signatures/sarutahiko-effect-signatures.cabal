@@ -30,7 +30,10 @@ library
         Sarutahiko.Effect.Clock
         Sarutahiko.Effect.Process
         Sarutahiko.Effect.Log
+        Sarutahiko.Effect.Worktree
+        Sarutahiko.Effect.TaskQueue
     build-depends:
+
         base >= 4.20 && < 5,
         bytestring >= 0.12,
         text >= 2.1,

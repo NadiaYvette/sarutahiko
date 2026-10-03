@@ -144,19 +144,27 @@ The following sequential decisions must be resolved to reconcile the revised Yam
    - Implemented fused in-process hot-loop embedding (`toStreamly`, `fromStreamly`, `foldRows`, `foldRowsM`) over `streamly-core` in `packages/yamaarashi-streamly`.
    - Added Tasty/Hedgehog property test suite in `packages/yamaarashi/test/Spec.hs` verifying stream composition, folds, short-circuiting, and parity with `drainStepper` (all 8 properties passed with 100 iterations each).
    - Verified clean build and zero warnings (`-Wall -Werror`) across all packages.
+8. **Executed Packet 03 — Yamaarashi Selective Flow & Build Systems à la Carte Scheduler [TASK-005]:**
+   - Implemented Selective workflow AST, `TaskNode`, and `TaskGraph` over `algebraic-graphs` (`alga`) in `packages/yamaarashi-flow/src/Yamaarashi/Flow/Types.hs`.
+   - Implemented clean-slate *Build Systems à la Carte* execution scheduler with topological ordering, memoization at `$_` locations, and early cutoff in `packages/yamaarashi-flow/src/Yamaarashi/Flow/Scheduler.hs`.
+   - Defined canonical `Worktree` and `TaskQueue` GADT effect signatures in `packages/sarutahiko-effect-signatures`.
+   - Defined open tagless capability typeclasses (`MonadWorktree`, `MonadTaskQueue`) in `packages/yamaarashi-flow/src/Yamaarashi/Flow/Capability.hs` under the project-wide Façade Pattern.
+   - Added Tasty/Hedgehog test suite in `packages/yamaarashi-flow/test/Spec.hs` verifying mid-run resumption (A & B skipped from cache, only C executed), early cutoff (identical output hash prunes downstream nodes), cascading changes, and cycle rejection (all 4 tests passing with 100 iterations each).
+   - Verified clean compilation across all packages with zero warnings.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-### [TASK-005] Yamaarashi Selective Workflow Orchestrator & Task DAG (Packet yamaarashi-03-selective-flow)
-* **Objective:** Implement `packages/yamaarashi-flow`, the macro-task workflow orchestrator in the Yamaarashi family, replacing porcupine ArrowFlow per YAMAARASHI_DESIGN.md.
+### [TASK-006] Yamaarashi Spec Extraction & Task Subdivision (Packet yamaarashi-04-spec-extraction)
+* **Objective:** Implement `packages/yamaarashi-spec`, the specification extraction and analysis engine in the Yamaarashi family.
 * **Deliverables:**
-  1. `packages/yamaarashi-flow/src/Yamaarashi/Flow/Types.hs`: Selective workflow AST, `TaskNode`, `TaskGraph` over `algebraic-graphs`, content-addressed cache keys, and determinism tags.
-  2. `packages/yamaarashi-flow/src/Yamaarashi/Flow/Scheduler.hs`: Clean-slate *Build Systems à la Carte* execution scheduler with topological execution, memoization at `$_` locations, and early cutoff.
-  3. `packages/yamaarashi-flow/src/Yamaarashi/Flow/Capability.hs`: Open tagless-final capability typeclasses (`MonadWorktree`, `MonadTaskQueue`) under the project-wide Façade Pattern.
-  4. `packages/yamaarashi-flow/test/Spec.hs`: Tasty/Hedgehog test suite asserting mid-run resumption (kill after B, re-run skips A & B and only runs C) and early cutoff.
-* **Verification Command:** `cabal v2-test yamaarashi-flow` and `cabal v2-build packages/yamaarashi*`
+  1. `packages/yamaarashi-spec/src/Yamaarashi/Spec/Types.hs`: Spec AST, `TaskSpec`, and pure inert `ResourceDescriptor` (git repo, branch, worktree path, toolchains, sandbox policy).
+  2. `packages/yamaarashi-spec/src/Yamaarashi/Spec/VirtualTree.hs`: Pass 1 static dependency analysis using `Control.Selective.Over (Set ResourceDescriptor)` computing complete resource over-approximation with zero IO.
+  3. `packages/yamaarashi-spec/src/Yamaarashi/Spec/Subdivide.hs`: Recursive task subdivision via `recursion-schemes` (`ana`/`hylo`) and `IsPrimitive` granularity scoring emitting valid leaf task packets conforming to `TASK_PACKET_BEST_PRACTICES.md`.
+  4. `packages/yamaarashi-spec/test/Spec.hs`: Tasty/Hedgehog test suite verifying pure static over-approximation on multi-target specs and recursive task subdivision termination.
+* **Verification Command:** `cabal v2-test yamaarashi-spec` and `cabal v2-build packages/yamaarashi*`
+
 
 
 

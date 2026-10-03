@@ -25,6 +25,9 @@ library
     import:           commons
     exposed-modules:
         Yamaarashi.Flow
+        Yamaarashi.Flow.Types
+        Yamaarashi.Flow.Scheduler
+        Yamaarashi.Flow.Capability
     build-depends:
         base >= 4.20 && < 5,
         containers >= 0.6,
@@ -38,3 +41,21 @@ library
         sarutahiko-effect-signatures,
         yamaarashi
     hs-source-dirs:   src
+
+test-suite yamaarashi-flow-test
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        bytestring >= 0.12,
+        algebraic-graphs >= 0.7,
+        selective >= 0.5,
+        yamaarashi-flow,
+        tasty,
+        hedgehog,
+        tasty-hedgehog
+

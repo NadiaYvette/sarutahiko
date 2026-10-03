@@ -9,6 +9,8 @@ module Sarutahiko.Effect.Signatures
   , module Sarutahiko.Effect.Clock
   , module Sarutahiko.Effect.Process
   , module Sarutahiko.Effect.Log
+  , module Sarutahiko.Effect.Worktree
+  , module Sarutahiko.Effect.TaskQueue
   ) where
 
 import Sarutahiko.Effect.Clock
@@ -16,3 +18,6 @@ import Sarutahiko.Effect.Log
 import Sarutahiko.Effect.Process
 import Sarutahiko.Effect.Resource
 import Sarutahiko.Effect.Stepper
+import Sarutahiko.Effect.TaskQueue
+import Sarutahiko.Effect.Worktree
+
