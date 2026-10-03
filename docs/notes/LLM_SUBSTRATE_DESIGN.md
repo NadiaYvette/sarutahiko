@@ -220,6 +220,26 @@ five-part discipline rather than ongoing ad-hoc triage:
   yamaarashi streams; the turn program consumes them like any cursor; cancellation
   via `Resource`/`Scoped` teardown.
 
+### 6.1 Zero-Token Provider Profiles & Local Gateways
+
+For local autonomous development and live turn execution without burning API tokens
+or accumulating costs, `utai` supports OpenAI-compatible endpoints configured identically
+to the workspace Hermes routing layer (`~/.hermes/config.yaml`):
+
+1. **OmniRoute Dynamic Gateway (`custom:omniroute`):**
+   - Base URL: `http://localhost:20128/v1` (Master Key: `sk-nadia-master`)
+   - Autonomous routing models: `auto`, `auto/best-coding`, `auto/best-reasoning`, `auto/best-fast`
+   - Zero-token free fleet endpoints: `gemini/gemini-3.8-flash`, `mistral/codestral-latest`, `nvidia/nvidia/nemotron-3-super-120b-a12b`, `groq/openai/gpt-oss-120b`, `free-unlimited`
+2. **OpenCode Standalone Local Provider (`custom:opencode`):**
+   - Base URL: `http://127.0.0.1:20129/v1` (Key: `sk-opencode-local`)
+   - Models: `opencode/space-bunny-free`, `opencode/ling-3.0-flash-fin-free`, `opencode/nemotron-3.5-lightning-free`, `opencode/mimo-v2.6-flash-free`
+3. **Kaggle Local GPU Gateway (`custom:kaggle`):**
+   - Base URL: `http://127.0.0.1:20130/v1` (Key: `sk-kaggle-local`)
+   - Models: `gemma4:A12B`
+
+These endpoints speak standard OpenAI chat completions wire framing (`/v1/chat/completions`)
+over `kogaki-wire` and can be utilized seamlessly as live carriers alongside `utai-mock`.
+
 ## 7. Open items
 
 1. ~~**Codec quirk inventory v1**~~ — resolved: `registers/CODEC_QUIRKS.md` (2026-09-24),
@@ -231,9 +251,10 @@ five-part discipline rather than ongoing ad-hoc triage:
 3. **Reasoning/thinking option surface:** adopt baikai's translation semantics
    wholesale (L3) but confirm the row encoding covers clamp/collapse/drop distinctly —
    the memory engine's budget accounting may want to know *which* happened.
-4. **Hokora live-run provider:** two zero-network options — a local CLI via `Process`
-   (claude -p / codex exec) or an OpenAI-compatible codec against a localhost host
-   (ollama/vLLM); confirm stderr/exit-code mapping into `ErrorCategory` for the CLI
-   path at implementation. Either exercises the full stack.
+4. **Hokora live-run provider:** Zero-token local options include:
+   (a) Local OpenAI-compatible gateway via `http://localhost:20128/v1` (OmniRoute free fleet `auto/best-coding` or `gemini/gemini-3.8-flash`),
+   (b) OpenCode local daemon at `http://127.0.0.1:20129/v1` (`opencode/space-bunny-free`),
+   (c) Local CLI via `Process` (`claude -p` / `codex exec`), or
+   (d) `utai-mock` deterministic canned transcript fixture (default for hermetic CI).
 5. ~~**Naming:** bless `utai` (or choose otherwise)~~ — blessed 2026-09-24: `utai`
    (NIH_PLAN §6.1); `utaibon` remains reserved for the memory engine.

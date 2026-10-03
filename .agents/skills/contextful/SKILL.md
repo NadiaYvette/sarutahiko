@@ -15,11 +15,11 @@ Instead of reading dozens of files, Contextful indexes the workspace once and re
 ### 1. Generating Context Packs for Queries
 To retrieve a token-budgeted context pack matching a specific query:
 ```bash
-# Query the indexed codebase with a token budget
-cxf search "<query>" --budget 2000
+# Query the indexed codebase with an evidence pack within a token budget
+cxf query "<query>" --budget 2000
 
-# Generate an evidence pack for a feature or task
-cxf pack "effect handlers polysemy effectful" --max-tokens 1500
+# Quick search hits across symbols, code, or docs
+cxf search "<query>" --limit 10
 ```
 
 ### 2. Inspecting Project Index Status

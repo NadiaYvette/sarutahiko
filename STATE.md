@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T12:05:00+02:00
+* **Timestamp:** 2026-10-03T13:50:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `02e18e9` (*chore: remove redundant imports in Effectful and Parity modules*)
+* **HEAD Commit:** `fad81ac` (*Integrate mono-traversable for type-level non-emptiness constraints*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -195,14 +195,17 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Implemented dual-interpreter instances for `Eff es` and `Sem r` in `sarutahiko-effect-effectful` and `sarutahiko-effect-polysemy`.
     - Verified dual-interpreter parity in `sarutahiko-effect-testkit` (Clock, Resource, Process, Log parity tests all 100% passing).
     - Executed cleanly via `yamaarashi-exec run docs/task_packets/sweep-01-effect-facade.yaml` with zero warnings under `-Wall -Werror`.
+14. **Executed Pre-Phase 1.5 Sweep 02 — Type-Level Non-Emptiness via `mono-traversable` [TASK-010] (`fad81ac`):**
+    - Registered `mono-traversable` in `docs/registers/REUSE_REGISTER.md` §2.29 for sequence polymorphism and non-emptiness guarantees (`NonNull`).
+    - Added `mono-traversable >= 1.0.17` to `packages/kogaki/kogaki-wire`, `packages/sarutahiko/sarutahiko-jsonrpc`, and `packages/sarutahiko/sarutahiko-mcp`.
+    - Enforced `NonNull Text` for JSON-RPC `reqMethod` and `rawReqMethod` with `IsString (NonNull Text)` instance.
+    - Added `dispatchBatch` and `dispatchTypedBatch` for structural non-emptiness in JSON-RPC batching, returning spec-compliant `-32600 Invalid Request` on empty batches or empty methods without partial matches.
+    - Enforced `SseFieldLabel` (`NonNull ByteString`) and `renderDataLine` in `Kogaki.Wire.SSE.Parser`, eliminating all partial operations (`BSC.head`, `BS.tail`).
+    - Executed via `yamaarashi-exec`, passed all verification checks, and verified all 3 test suites (`test-kogaki-wire`, `test-jsonrpc`, `test-mcp`) passing 100% with zero warnings under `-Wall -Werror`.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
-
-### [TASK-010] Execute Pre-Phase 1.5 Sweep 02: sweep-02-mono-traversable-nonempty
-* **Objective:** Register and integrate `mono-traversable` across wire codecs and protocol packages for type-level non-emptiness guarantees (`Data.NonNull.NonNull`).
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/sweep-02-mono-traversable-nonempty.yaml`
 
 ### [TASK-011] Execute refactor-logical-string
 * **Objective:** Introduce `LogicalString` and UTF-8 codecs in `kogaki-core` per `KOGAKI_DESIGN.md` §3.

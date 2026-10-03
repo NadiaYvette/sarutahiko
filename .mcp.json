@@ -2,6 +2,18 @@
   "mcpServers": {
     "tricorder": {
       "command": "tricorder-mcp"
+    },
+    "contextful": {
+      "command": "cxf",
+      "args": ["server"]
+    },
+    "codegraph": {
+      "command": "codegraph-mcp",
+      "args": ["--mcp", "-w", "."]
+    },
+    "open-kioku": {
+      "command": "open-kioku",
+      "args": ["mcp", "serve", "--repo", "."]
     }
   }
 }

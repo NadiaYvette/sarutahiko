@@ -4,7 +4,7 @@ set -euo pipefail
 # Generate hasktags if available, fall back to ctags
 if command -v hasktags >/dev/null 2>&1; then
   echo "Generating Haskell tags using hasktags..."
-  hasktags -c packages/
+  hasktags -c -x packages/
   echo "Tags generated successfully in ./tags"
 elif command -v ctags >/dev/null 2>&1; then
   echo "Generating tags using ctags..."
