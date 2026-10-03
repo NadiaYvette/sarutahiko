@@ -470,6 +470,7 @@ cat <<'EOF' > packages/sarutahiko/sarutahiko-effect-effectful/src/Sarutahiko/Eff
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- |
@@ -676,6 +677,7 @@ cat <<'EOF' > packages/sarutahiko/sarutahiko-effect-polysemy/src/Sarutahiko/Effe
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- |
