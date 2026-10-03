@@ -268,7 +268,7 @@ runAgyStep wtDir packet dbPath = do
       putStrLn $ "=== [yamaarashi-exec] Log destination: " ++ workerLogFile ++ " ==="
 
       let modelArgs = case packetModel packet of
-            Just m  -> ["--model", T.unpack m]
+            Just m  -> ["--model", T.unpack m, "--effort", "high"]
             Nothing -> []
           cmdArgs =
             [ "-p", T.unpack promptContent
