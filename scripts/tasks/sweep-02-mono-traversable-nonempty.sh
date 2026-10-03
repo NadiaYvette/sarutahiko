@@ -697,7 +697,7 @@ module Sarutahiko.MCP.Server
   , formatErrorResponse
   ) where
 
-import Control.Concurrent.MVar (MVar, newMVar, readMVar, modifyMVar)
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
@@ -729,6 +729,7 @@ import Sarutahiko.MCP.Types
   , McpServerState (..)
   , ToolDef (..)
   , ToolHandler
+  , defaultServerCapabilities
   , decodeCallToolParams
   , decodeInitializeParams
   , encodeCallToolResult
@@ -788,92 +789,127 @@ handleMcpPayload server payload = do
         Just validBatch ->
           if isBatch
             then do
-              responses <- mapM (handleMcpRequest server) (toNullable validBatch)
+              responses <- mapM (dispatchParsedRequest server) (toNullable validBatch)
               case fromNullable (catMaybes responses) of
                 Nothing -> pure Nothing
                 Just activeResponses ->
                   pure (Just ("[" <> BS.intercalate "," (toNullable activeResponses) <> "]"))
-            else handleMcpRequest server (NN.head validBatch)
+            else dispatchParsedRequest server (NN.head validBatch)
 
--- | Handle a single raw JSON-RPC request.
-handleMcpRequest
+-- | Dispatch an item parsed by 'parseRawRequests'.
+dispatchParsedRequest
   :: McpServer
   -> Either (Maybe JsonRpcId, JsonRpcError) RawJsonRpcRequest
   -> IO (Maybe ByteString)
-handleMcpRequest _ (Left (mId, err)) =
+dispatchParsedRequest _ (Left (mId, err)) =
   pure (Just (formatErrorResponse mId err))
+dispatchParsedRequest server (Right rawReq) =
+  handleMcpRequest server rawReq
 
-handleMcpRequest server (Right (RawJsonRpcRequest mId method mParams)) = do
+-- | Handle a single raw JSON-RPC request frame.
+handleMcpRequest :: McpServer -> RawJsonRpcRequest -> IO (Maybe ByteString)
+handleMcpRequest server req = do
   st <- readMVar (msStateVar server)
-  case checkStateGuard (isInitialized st) (toNullable method) of
+  let mId = rawReqId req
+      method = toNullable (rawReqMethod req)
+      mParams = rawReqParams req
+
+  -- Check StateGuard invariant
+  case checkStateGuard (serverInitialized st) method of
     Just err ->
-      case mId of
-        Nothing -> pure Nothing
-        Just reqIdent -> pure (Just (formatErrorResponse (Just reqIdent) err))
-    Nothing -> do
-      case toNullable method of
-        "initialize" -> do
-          case mParams of
-            Nothing ->
-              pure (Just (formatErrorResponse mId (errInvalidParams "Missing initialize parameters")))
-            Just pBytes ->
-              case decodeInitializeParams pBytes of
-                Nothing ->
-                  pure (Just (formatErrorResponse mId (errInvalidParams "Malformed initialize parameters")))
-                Just _initParams -> do
-                  let res = InitializeResult
-                        { irProtocolVersion = mcpVersion2025_03_26
-                        , irCapabilities     = defaultServerCapabilities
-                        , irServerInfo       = msServerInfo server
-                        }
-                  pure (Just (formatSuccessResponse mId (encodeInitializeResult res)))
+      pure (Just (formatErrorResponse mId err))
+    Nothing ->
+      dispatchMethod server st mId method mParams
 
-        "notifications/initialized" -> do
-          modifyMVar (msStateVar server) $ \s ->
-            pure (s { isInitialized = True }, ())
-          pure Nothing
+-- | Internal method dispatch for permitted methods.
+dispatchMethod
+  :: McpServer
+  -> McpServerState
+  -> Maybe JsonRpcId
+  -> Text
+  -> Maybe ByteString
+  -> IO (Maybe ByteString)
+dispatchMethod server st mId method mParams = case method of
+  "initialize" -> do
+    case mParams of
+      Nothing ->
+        pure (Just (formatErrorResponse mId (errInvalidParams "Missing initialize params")))
+      Just paramsBytes ->
+        case decodeInitializeParams paramsBytes of
+          Left decodeErr ->
+            pure (Just (formatErrorResponse mId (errInvalidParams decodeErr)))
+          Right ip -> do
+            -- Record client capabilities in state
+            modifyMVar (msStateVar server) $ \s ->
+              pure (s { clientCapabilities = Just (ipCapabilities ip) }, ())
+            let result = InitializeResult
+                  { irProtocolVersion = mcpVersion2025_03_26
+                  , irCapabilities     = defaultServerCapabilities
+                  , irServerInfo       = msServerInfo server
+                  , irInstructions     = Just "Sarutahiko MCP Server ready."
+                  }
+                resBytes = encodeInitializeResult result
+            case mId of
+              Nothing  -> pure Nothing
+              Just reqId -> pure (Just (formatSuccessResponse reqId resBytes))
 
-        "ping" ->
-          pure (Just (formatSuccessResponse mId "{}"))
+  "notifications/initialized" -> do
+    -- Transition server state to initialized = True
+    modifyMVar (msStateVar server) $ \s ->
+      pure (s { serverInitialized = True }, ())
+    -- Notifications MUST NOT produce a wire response
+    pure Nothing
 
-        "tools/list" -> do
-          let toolDefs = map fst (Map.elems (registeredTools st))
-              res = ListToolsResult toolDefs Nothing
-          pure (Just (formatSuccessResponse mId (encodeListToolsResult res)))
+  "ping" ->
+    case mId of
+      Nothing  -> pure Nothing
+      Just reqId -> pure (Just (formatSuccessResponse reqId "{}"))
 
-        "tools/call" -> do
-          case mParams of
-            Nothing ->
-              pure (Just (formatErrorResponse mId (errInvalidParams "Missing tools/call parameters")))
-            Just pBytes ->
-              case decodeCallToolParams pBytes of
-                Nothing ->
-                  pure (Just (formatErrorResponse mId (errInvalidParams "Malformed tools/call parameters")))
-                Just callParams -> do
-                  case Map.lookup (cpName callParams) (registeredTools st) of
-                    Nothing ->
-                      pure (Just (formatErrorResponse mId (errMethodNotFound ("Tool not found: " <> cpName callParams))))
-                    Just (_, handler) -> do
-                      toolRes <- handler (cpArguments callParams)
-                      pure (Just (formatSuccessResponse mId (encodeCallToolResult toolRes)))
+  "tools/list" -> do
+    let tools = [def | (def, _) <- Map.elems (registeredTools st)]
+        result = ListToolsResult
+          { ltrTools      = tools
+          , ltrNextCursor = Nothing
+          }
+        resBytes = encodeListToolsResult result
+    case mId of
+      Nothing  -> pure Nothing
+      Just reqId -> pure (Just (formatSuccessResponse reqId resBytes))
 
-        _ ->
-          case mId of
-            Nothing -> pure Nothing
-            Just reqIdent ->
-              pure (Just (formatErrorResponse (Just reqIdent) (errMethodNotFound (toNullable method))))
+  "tools/call" -> do
+    case mParams of
+      Nothing ->
+        pure (Just (formatErrorResponse mId (errInvalidParams "Missing tools/call params")))
+      Just paramsBytes ->
+        case decodeCallToolParams paramsBytes of
+          Left decodeErr ->
+            pure (Just (formatErrorResponse mId (errInvalidParams decodeErr)))
+          Right ctp -> do
+            let tName = ctpName ctp
+            case Map.lookup tName (registeredTools st) of
+              Nothing ->
+                pure (Just (formatErrorResponse mId (errMethodNotFound ("Unknown tool: " <> tName))))
+              Just (_, handler) -> do
+                callRes <- handler (ctpArguments ctp)
+                let resBytes = encodeCallToolResult callRes
+                case mId of
+                  Nothing  -> pure Nothing
+                  Just reqId -> pure (Just (formatSuccessResponse reqId resBytes))
 
--- | Format a success response with the given result payload bytes.
-formatSuccessResponse :: Maybe JsonRpcId -> ByteString -> ByteString
-formatSuccessResponse mIdent resultBytes =
-  let idPart = maybe "null" encodeJsonRpcId mIdent
-  in "{\"id\":" <> idPart <> ",\"jsonrpc\":\"2.0\",\"result\":" <> resultBytes <> "}"
+  otherMethod ->
+    case mId of
+      Nothing  -> pure Nothing
+      Just reqId -> pure (Just (formatErrorResponse (Just reqId) (errMethodNotFound otherMethod)))
 
--- | Format an error response for the given JSON-RPC error.
+-- | Helper to format a JSON-RPC 2.0 success response.
+formatSuccessResponse :: JsonRpcId -> ByteString -> ByteString
+formatSuccessResponse reqId resultBytes =
+  "{\"id\":" <> encodeJsonRpcId reqId <> ",\"jsonrpc\":\"2.0\",\"result\":" <> resultBytes <> "}"
+
+-- | Helper to format a JSON-RPC 2.0 error response.
 formatErrorResponse :: Maybe JsonRpcId -> JsonRpcError -> ByteString
-formatErrorResponse mIdent err =
-  let idPart = maybe "null" encodeJsonRpcId mIdent
-  in "{\"error\":" <> encodeJsonRpcError err <> ",\"id\":" <> idPart <> ",\"jsonrpc\":\"2.0\"}"
+formatErrorResponse mId err =
+  "{\"error\":" <> encodeJsonRpcError err <> ",\"id\":" <> maybe "null" encodeJsonRpcId mId <> ",\"jsonrpc\":\"2.0\"}"
 EOF
 
 echo "=== [sweep-02] Transformation script complete ==="
