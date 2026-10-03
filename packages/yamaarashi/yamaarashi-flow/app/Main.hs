@@ -643,7 +643,7 @@ createGitCommit wtDir packet actualExecutor = do
           "Ref: " <> packetId packet <> "\n\n" <>
           baseAttribution
 
-  runProcess_ (setWorkingDir wtDir (proc "git" ["commit", "-m", T.unpack commitMsg]))
+  runProcess_ (setWorkingDir wtDir (proc "git" ["commit", "--allow-empty", "-m", T.unpack commitMsg]))
 
   (out, _) <- readProcess_ (setWorkingDir wtDir (proc "git" ["rev-parse", "HEAD"]))
   let commitHash = T.strip (TE.decodeUtf8 (BSC.toStrict out))
