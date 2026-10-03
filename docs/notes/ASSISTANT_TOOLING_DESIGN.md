@@ -1107,3 +1107,22 @@ governing transformer-based LLMs and autonomous agent scaffolding:
 - **Reach for Kanban** for multi-step feature implementations, architectural refactors, and tactical
   packages (e.g., Phase 1 TP-1.5), decomposing work into dependent cards with clean process isolation.
 
+#### 4. The First-Class `yamaarashi-exec` Hermes Runner (`executor: hermes`)
+
+To operationalize the decoupled Kanban / SWE-bench scaffolder pattern directly in `sarutahiko`,
+[`packages/yamaarashi/yamaarashi-flow/app/Main.hs`](../../packages/yamaarashi/yamaarashi-flow/app/Main.hs) natively
+supports spawning ephemeral Hermes leaf workers (`executor: hermes`) inside isolated git worktrees:
+
+1. **Worktree Provisioning & Intel Seeding:** When `yamaarashi-exec run <packet.yaml>` runs, it
+   creates a temporary git worktree (`sarutahiko-wt-<id>`) and seeds `./tags` from the parent repo,
+   granting the spawned worker instant, zero-token symbol lookups (`grep -w "^<Symbol>" tags`).
+2. **Headless Execution:** Invokes `hermes chat --in <wtDir> --query-file <prompt> --oneshot --yolo --accept-hooks`
+   preloaded with skills (`code-navigation`, `tricorder`, `contextful`).
+3. **Zero-Token Feedback Loop:** The worker iterates against local compiler diagnostics (`tricorder status --json`,
+   `<50` tokens) routing through zero-token provider endpoints (`custom:omniroute`, `custom:opencode`).
+4. **Outer Verification Gate & Attribution:** Once Hermes exits, `yamaarashi-exec` enforces the
+   inviolable verification gate (`cabal v2-build`, `cabal v2-test`, and `<id>-verify.sh`).
+   If all gates pass, it creates a git commit with Linux kernel-style `Assisted-by:` and
+   `Orchestrated-by:` trailers, and fast-forward merges the worktree to `HEAD`.
+
+

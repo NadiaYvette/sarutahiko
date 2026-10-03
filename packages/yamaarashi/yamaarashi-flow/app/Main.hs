@@ -5,12 +5,19 @@
 module Main (main) where
 
 import Control.Exception (bracket, throwIO)
+import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BSC
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory
+  ( copyFile
+  , createDirectoryIfMissing
+  , doesFileExist
+  , findExecutable
+  , removeFile
+  )
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (takeDirectory, (</>))
@@ -22,6 +29,12 @@ data TaskPacket = TaskPacket
   , packetTitle       :: !Text
   , packetDescription :: !Text
   , packetPackages    :: ![Text]
+  , packetExecutor    :: !Text
+  , packetModel       :: !(Maybe Text)
+  , packetSkills      :: ![Text]
+  , packetMaxTurns    :: !(Maybe Int)
+  , packetRunBudget   :: !(Maybe Int)
+  , packetRawYaml     :: !Text
   } deriving (Show)
 
 main :: IO ()
@@ -42,6 +55,12 @@ printHelp = do
   putStrLn "Commands:"
   putStrLn "  run <packet.yaml>  Execute a task packet in an isolated worktree"
   putStrLn "  --help             Show this help message"
+  putStrLn ""
+  putStrLn "Execution Engines (set in packet via 'executor:'):"
+  putStrLn "  executor: hermes   Delegates turn execution to a spawned Hermes leaf worker"
+  putStrLn "                     with code-navigation, tricorder, and zero-token free fleet."
+  putStrLn "  executor: script   Runs scripts/tasks/<id>.sh in the isolated worktree."
+  putStrLn "  executor: auto     Uses script if scripts/tasks/<id>.sh exists, else hermes."
 
 -- | Execute a task packet through an isolated worktree with SQLite event tracking.
 runTaskPacket :: FilePath -> IO ()
@@ -73,6 +92,10 @@ runTaskPacket path = do
 
   let provision = do
         runProcess_ (proc "git" ["worktree", "add", "-B", branchName, worktreeDir, "HEAD"])
+        hasTags <- doesFileExist (repoRoot </> "tags")
+        when hasTags $ do
+          copyFile (repoRoot </> "tags") (worktreeDir </> "tags")
+          putStrLn "=== [yamaarashi-exec] Seeded ./tags into isolated worktree ==="
         logEvent dbPath (packetId packet) "WORKTREE_PROVISIONED" (T.pack worktreeDir)
         pure worktreeDir
 
@@ -86,8 +109,8 @@ runTaskPacket path = do
     -- Step 1: Execute Task Actions
     putStrLn "=== [yamaarashi-exec] Executing task step ==="
     logEvent dbPath (packetId packet) "STEP_STARTED" "Applying task modifications"
-    executeTaskStep wtDir (packetId packet)
-    logEvent dbPath (packetId packet) "STEP_EXECUTED" "Modifications applied successfully"
+    actualExec <- executeTaskStep wtDir packet dbPath
+    logEvent dbPath (packetId packet) "STEP_EXECUTED" ("Modifications applied successfully via " <> actualExec)
 
     -- Step 2: Verification Gate
     putStrLn "=== [yamaarashi-exec] Running verification gate ==="
@@ -97,7 +120,7 @@ runTaskPacket path = do
 
     -- Step 3: Git Commit
     putStrLn "=== [yamaarashi-exec] Creating git commit with attribution trailers ==="
-    commitHash <- createGitCommit wtDir packet
+    commitHash <- createGitCommit wtDir packet actualExec
     logEvent dbPath (packetId packet) "COMMIT_CREATED" commitHash
 
     -- Step 4: Fast-forward merge into main repository
@@ -139,10 +162,36 @@ parsePacket path txt = do
             items = takeWhile (\l -> T.isPrefixOf "  - " l || T.isPrefixOf "- " l) afterKey
             clean l = T.strip (T.dropWhile (\c -> c == ' ' || c == '-') (fst (T.breakOn "#" l)))
         in filter (not . T.null) (map clean items)
+      extractBlock key =
+        let afterKey = drop 1 $ dropWhile (\l -> not (T.isPrefixOf (key <> ":") l)) lns
+            headerLine = case filter (T.isPrefixOf (key <> ":")) lns of
+              (l:_) -> T.strip (T.drop (T.length key + 1) l)
+              []    -> ""
+        in if headerLine == "|" || headerLine == ">" || T.null headerLine
+             then
+               let blockLines = takeWhile (\l -> T.null (T.strip l) || T.isPrefixOf "  " l || T.isPrefixOf "\t" l) afterKey
+                   stripIndent l = if T.isPrefixOf "  " l then T.drop 2 l else l
+               in T.unlines (map stripIndent blockLines)
+             else headerLine
+
       pId = findVal "id"
       pTitle = findVal "title"
-      pDesc = findVal "description"
+      pDesc = extractBlock "description"
       pPackages = extractList "packages"
+      pExecRaw = findVal "executor"
+      pModelRaw = findVal "model"
+      pSkills = extractList "skills"
+      pMaxTurnsRaw = findVal "max_turns"
+      pBudgetRaw = findVal "run_budget"
+
+      pModel = if T.null pModelRaw then Nothing else Just pModelRaw
+      pMaxTurns = case reads (T.unpack pMaxTurnsRaw) of
+        [(n, "")] -> Just n
+        _         -> Nothing
+      pBudget = case reads (T.unpack pBudgetRaw) of
+        [(n, "")] -> Just n
+        _         -> Nothing
+      pExec = if T.null pExecRaw then "auto" else pExecRaw
   if T.null pId
     then throwIO (userError $ "Malformed task packet in " ++ path ++ ": missing 'id'")
     else pure $ TaskPacket
@@ -150,26 +199,130 @@ parsePacket path txt = do
       , packetTitle = if T.null pTitle then pId else pTitle
       , packetDescription = pDesc
       , packetPackages = pPackages
+      , packetExecutor = pExec
+      , packetModel = pModel
+      , packetSkills = pSkills
+      , packetMaxTurns = pMaxTurns
+      , packetRunBudget = pBudget
+      , packetRawYaml = txt
       }
 
 -- | Execute task actions inside the isolated worktree directory.
-executeTaskStep :: FilePath -> Text -> IO ()
-executeTaskStep wtDir tId = do
+-- Returns the executor name that ran the step ("hermes", "script", or "inline").
+executeTaskStep :: FilePath -> TaskPacket -> FilePath -> IO Text
+executeTaskStep wtDir packet dbPath = do
+  let tId = packetId packet
   case tId of
     "fix-kogaki-wire-lexer-nonempty" -> do
       putStrLn "  -> Applying Kogaki.Wire.Json.Lexer safe non-empty refactoring..."
       let targetFile = wtDir </> "packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs"
       TIO.writeFile targetFile fixedLexerContent
+      pure "inline"
     _ -> do
-      -- Check if custom script exists
       let customScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ ".sh"
-      exists <- doesFileExist customScript
-      if exists
-        then do
-          putStrLn $ "  -> Running task script: " ++ customScript
-          runProcess_ (setWorkingDir wtDir (proc "sh" [customScript]))
-        else
-          putStrLn "  -> No custom transformation script found; ready for in-worktree execution."
+      scriptExists <- doesFileExist customScript
+      let execMode = packetExecutor packet
+      case execMode of
+        "script" ->
+          if scriptExists
+            then runScriptStep wtDir customScript >> pure "script"
+            else throwIO (userError $ "Explicit script executor requested, but script missing: " ++ customScript)
+        "hermes" ->
+          runHermesStep wtDir packet dbPath >> pure "hermes"
+        "auto" ->
+          if scriptExists
+            then runScriptStep wtDir customScript >> pure "script"
+            else runHermesStep wtDir packet dbPath >> pure "hermes"
+        other ->
+          throwIO (userError $ "Unknown executor: " ++ T.unpack other ++ " (expected 'hermes', 'script', or 'auto')")
+
+-- | Execute task script in the isolated worktree.
+runScriptStep :: FilePath -> FilePath -> IO ()
+runScriptStep wtDir scriptPath = do
+  putStrLn $ "  -> Running task script: " ++ scriptPath
+  runProcess_ (setWorkingDir wtDir (proc "sh" [scriptPath]))
+
+-- | Delegate task execution to a spawned Hermes leaf worker agent.
+runHermesStep :: FilePath -> TaskPacket -> FilePath -> IO ()
+runHermesStep wtDir packet dbPath = do
+  mHermes <- findExecutable "hermes"
+  case mHermes of
+    Nothing -> throwIO (userError "Hermes executor requested, but 'hermes' executable was not found in PATH.")
+    Just hermesBin -> do
+      let tId = packetId packet
+          promptFile = wtDir </> ".hermes-task-prompt.md"
+          promptContent = buildHermesPrompt packet
+      TIO.writeFile promptFile promptContent
+      logEvent dbPath tId "HERMES_SPAWNED" ("Prompt written to " <> T.pack promptFile)
+      putStrLn $ "=== [yamaarashi-exec] Spawning Hermes leaf worker in: " ++ wtDir ++ " ==="
+      let baseArgs =
+            [ "chat"
+            , "--in", wtDir
+            , "--query-file", promptFile
+            , "--oneshot"
+            , "--yolo"
+            , "--accept-hooks"
+            , "--format", "text"
+            ]
+          skillsArgs = case packetSkills packet of
+            [] -> ["-s", "code-navigation,tricorder,contextful"]
+            ss -> ["-s", T.unpack (T.intercalate "," ss)]
+          turnsArgs = case packetMaxTurns packet of
+            Just n  -> ["--max-turns", show n]
+            Nothing -> ["--max-turns", "40"]
+          budgetArgs = case packetRunBudget packet of
+            Just b  -> ["--run-budget", show b]
+            Nothing -> ["--run-budget", "900"]
+          modelArgs = case packetModel packet of
+            Just m  -> ["-m", T.unpack m]
+            Nothing -> []
+          cmdArgs = baseArgs ++ skillsArgs ++ turnsArgs ++ budgetArgs ++ modelArgs
+
+      putStrLn $ "=== [yamaarashi-exec] Command: " ++ hermesBin ++ " " ++ unwords cmdArgs ++ " ==="
+      exitCode <- runProcess (proc hermesBin cmdArgs)
+      case exitCode of
+        ExitSuccess -> do
+          logEvent dbPath tId "HERMES_SUCCEEDED" "Hermes task execution exited with code 0"
+          putStrLn "=== [yamaarashi-exec] Hermes leaf worker completed successfully ==="
+        ExitFailure code -> do
+          let errMsg = "Hermes execution failed with exit code " ++ show code
+          logEvent dbPath tId "HERMES_FAILED" (T.pack errMsg)
+          throwIO (userError errMsg)
+
+-- | Construct structured prompt markdown for the spawned Hermes leaf worker.
+buildHermesPrompt :: TaskPacket -> Text
+buildHermesPrompt packet = T.unlines
+  [ "# Autonomous Task Packet: " <> packetTitle packet
+  , ""
+  , "## Packet Identifier"
+  , packetId packet
+  , ""
+  , "## Target Packages"
+  , if null (packetPackages packet)
+      then "All repository packages"
+      else T.intercalate ", " (packetPackages packet)
+  , ""
+  , "## Task Specification"
+  , packetDescription packet
+  , ""
+  , "## Task Packet Blueprint"
+  , "```yaml"
+  , packetRawYaml packet
+  , "```"
+  , ""
+  , "## Operational Invariants & Ground Rules"
+  , "1. Strict Worktree Isolation: You are operating inside an isolated git worktree branch."
+  , "   Do NOT attempt to cd outside this directory or modify parent repos."
+  , "2. GHC2024 & Zero Warnings: All Haskell code MUST compile cleanly with -Wall -Werror."
+  , "   Avoid unused imports, incomplete patterns, or partial functions (no head, tail, fromJust, !!)."
+  , "3. Zero-Token Progressive Code Navigation:"
+  , "   - Use tags to jump to symbol definitions instantly (<15 tokens): `grep -w \"^<Symbol>\" tags`"
+  , "   - Use `tricorder status --json` or `status(wait: true)` to get JSON compiler diagnostics in <50 tokens."
+  , "   - Never dump whole 500-line source modules; view targeted slices with start/end lines."
+  , "4. Verification Pre-requisite: Before finishing, verify that your implementation builds"
+  , "   and passes tests via `cabal v2-build` and `cabal v2-test`."
+  , "5. Conclude cleanly: Once code is in place and verified, output your summary and exit."
+  ]
 
 -- | Verification gate: builds packages, runs tests, and audits code.
 runVerificationGate :: FilePath -> TaskPacket -> IO ()
@@ -218,9 +371,22 @@ runVerificationGate wtDir packet = do
         else pure ()
 
 -- | Create git commit in worktree with standard attribution trailers.
-createGitCommit :: FilePath -> TaskPacket -> IO Text
-createGitCommit wtDir packet = do
+createGitCommit :: FilePath -> TaskPacket -> Text -> IO Text
+createGitCommit wtDir packet actualExecutor = do
+  let promptFile = wtDir </> ".hermes-task-prompt.md"
+  promptExists <- doesFileExist promptFile
+  when promptExists $ removeFile promptFile
+
   runProcess_ (setWorkingDir wtDir (proc "git" ["add", "-A"]))
+
+  let baseAttribution = case actualExecutor of
+        "hermes" ->
+          let m = case packetModel packet of
+                Just mdl -> "Hermes Agent (" <> mdl <> ")"
+                Nothing  -> "Hermes Agent (OmniRoute / auto/best-coding)"
+          in "Assisted-by: " <> m <> "\nOrchestrated-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
+        _ ->
+          "Assisted-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
 
   let commitMsg = case packetId packet of
         "fix-kogaki-wire-lexer-nonempty" ->
@@ -233,7 +399,7 @@ createGitCommit wtDir packet = do
           packetTitle packet <> "\n\n" <>
           packetDescription packet <> "\n\n" <>
           "Ref: " <> packetId packet <> "\n\n" <>
-          "Assisted-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
+          baseAttribution
 
   runProcess_ (setWorkingDir wtDir (proc "git" ["commit", "-m", T.unpack commitMsg]))
 

@@ -209,14 +209,22 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Enforced zero partial functions across `kogaki-core` and `kogaki-wire`.
     - Added Hedgehog property test suite in `packages/kogaki/kogaki-core/test/Spec.hs` (6/6 tests passing with 100 runs each).
     - Executed cleanly via `yamaarashi-exec run docs/task_packets/refactor-logical-string.yaml` in isolated git worktree with SQLite event tracking, passed verification gates, and fast-forward merged to HEAD.
+16. **Integrated First-Class Hermes Agent Delegation in `yamaarashi-exec`:**
+    - Extended `TaskPacket` envelope and parser in `packages/yamaarashi/yamaarashi-flow/app/Main.hs` with `executor` (`hermes`, `script`, `auto`), `model`, `skills`, `max_turns`, and `run_budget` fields adhering to Zero-Aeson parsing.
+    - Added automated seeding of `./tags` into isolated worktree on provision to grant spawned leaf workers instant, zero-token symbol lookups.
+    - Implemented `runHermesStep` delegating turn execution headlessly (`hermes chat --in <wtDir> --query-file ... --oneshot --yolo --accept-hooks`) with full access to code intelligence tools (`tags`, `tricorder`, `contextful`).
+    - Integrated structured markdown prompt synthesis (`buildHermesPrompt`) embedding task invariants, ground rules, and verbatim YAML blueprints.
+    - Updated git commit creator with Linux kernel-style `Assisted-by` attribution reflecting Hermes / OmniRoute models alongside Antigravity architecture attribution.
+    - Verified compilation and test suite (`yamaarashi-flow-test`) passing 100% with zero warnings under `-Wall -Werror`.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-> [!NOTE] Strategic Pause Boundary
-> Foundational refactors (Sweep 01 effect façade, Sweep 02 mono-traversable, Sweep 03 logical strings) are COMPLETE.
-> Pausing execution before entering Phase 1.5 (`phase1.5-01-hashigakari-sqlite`) to establish comprehensive token burn minimization strategies.
+> [!NOTE] Strategic Pause Boundary & Zero-Token Delegation Ready
+> Foundational refactors and first-class Hermes execution delegation are COMPLETE.
+> `yamaarashi-exec` is equipped to delegate task packets directly to zero-token Hermes instances (`executor: hermes`) with local code intelligence tools (`tags`, `tricorder`).
+> Operational frontier is primed for Phase 1.5 Packet 01 (`phase1.5-01-hashigakari-sqlite`).
 
 ### [TASK-012] Execute Phase 1.5 Packet 01: phase1.5-01-hashigakari-sqlite
 * **Objective:** Implement `packages/hashigakari/hashigakari-sqlite` embedded carrier for event store and task queue.
