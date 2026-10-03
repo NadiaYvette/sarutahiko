@@ -1,42 +1,48 @@
 # Agentic Task Management Design
 
-**Version:** DRAFT v0.2  
-**Date:** 2026-09-27  
-**Related:** NIH_PLAN.md §6, YAMAARASHI_DESIGN.md, PHASE_*_PLAN.md, AGENTS.md, HERMES_INTEGRATION.md (typed-language-model-arena), VERIFICATION_LADDER.md, HARNESS_CLONE_QUEUE.md
+**Version:** REVISED v0.3 · 2026-10-03 (Reconciled & Blessed)  
+**Related:** `NIH_PLAN.md` §6, `YAMAARASHI_DESIGN.md`, `HASHIGAKARI_DESIGN.md`, `LLM_SUBSTRATE_DESIGN.md`,
+`STATE.md` (Decisions 1–6), `REUSE_REGISTER.md` (§2.12, §2.25, §2.26, §2.27), `AGENTS.md`
 
 ---
 
 ## 1. Executive Summary
 
-This document unifies the agentic task‑management substrate currently evolving in **sarutahiko** with proven patterns from **Nadeem Bitar’s AI ecosystem** (keiro, keiro‑runtime‑kenshou, kioku, kiroku, pgmq‑hs, etc.) and the **tiered agent architecture** explored in **typed‑language‑model‑arena**.  
-The result is a **durable, event‑sourced, DAG‑orchestrated task system** that:
+This document defines the agentic task-management substrate in **sarutahiko**. It reconciles earlier design
+explorations with the canonical architecture established across `HASHIGAKARI_DESIGN.md`, `YAMAARASHI_DESIGN.md`,
+and the repository's inviolable invariants (`PLAN.md`):
 
-* Guarantees **machine‑checkable acceptance** for every task packet (MIT‑style correctness), including formal verification when required (via tessera/telix/pgcl/etc. harnesses).  
-* Survives **context resets** via the two‑file loop (`PLAN.md`/`STATE.md`) – recognized as an interim placeholder pending a richer event‑sourced ledger.  
-* Executes tasks on **isolated git worktrees** to avoid cross‑talk.  
-* Persists the task ledger in an **append‑only event store** (kiroku) backed by a **PGMQ‑based work‑queue** (pgmq‑hs) for reliable, at‑least‑once delivery.  
-* Provides **observable DAG execution** via yamaarashi‑flow (porcupine ArrowFlow) with back‑pressure aware scheduling.  
-* Exposes a **Kanban‑style UI** (hermes_cli/kanban*) that reads the event store to render boards, while workers pull ready tasks from the queue.  
-* Integrates with the **typed‑language‑model‑arena tiered pipeline** (ReAct agents, tracing, multimodal tooling) as optional worker implementations.  
-* Leverages **keiro/keiro‑runtime‑kenshou** for declarative retry workflows, timeouts, and workflow orchestration, superseding ad‑hoc manual retry logic.  
+* Guarantees **machine-checkable acceptance** for every task packet (MIT-style correctness), including
+  formal verification when required (via tessera/telix/pgcl/etc. harnesses).
+* Survives **context resets** via the two-file loop (`PLAN.md`/`STATE.md`), which acts as an operational
+  frontier projecting from a durable, row-typed event ledger.
+* Executes tasks on **isolated git worktrees** to eliminate cross-talk.
+* Persists the task ledger in an **append-only event store table** natively governed by **`hashigakari`**
+  (the row-native, effect-based successor to `persistent`), utilizing `large-anon` records and `kogaki-wire` codecs.
+* Manages task dispatch through **atomic transaction leases** over the event stream, providing durable FIFO
+  delivery without mandating external message broker daemons (`pgmq-hs`).
+* Orchestrates workflows via **`yamaarashi-flow`** (Selective Applicative Functors over `alga` DAGs under
+  *Build Systems à la Carte* principles, replacing Porcupine's arrow-based engine).
+* Implements the **Façade Pattern** for effect neutrality: open capability typeclasses (`MonadTaskQueue`,
+  `MonadEventStore`, `MonadWorktree`) backed by neutral GADT signatures in `sarutahiko-effect-signatures`.
+* Integrates **`utai`** as the canonical LLM substrate, with **MCP Sampling (`utai-mcp`)** available as an
+  additional backend to delegate model execution to host REPLs (Hermes, Claude Code) when embedded.
 
 ---
 
 ## 2. Core Concepts
 
-| Concept | Origin | Role |
+| Concept | Origin / Implementation | Role |
 |---|---|---|
-| **Hermetic Task Packet (TP)** | sarutahiko (PHASE_*_PLAN.md) | Atomic unit of work with explicit pre‑/post‑conditions and verification command (may include formal verification harnesses). |
-| **Two‑File Loop (PLAN.md / STATE.md)** | sarutahiko (AGENTS.md) | Interim placeholder separating immutable spec from mutable operational frontier; survives context resets. |
-| **Yamaarashi‑Flow / Porcupine ArrowFlow** | sarutahiko (YAMAARASHI_DESIGN.md) | Declarative DAG orchestrator; tasks are nodes, edges encode data/control dependencies. |
-| **Kanban Swarm Service** | sarutahiko (NIH_PLAN.md §6) | Runtime service that maintains a task board, dispatches ready tasks to workers. |
-| **PGMQ‑Based Work Queue** | Nadeem Bitar (pgmq‑hs) | Durable, FIFO queue with transactional dequeue for task dispatch. |
-| **Kiroku Event Store** | Nadeem Bitar (kiroku) | Append‑only log of all task lifecycle events (claimed, started, completed, failed). Provides replay‑able audit trail. |
-| **Kiroku Streams** | Nadeem Bitar (kiroku) | Typed, partitioned streams derived from the event store for real‑time dashboards, metrics, and alerting. |
-| **Keiro Timers & Workflows** | Nadeem Bitar (keiro, keiro‑runtime‑kenshou) | Declarative timers, delayed retries, and workflow definitions (e.g., exponential back‑off for failed tasks). Supersedes simple retry loops. |
-| **Typed‑Language‑Model‑Arena Tiers** | typed‑language‑model‑arena (shikumi‑campaign tiers) | Optional worker implementations: tier‑2 combinators, tier‑3 optimizers, tier‑4 trace/replay, tier‑5 ReAct agents, tier‑6 CLI, tier‑7 streaming/multimodal. |
-| **Observability (Kagami‑Ita)** | sarutahiko (OBSERVABILITY_DESIGN.md) | Events from kiroku feed tracing, metrics, and replay for debugging agent runs. |
-| **Formal Verification Harnesses** | typed‑language‑model‑arena (VERIFICATION_LADDER.md, HARNESS_CLONE_QUEUE.md) | External drivers (e.g., tessera/host@proof, telix/host@verus, pgcl matrix) that can be invoked as verification steps within a TP. |
+| **Hermetic Task Packet (TP)** | sarutahiko (`TASK_PACKET_BEST_PRACTICES.md`) | Atomic unit of work with fail-fast verification steps, minimal buildable skeletons, and explicit pre-/post-conditions. |
+| **Two-File Loop (`PLAN.md` / `STATE.md`)** | sarutahiko (`AGENTS.md`) | Durable operational frontier surviving context resets; projects active task state from the event ledger. |
+| **Yamaarashi-Flow (Selective DAG)** | sarutahiko (`YAMAARASHI_DESIGN.md`) | Two-pass Selective Applicative workflow orchestrator; ahead-of-time `VirtualTree` over-approximation and *Build Systems à la Carte* scheduling. |
+| **Hashigakari Event Store** | sarutahiko (`HASHIGAKARI_DESIGN.md`) | Append-only event log table of `large-anon` records; zero Template Haskell; runs under `Resource` / `StreamingDB` effects. |
+| **Native Task Queue** | sarutahiko (`hashigakari`) | FIFO dispatch and visibility timeouts via atomic row transitions (`UPDATE ... RETURNING` in Postgres; SQLite transactions). |
+| **Façade Effect Architecture** | sarutahiko (`STATE.md` Decision 2) | Monad-agnostic capability typeclasses in orchestrator modules, delegating to dual-interpreted GADTs (`sarutahiko-effect-signatures`). |
+| **Utai & MCP Sampling** | sarutahiko (`LLM_SUBSTRATE_DESIGN.md`) | Direct provider row codecs (`utai-openai`, `utai-anthropic`) with MCP Sampling (`utai-mcp`) for host-delegated generation. |
+| **Pure State Projections** | sarutahiko (`NIH_PLAN.md` §6) | Kanban boards, task readiness, and session histories are pure reducers (folds) over the event stream. |
+| **Formal Verification Harnesses** | arena (`VERIFICATION_LADDER.md`) | External verification drivers (tessera, telix, pgcl) invoked as machine-checked acceptance steps. |
 
 ---
 
@@ -53,14 +59,13 @@ The result is a **durable, event‑sourced, DAG‑orchestrated task system** tha
           |                           |                   +------------------+
           |                           |                   |  Verification   |
           |                           |                   |  (cabal test,   |
-          |                           |                   |   linter,       |
-          |                           |                   |   formal VF)   |
+          |                           |                   |   linter, VF)   |
           |                           |                   +------------------+
           |                           |                           |
           |                           v                           v
           |                   +------------------+       +------------------+
-          |                   |  Task Ledger     |       |  Work Queue (PGMQ)|
-          |                   |  (kiroku)        |<------|  (durable FIFO)  |
+          |                   |  Task Ledger     |       |  Task Queue      |
+          |                   |  (hashigakari)   |<------|  (atomic leases) |
           |                   |  - events:       |       |  - enqueue:      |
           |                   |    * TP_CLAIMED  |       |    NEW_TASK      |
           |                   |    * TP_STARTED  |       |  - dequeue:      |
@@ -71,75 +76,58 @@ The result is a **durable, event‑sourced, DAG‑orchestrated task system** tha
           |                           |                           |
           |                           |                           v
           |                   +------------------+       +------------------+
-          |                   |  Kiroku Streams  |       |  Scheduler (Yama)|
-          |                   |  (derived views) |       |  (porcupine DAG) |
-          |                   |  - task‑metrics  |       |  - determines   |
-          |                   |  - replay topics |       |    ready TPs    |
-          |                   +------------------+       +------------------+
+          |                   |  Pure Reducers   |       |  Scheduler       |
+          |                   |  (state folds)   |       |  (yamaarashi-flow|
+          |                   |  - kanban view   |       |   selective DAG) |
+          |                   |  - readiness     |       +------------------+
+          |                   +------------------+               |
           |                           ^                           |
           |                           |                           |
           +---------------------------+---------------------------+
                                       |
                               +------------------+
-                              |  Kanban UI (CLI)|
-                              |  (hermes_cli/kanban*) |
+                              |  Kanban UI (TUI) |
+                              |  (pure view)     |
                               +------------------+
                                       |
                               +------------------+
-                              |  Observation &  |
-                              |  Replay (Kagami)|
+                              |  Observation &   |
+                              |  Replay (Kagami) |
                               +------------------+
 ```
 
-### 3.1. Task Lifecycle (Events stored in kiroku)
+### 3.1. Task Lifecycle Events
+All task events are immutable `large-anon` records serialized via `kogaki-wire`:
+1. **`TP_CREATED`** — Task packet declared in specification or Dhall manifest.
+2. **`TP_ENQUEUED`** — Scheduler places the task into the ready state when its upstream Selective dependencies evaluate to complete.
+3. **`TP_CLAIMED`** — Worker atomically claims task lease (recording worker ID, isolated worktree path, lease deadline).
+4. **`TP_STARTED`** — Worker provisions worktree, verifies toolchain skeleton, and begins execution.
+5. **`TP_VERIFYING`** — Worker executes machine-checked verification commands (build check, test suite, formal proof harness).
+6. **`TP_COMPLETED`** — Verification returned exit-code 0; worker commits git changes with kernel trailers (`Assisted-by:`).
+7. **`TP_FAILED`** — Verification failed; worker triggers back-off retry loop or dead-letter escalation.
+8. **`TP_CANCELLED`** — Task manually aborted or pruned by Selective early cutoff.
 
-1. **TP_CREATED** – when a new task packet is added to `PLAN.md` (or via external issue).  
-2. **TP_ENQUEUED** – the scheduler (yamaarashi‑flow) places the TP onto the PGMQ work‑queue when all upstream dependencies are satisfied.  
-3. **TP_CLAIMED** – a worker atomically dequeues the task from PGMQ and records claim (includes worker ID, worktree path, timestamp).  
-4. **TP_STARTED** – worker begins execution (calls `cabal build`, sets up environment).  
-5. **TP_VERIFYING** – worker runs the prescribed verification command (test suite, linter, golden‑fixture diff, or formal verification harness).  
-6. **TP_COMPLETED** – verification succeeded (exit‑code 0); worker commits changes with proper Git trailers (`Assisted-by:`, `Closes: TP-…`).  
-7. **TP_FAILED** – verification failed; worker may trigger a **Keiro retry workflow** (exponential back‑off, dead‑letter queue after N attempts).  
-8. **TP_CANCELLED** – manual cancellation or superseded by a newer spec.
-
-All events are immutable, append‑only, and globally ordered by kiroku’s logical clock.
-
-### 3.2. Worker Isolation
-
-* Each claimed task receives a fresh **git worktree** linked to the current branch, ensuring a clean sandbox.  
-* The worktree is scoped to the task’s required packages (determined from `PLAN.md`/`STATE.md` and the task’s cabal‑project snippet).  
-* After completion (or final failure) the worktree is removed; only the committed changes survive.
-
-### 3.3. Integration with Typed‑Language‑Model‑Arena
-
-* Workers may be instantiated as **tier‑5 ReAct agents** (from `typed-language-model-arena/shikumi‑campaign/tier5/Tier5ReActAgent.hs`) when the task admits exploratory, tool‑using behavior (e.g., prototyping a new effect signature).  
-* For deterministic, compile‑time‑bound tasks (e.g., implementing a new Record field), workers revert to the standard **hermes‑agent** CLI (level‑2 agentic CLI with rubric).  
-* Tier‑4 trace/replay (`Tier4TraceReplay.hs`) enables deterministic re‑execution of a failed task using the recorded event log, aiding debugging.  
-* Tier‑6/7 provide optional CLI or streaming interfaces for operators to inspect the task ledger in real time.  
-* Verification steps can call external harnesses (e.g., `tessera/host@proof`, `telix/host@verus`, `pgcl matrix-driver-all.sh`) as defined in `VERIFICATION_LADDER.md` and `HARNESS_CLONE_QUEUE.md`.
-
-### 3.4. Superseding Relationships
-
-* **Keiro/Keiro‑runtime‑kenshou** supersedes ad‑hoc retry loops by providing declarative, observable workflows with exponential back‑off and dead‑letter queues.  
-* **Kiroku** (event store) supersedes the implicit ledger in Git commits + `STATE.md` by offering an immutable, queryable event log.  
-* **PGMQ‑hs** supersedes an in‑memory dispatcher by providing a durable FIFO queue with transactional dequeue.  
-* The **two‑file loop** (`PLAN.md`/`STATE.md`) is acknowledged as an interim placeholder; the durable ledger (kiroku) is intended to eventually replace it as the source of truth for task state.
+### 3.2. Worker Isolation & Worktree Lifecycle
+* Every claimed task executes in a dedicated, isolated **git worktree** (`git worktree add --detach <path> <commit>`).
+* Static resource requirements (`VirtualTree`) computed during `yamaarashi-spec` Pass 1 dictate required toolchains and sandbox policies.
+* Upon completion or final failure, the worktree is cleaned up (`git worktree remove --force`), ensuring zero cross-task pollution.
 
 ---
 
-## 4. Contrast with Prior Sarutahiko Design
+## 4. Reconciliation of Persistence & Goal Drift
 
-| Feature | Prior Design | Enhanced Design (this doc) |
+Earlier drafts (`v0.2`) drifted toward external dependencies (`pgmq-hs`, `kiroku`, `keiro`), introducing mandatory
+external PostgreSQL daemons and nominal schemas that conflicted with Sarutahiko's clean-slate invariants.
+This has been reconciled under **`hashigakari`** and the **Façade Pattern**:
+
+| Feature | Interim v0.2 Draft (Drifted) | Reconciled v0.3 Canonical Architecture |
 |---|---|---|
-| **Task Queue** | In‑memory dispatcher within the kanban swarm (volatile). | Durable PGMQ‑based FIFO queue with transactional dequeue; survives Hermes restarts. |
-| **Task Ledger** | Implicit in Git commits + `STATE.md`. | Explicit append‑only event store (kiroku) with kiroku streams for observability. |
-| **Retry / Back‑off** | Ad‑hoc manual re‑run. | Declarative Keiro workflows (timers, exponential back‑off, dead‑letter). |
-| **Worker Isolation** | None; tasks run in the same Hermes process (risk of state leakage). | Isolated git worktrees per task, guaranteeing hermeticity. |
-| **Observability** | Logs + manual inspection. | Structured events → kiroku → kiroku streams → Prometheus/Grafana + Kagami‑Ita replay. |
-| **Agent Variety** | Primarily Hermes agentic CLI (level‑2). | Pluggable worker tiers (ReAct, tracing, streaming) from typed‑language‑model‑arena. |
-| **Verification Gating** | Post‑run test check (manual). | Enforced by worker before emitting `TP_COMPLETED`; includes formal verification harnesses; failure triggers retry workflow. |
-| **DAG Orchestration** | Yamaarashi‑flow (porcupine) already present. | Unchanged, but now tightly coupled to PGMQ enqueue/dequeue semantics. |
-| **State Management** | Two‑file loop (`PLAN.md`/`STATE.md`). | Interim placeholder; kiroku event store is the durable source of truth. |
+| **Persistence Engine** | External `kiroku` event store. | **`hashigakari`** row-polymorphic event store table (`large-anon` records). |
+| **Task Queue** | External `pgmq-hs` (requiring live Postgres + PGMQ extension). | **Native atomic transaction leases** in `hashigakari` (zero external broker). |
+| **Carrier Tiering** | Monolithic Postgres dependency. | **Tiered Façade:** In-memory STM (Tier 0), `hashigakari-sqlite` (Tier 1 for local/Hokora/CI), `hashigakari-hasql` (Tier 2 for Postgres). Optional Tier-3 `pgmq` adapter. |
+| **DAG Orchestration** | Porcupine `ArrowFlow`. | **`yamaarashi-flow` (Selective Functors + `alga`)**; avoids `OverloadedLabels` conflicts with `large-anon`. |
+| **Wire Codecs** | Aeson (drift). | **`kogaki-wire`** hand-rolled zero-dependency row codecs (`PLAN.md` Invariant 3). |
+| **LLM Access** | Unspecified / hardcoded external calls. | **`utai`** direct provider row codecs + **MCP Sampling (`utai-mcp`)** for host REPL integration. |
 
 ---
 
@@ -147,92 +135,22 @@ All events are immutable, append‑only, and globally ordered by kiroku’s logi
 
 | TP ID | Description | Acceptance Criteria |
 |---|---|---|
-| TP‑ATM‑0.1 | Add `kiroku` and `pgmq-hs` as dependencies in `sarutahiko.cabal` and `cabal.project`. | Builds successfully; `cabal test` passes for existing suites. |
-| TP‑ATM‑0.2 | Define the event schema in `Sarutahiko/Task/Event.hs` (claimed, started, completed, failed, etc.) using `Record`-based payloads. | Round‑trip CBOR/JSON via `kogaki-wire` works; property‑test serialization. |
-| TP‑ATM‑0.3 | Implement `TaskQueue.PGMQ` wrapper offering `enqueueTask :: TaskId -> IO ()` and `dequeueTask :: IO (Maybe (TaskId, TaskPayload))` with transactional semantics. | Queue FIFO under concurrent producers/consumers; no lost tasks under process crash (tested via `kill -9`). |
-| TP‑ATM‑0.4 | Extend `Yamaarashi.Flow.Scheduler` to enqueue ready TPs onto the PGMQ when all upstream edges are satisfied. | DAG execution respects dependencies; tasks appear in queue only after predecessors emit `TP_COMPLETED`. |
-| TP‑ATM‑0.5 | Implement `Worker.ClaimLoop` that: (a) spawns a git worktree, (b) dequeues a task, (c) records `TP_CLAIMED`, (d) runs build → verify → commit or retry. | End‑to‑end execution of a sample TP (e.g., add a trivial Record field) ends with a git commit and `TP_COMPLETED` event. |
-| TP‑ATM‑0.6 | Hook the Kanban UI (`hermes_cli/kanban*`) to read from kiroku (via a read‑only projection) and display columns: **Backlog**, **Ready**, **In‑Progress**, **Done**, **Failed**. | UI updates in real‑time as events are appended; matches internal queue state. |
-| TP‑ATM‑0.7 | Integrate Keiro retry workflow: after `TP_FAILED`, schedule a retry with back‑off (1s, 2s, 4s, …) up to 5 attempts, then move to Dead‑Letter queue. | Failed tasks automatically retry; after max attempts they appear in DLQ and alert via kiroku stream. |
-| TP‑ATM‑0.8 | Provide an optional worker factory that can instantiate a tier‑5 ReAct agent from `typed-language-model-arena` when a task is flagged `exploratory:true` in its metadata. | Exploratory tasks are handled by ReAct agent; deterministic tasks use standard worker. |
-| TP‑ATM‑0.9 | Add observability hooks: emit task‑level metrics (latency, retry count) to a kiroku stream; expose via Prometheus endpoint. | Metrics scrapable; tracing via Kagami‑Ita reproduces a task’s execution from event log. |
-| TP‑ATM‑0.10 | Integrate formal verification harnesses: allow a TP to specify a verification command that invokes external drivers (e.g., `tessera/host@proof`, `telix/host@verus`, `pgcl matrix-driver-all.sh`). | TP completes only when the verification harness returns success (exit‑code 0) per `VERIFICATION_LADDER.md`. |
-| TP‑ATM‑1.0 | Write documentation and update `AGENTS.md` to reflect the new two‑file loop guarantees (now with durable ledger) and its interim status. | Documentation renders without warnings; `make doc-check` passes. |
-
-Each TP follows the **hermetic** contract:  
-
-* **Preconditions:** Reads `PLAN.md`/`STATE.md`, verifies DAG state.  
-* **Postconditions:** Either (a) new git commit with correct trailers and `TP_COMPLETED` event, or (b) `TP_FAILED` event plus optional retry schedule.  
-* **Verification:** Must run the associated test/linter/formal verification command and observe exit‑code 0 before emitting success.
+| **TP-ATM-0.1** | Define `EventStore` and `TaskQueue` GADT signatures in `sarutahiko-effect-signatures`. | Zero dependencies; defines typed event record envelopes and queue lease primitives. |
+| **TP-ATM-0.2** | Author STM in-memory carriers for `EventStore` and `TaskQueue` in `sarutahiko-effect-testkit`. | Dual-interpreter parity tests pass 100 Hedgehog trials for atomic enqueue, claim, and completion. |
+| **TP-ATM-0.3** | Implement `hashigakari-sqlite` carrier for `EventStore` and `TaskQueue`. | Hermetic event append and atomic lease dequeue verified under SQLite WAL with zero external daemons. |
+| **TP-ATM-0.4** | Implement tagless `MonadTaskQueue` / `MonadEventStore` façade classes in `yamaarashi-flow`. | Adapter packages (`yamaarashi-adapter-effectful`, `yamaarashi-adapter-polysemy`) bind `Eff es` and `Sem r` cleanly. |
+| **TP-ATM-0.5** | Implement `Worker.WorktreeLoop` executing tasks inside isolated git worktrees. | Automatic worktree creation, fail-fast toolchain check, verification command execution, and clean teardown. |
+| **TP-ATM-0.6** | Implement pure reducer for Kanban board state projection. | Pure function `[EventRecord] -> KanbanState`; accurately projects Backlog, Ready, In-Progress, and Done columns. |
+| **TP-ATM-0.7** | Integrate `utai-mcp` Sampling backend for agentic synthesis tasks. | Worker dispatches synthesis prompts via MCP `sampling/createMessage` to host REPL without embedding vendor SDKs. |
+| **TP-ATM-0.8** | Integrate formal verification harness invocation (`VERIFICATION_LADDER.md`). | Worker recognizes formal proof verification commands (`tessera`, `telix`) and gates `TP_COMPLETED` on exit-code 0. |
 
 ---
 
-## 6. Relationship to Nadeem Bitar’s AI Ecosystem
+## 6. References
 
-| Bitar Component | Use in This Design | Rationale |
-|---|---|---|
-| **pgmq‑hs** | Durable FIFO work queue with transactional dequeue. | Guarantees exactly‑once delivery even if worker crashes mid‑task. |
-| **kiroku** | Append‑only event store for task lifecycle events. | Provides immutable audit trail, enables replay, supports temporal queries. |
-| **kiroku streams** | Typed streams derived from kiroku for real‑time dashboards and alerting. | Decouples observation from storage; allows multiple consumers (UI, metrics, alerting). |
-| **keiro / keiro‑runtime‑kenshou** | Declarative timers and retry workflows (exponential back‑off, dead‑letter). | Removes ad‑hoc sleep loops; provides observable retry policies. Supersedes simple retry logic. |
-| **mori / mori‑schema** (not directly used but referenced) | Potential future schema evolution for event versions. | Ensures forward/backward compatibility as the event schema evolves. |
-| **settei** (configuration) | Could be used to parameterize queue sizes, retry limits, worker counts. | Externalizes tuning without code changes. |
-| **shikumi / shikumi‑campaign** | Source of tiered agent implementations (ReAct, tracing, etc.) used as optional workers. | Leverages existing, well‑tested agent scaffolding from the arena. |
-
----
-
-## 7. Relationship to Typed‑Language‑Model‑Arena
-
-The arena supplies **pluggable worker strata** that can be selected per‑task based on metadata:
-
-* **Tier‑2 Combinators** – pure functional pipelines (good for data‑transform TPs).  
-* **Tier‑3 Optimizers** – equivalence‑checking or property‑based validation workers.  
-* **Tier‑4 Trace/Replay** – enables deterministic re‑run of a failed TP using the recorded event log (useful for debugging flaky tests).  
-* **Tier‑5 ReAct Agent** – general‑purpose, tool‑using agent for exploratory or ill‑specified TPs (e.g., prototyping a new effect signature).  
-* **Tier‑6 CLI** – standard hermes‑agent CLI with rubric (default worker for most TPs).  
-* **Tier‑7 Streaming / Multimodal** – workers that need to ingest/produce audio, video, or live data streams (e.g., TPs that augment a model with new modality).  
-
-The worker factory reads a flag `workerTier` from the task’s metadata (stored in the event payload) and instantiates the appropriate stratum.
-
-**Verification Focus:** The arena’s `VERIFICATION_LADDER.md` and `HARNESS_CLONE_QUEUE.md` define external drivers for formal verification (tessera, telix, pgcl, organ‑bank, frankenstein, etc.). A TP can reference such a driver as its verification step, enabling machine‑checked correctness beyond simple unit tests.
-
----
-
-## 8. Open Questions & Future Work
-
-1. **Exactly‑once semantics across worker crash:**  
-   PGMQ provides transactional dequeue, but we must ensure that the side‑effects (build, test, commit) are either fully committed or rolled back on crash. Current approach relies on the idempotency of the verification step and the ability to re‑run from scratch in a fresh worktree. Investigate integrating with `keiro`’s durable timers to trigger a cleanup rollback on failure.
-
-2. **Event store compaction:**  
-   As the kiroku log grows, we may need snapshotting + compaction (similar to event‑sourcing snapshots). Consider integrating `mori`’s B‑tree for periodic snapshots of the task ledger state.
-
-3. **Multi‑repository task packets:**  
-   Currently tasks are confined to the sarutahiko monorepo. Future work could extend the ledger to track cross‑repo dependencies (e.g., a task in `sarutahiko-mcp` that depends on a version bump in `sarutahiko-records`). This would require a global DAG across repositories, possibly using `keiro`‑based distributed locks.
-
-4. **Security & sandboxing:**  
-   Worktree isolation prevents in‑process state leakage but does not limit filesystem or network access. Explore integrating with `seihou` (capability‑based sandbox) or `keiki` to restrict worker capabilities per task.
-
-5. **Human‑in‑the‑loop escalation:**  
-   For tasks that repeatedly fail after max retries, the system could automatically create a GitHub issue (via `openapi-hs` or `okf‑kit`) and notify a maintainer through the `kiroku` alert stream.
-
-6. **Transition from two‑file loop to durable ledger:**  
-   Define a migration path where `STATE.md` is derived from kiroku projections, eventually making the two‑file loop obsolete.
-
----
-
-## 9. References
-
-* **nih_plan.md** – Runtime services, kanban swarm, pure reducers.  
-* **yamaarashi_design.md** – Streaming kernel, yamaarashi‑flow, porcupine ArrowFlow.  
-* **phase_*_plan.md** – Hermetic task packet format and acceptance criteria.  
-* **agents.md** – Staged Context Reset & Two‑File Loop (interim placeholder).  
-* **hermes_cli/kanban\*.py** – Existing Kanban UI and dispatcher.  
-* **typed‑language‑model‑arena/** – Tiered agent implementations (shikumi‑campaign).  
-* **verification_ladder.md** – Formal verification harnesses and proof status.  
-* **harness_clone_queue.md** – External driver contracts (pgcl, avocado, syzkaller, expect, etc.).  
-* **keiro**, **keiro‑runtime‑kenshou**, **kiroku**, **kiroku‑store**, **pgmq‑hs** – Nadeem Bitar’s libraries (repos cloned under `~/src/`).  
-* **obsrvability_design.md** – Kagami‑Ita event tracing and replay.  
-
----  
-*Authored by Hermes Agent (model: gemini‑3.8‑flash via geminidirect).  
-Assisted-by: gemma4:31B (Gemini) for background synthesis.*
+* **`YAMAARASHI_DESIGN.md`** — Selective workflow orchestrator, Build Systems à la Carte, streaming mixture.
+* **`HASHIGAKARI_DESIGN.md`** — Row-native database DSL and execution stack over large-anon.
+* **`LLM_SUBSTRATE_DESIGN.md`** — Utai model substrate, canonical request renderer, and MCP sampling.
+* **`TASK_PACKET_BEST_PRACTICES.md`** — Early toolchain verification and minimal buildable skeletons.
+* **`REUSE_REGISTER.md`** — Standing ledger of library reuse and reimplementation decisions.
+* **`PLAN.md` & `STATE.md`** — Architectural invariants and active operational frontier.

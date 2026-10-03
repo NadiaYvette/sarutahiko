@@ -166,10 +166,18 @@ Bytes-level; Q1 N/A. The LLM codecs and gateway surfaces ride `http-client` (+ h
 behind `Resource`-managed interpreters. The reuse doctrine's transport exemption applies
 in full. Revisit trigger: none foreseen.
 
-### 2.12 porcupine (task DAG) — RE-HOME (reimplement semantics on our substrate)
-The forward port is ours already; yamaarashi-flow re-homes ArrowFlow over `Eff es` with
-row-typed chunks and the determinism-tagged cache. Not a reuse question but a relocation,
-recorded for completeness.
+### 2.12 porcupine / kernmantle (task arrows) — SUPERSEDED by selective + algebraic-graphs (2026-10-02)
+Originally planned for re-homing as `yamaarashi-flow` over `Eff es`. The arrow-based
+approach (`ArrowFlow`, `kernmantle`) was formally superseded:
+1. **`OverloadedLabels` collision:** `kernmantle` uses `#label` for task/effect ports,
+   colliding directly with `large-anon`'s `#fieldName` syntax in GHC's single `IsLabel`
+   resolution scope (violating `PLAN.md` Invariant 2).
+2. **Arrow opacity & ergonomics:** Arrow notation (`proc -> do`) generates opaque
+   desugared syntax trees that resist clean inspection and compiler optimization.
+3. **Static analysis failure:** ArrowFlow cannot support static dependency over-approximation
+   (`Control.Selective.Over`) to calculate `VirtualTree` resource needs prior to execution.
+Replaced by Selective Applicative Functors (`selective`, §2.25) and algebraic graphs
+(`algebraic-graphs`, §2.26) under *Build Systems à la Carte* principles.
 
 ### 2.13 Dhall (configuration evaluator) — REUSE the evaluator, BRIDGE the marshalling
 The source doc's verdict, unchanged: Dhall's evaluator is a mature implementation of a
@@ -464,5 +472,35 @@ the ASCII minimum (Phase 3), or with the i18n package (2.21) whichever comes fir
   Record-based handler composition is empirically validated as zero-cost in hot paths.
   Dual interpreter bridges (`sarutahiko-effect-effectful` and `sarutahiko-effect-polysemy`)
   may leverage handler records alongside canonical GADT bridges.
+
+### 2.25 selective (Selective Applicative Functors) — REUSED (2026-10-03)
+Andrey Mokhov et al.'s `selective` library. Sits strictly between `Applicative` and `Monad`.
+Enables static dependency analysis and ahead-of-time resource over-approximation
+(`Control.Selective.Over`) to compute `VirtualTree` requirements (git worktrees, sandbox
+namespaces, compute budgets) before executing any effectful actions, while supporting
+conditional branch selection (`branch`, `ifS`, `<*?>`) at runtime.
+Role: Core workflow construction in `packages/yamaarashi-flow` and spec AST inspection in
+`packages/yamaarashi-spec`. Q1 passes (core embodies algebraic principles); Q2 passes (clean
+algebraic interface, no GHC/system coupling); Q3 passes (tiny, stable, mathematically sound).
+
+### 2.26 algebraic-graphs / alga (Algebraic graph representation) — REUSED (2026-10-03)
+Andrey Mokhov's algebraic graph library (`algebraic-graphs`). Represents graphs algebraically
+(`Empty`, `Vertex`, `Overlay`, `Connect`) with total equations and constructive cycle/DAG
+verification. Replaces heavy, stateful external build engines (like Neil Mitchell's `shake`)
+with a clean, zero-bloat *Build Systems à la Carte* scheduler in `packages/yamaarashi-flow`.
+Enables topological sorting, dependency tracking, early cutoff, and cached resumption
+without external database files or `FilePath`-string coupling. Q1 passes (algebraic ground);
+Q2 passes (pure data type); Q3 passes (lightweight, zero dependencies).
+
+### 2.27 recursion-schemes (Generalized folds and unfolds) — REUSED (2026-10-03)
+Edward Kmett et al.'s fixed-point recursion schemes library (`recursion-schemes`).
+Provides formal recursion patterns: anamorphisms (`ana`) for corecursive task unfolding,
+catamorphisms (`cata`) for workflow AST reduction, and hylomorphisms (`hylo`) for
+hierarchical task decomposition with an `IsPrimitive` granularity oracle.
+Role: Task subdivision engine in `packages/yamaarashi-spec`, systematically breaking
+macroscopic project goals down into atomic, machine-checkable leaf task packets.
+Q1 passes (canonical categorical recursion); Q2 passes (standard recursion combinators);
+Q3 passes (mature, established ecosystem standard).
+
 
 

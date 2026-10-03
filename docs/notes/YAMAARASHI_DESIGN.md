@@ -1,196 +1,200 @@
-# Yamaarashi (山嵐) — The Conduit / Porcupine / Streamly Hybrid Streaming Stack
+# Yamaarashi (山嵐) — The Selective Workflow Orchestrator & Hybrid Streaming Stack
 
-Status: DRAFT v0.1 · 2026-09-23
-Related: `NIH_PLAN.md` §3.5 (streaming gates), §3.6 (layering contract), §6.1 (Noh naming)
+Status: REVISED v0.2 · 2026-10-03 (Adjudicated & Blessed)  
+Related: `NIH_PLAN.md` §3.5 (streaming gates), §3.6 (layering contract), §6.1 (Noh naming),
+`REUSE_REGISTER.md` (§2.12, §2.25, §2.26, §2.27), `STATE.md` (Decisions 1–6), `docs/transcripts/AI_Coding_Context_Management_SOTA.md`
 
-Yamaarashi — Japanese for *porcupine*, literally "mountain storm" — is the working name for
-the hybrid streaming stack that layers **porcupine's** task-DAG orchestration over the
-**conduit / streamly mixture** on a shared effect substrate. The name is kept in Roman
-letters for packaging (`yamaarashi-*`). It exists because the three ingredients answer
-different questions and were being forced to compete for one layer:
+Yamaarashi — Japanese for *porcupine*, literally "mountain storm" — is the package family governing
+macro-task orchestration, workflow compilation, and streaming transport in Sarutahiko. The name is
+retained in Roman letters for packaging (`yamaarashi-*`).
 
-| Ingredient | Native question | Kept for |
-|---|---|---|
-| porcupine (ArrowFlow) | *How do tasks compose, cache, resume, parallelize?* | DAG orchestration, Make-like caching at `$_` locations, FRP-flavored demand, visualization |
-| streamly | *How do elements move fastest?* | Fused hot loops, typed concurrency strategies (`SerialT`/`AsyncT`/`WAsyncT`/`ParallelT`), folds+parsers |
-| conduit | *How do bytes and resources behave at boundaries?* | Mature framing adapters, deterministic finalization idioms, ecosystem interop |
-| (the effect row) | *What can a step do?* | `Eff es` substrate: `Resource`, `Log`, `StreamingDB`, MCP, model calls — one vocabulary across all layers |
-
-The thesis, matching `NIH_PLAN.md` §3.6: **these never compete for the same layer.**
-Porcupine composes *tasks*; the element kernel moves *elements* inside a task body; conduit
-and streamly are interchangeable *backends* for that kernel; the effect row is shared by all
-of it.
+Originally conceived as a port of Porcupine's `ArrowFlow` over an element-streaming kernel, the design
+was overhauled on 2026-10-03 (adjudicating the SOTA context-management analysis in `AI_Coding_Context_Management_SOTA.md`):
+the arrow-based approach was formally superseded by **Selective Applicative Functors (`selective`)** and
+**algebraic graphs (`alga`)** operating under *Build Systems à la Carte* principles.
 
 ---
 
-## 1. The stack
+## 0. What it is, in one paragraph
+
+A two-pass workflow and streaming architecture: task specifications are unpacked and statically
+over-approximated to compute resource requirements (`VirtualTree`) prior to runtime (`yamaarashi-spec`);
+macro-workflows execute as cached, resumable DAGs with early cutoff over algebraic graphs (`yamaarashi-flow`);
+elements move across process and sandbox boundaries via conduit framing adapters (`yamaarashi-conduit`),
+and fuse in-process via streamly hot loops (`yamaarashi-streamly`), both presenting the single, neutral
+church-encoded stream kernel (`yamaarashi`). The entire family interfaces through the **Façade Pattern**
+(monad-neutral tagless capability typeclasses backed by canonical GADT signatures in `sarutahiko-effect-signatures`),
+preserving dual-interpreter parity under both `effectful` and `polysemy`.
+
+---
+
+## 1. The Stack & Package Family
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│ yamaarashi-flow      tasks, DAG shapes, caching, resume,      │  task / chunk
-│                      viz. PTasks over Eff es; row-typed       │  granularity
-│                      chunks at $_ locations                   │
-├───────────────────────────────────────────────────────────────┤
-│ yamaarashi           the element kernel: church-encoded       │  element
-│                      Stream (Of a) (Eff es) r + typed         │  granularity
-│                      concurrency strategy wrappers            │
-├───────────────┬───────────────────────────┬───────────────────┤
-│ yamaarashi-   │ yamaarashi-streamly       │ yamaarashi-       │  backends /
-│ conduit       │ SerialT (Eff es) embed,   │ adapters          │  interop
-│               │ fused strategies          │                   │
-├───────────────┴───────────────────────────┴───────────────────┤
-│ Eff es — Resource · Log · StreamingDB · MCP · Model · …       │  substrate
-└───────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ yamaarashi-spec      Task specification AST, Control.Selective.Over     │  spec & resource
+│                      VirtualTree extractor, recursion-schemes unfolding│  granularity
+├────────────────────────────────────────────────────────────────────────┤
+│ yamaarashi-flow      Selective task DAG, Build Systems à la Carte       │  task / workflow
+│                      scheduler over alga, memoized large-anon chunks    │  granularity
+├──────────────────────────────────────┬─────────────────────────────────┤
+│ yamaarashi-adapter-effectful         │ yamaarashi-adapter-polysemy     │  effect façade
+│ MonadWorktree/Queue for Eff es       │ MonadWorktree/Queue for Sem r   │  adapters
+├──────────────────────────────────────┴─────────────────────────────────┤
+│ yamaarashi           the element kernel: church-encoded                 │  element
+│                      Stream (Of a) m r + typed concurrency wrappers     │  granularity
+├───────────────────────────────┬────────────────────────────────────────┤
+│ yamaarashi-conduit            │ yamaarashi-streamly                    │  backends /
+│ Stdio JSON-RPC framing,       │ In-process SerialT (Eff es) embed,     │  transports
+│ OS process pipes, bracketP    │ fused hot loops, element transforms    │
+├───────────────────────────────┴────────────────────────────────────────┤
+│ Eff es — Resource · Process · TaskQueue · EventStore · ModelAPI · …    │  substrate
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-Package roles:
+### Package Roles
 
-- **`yamaarashi`** — the kernel and public API. Church-encoded (CPS) free-monad stream,
-  polymorphic in the base monad (`Eff es` in practice, any `Monad` in principle):
-  `newtype Stream (Of a) m r`. O(1) left-associated `>>=` via the Codensity property; no
-  RULES-pragma fragility; one abstract type users can read. Ships: core combinators,
-  `Of`-pair producer shape, folds, parsers (byte framing), and the concurrency strategy
-  wrappers with *explicit, documented* semantics (see §4).
-- **`yamaarashi-conduit`** — `ConduitM ⇄ Stream` adapters in both directions, plus the
-  framing stock (stdio JSON-RPC framing, SSE lexing) reused from conduit-extra where it is
-  already proven. Exists so ecosystem interop is an import, not a rewrite.
-- **`yamaarashi-streamly`** — embeds streamly's `SerialT (Eff es)` as a *backend*: hot loops
-  opt into rewrite-rule fusion by becoming concretely typed inside a task body. Also the
-  home of the high-throughput fold/parser implementations backing kernel combinators when
-  the caller does not care (strategy: kernel API, streamly execution).
-- **`yamaarashi-flow`** — porcupine re-homed: base monad `Eff es`, chunks are anonymous
-  records (`NIH_PLAN.md` §3.6), purity/determinism tags for LLM-backed tasks with
-  invalidation keys (model, sampling params, prompt hash), task-level scheduling and
-  cancellation ownership.
+1. **`yamaarashi-spec`** — The task specification AST and static analysis engine.
+   - Represents specifications as pure algebraic data structures.
+   - Evaluates static resource dependencies ahead-of-time using `Control.Selective.Over` to extract the
+     `VirtualTree` (the complete union of all git worktrees, compiler toolchains, SCIP slices, and compute budgets).
+   - Drives task subdivision using `recursion-schemes` (`ana`/`hylo`) paired with an `IsPrimitive` granularity
+     heuristic, expanding macroscopic goals into atomic leaf task packets.
+2. **`yamaarashi-flow`** — The macro-workflow DAG orchestrator and build scheduler.
+   - Models dependencies as algebraic graphs (`algebraic-graphs` / `alga`).
+   - Implements a pure, clean-slate build scheduler following *Build Systems à la Carte* principles
+     (Mokhov, Mitchell, Peyton Jones) with topological execution, memoization, and early cutoff.
+   - Intermediate outputs materialize as anonymous records (`large-anon` / `sarutahiko-records`) cached at
+     `$_` content-addressed keys with determinism tags.
+   - Completely replaces external `shake` and `porcupine` arrow machinery, eliminating `OverloadedLabels`
+     collisions with `large-anon`.
+3. **`yamaarashi`** — The public element-streaming kernel and concurrency API.
+   - Church-encoded (CPS) free-monad stream, polymorphic in the base monad: `newtype Stream (Of a) m r`.
+   - Zero dependencies on conduit, streamly, or concrete effect systems.
+   - Exposes typed concurrency strategies (`Serial`, `Async`, `Interleaved`, `Parallel`) with explicit
+     cancellation ownership semantics.
+4. **`yamaarashi-conduit`** — Inter-task IPC, boundary framing, and deterministic cleanup.
+   - Connects tasks running across isolated OS sandboxes (`bwrap`, Linux namespaces) or process pipes (`typed-process`).
+   - Reuses proven framing stock (stdio JSON-RPC framing, SSE line framing, chunked payloads) from `conduit-extra`.
+   - Re-homes bracketed finalization (`bracketP`) into the shared `Resource` effect row.
+5. **`yamaarashi-streamly`** — Fused in-process execution backend.
+   - Embeds streamly's `SerialT` for high-throughput element transformations inside a single process.
+   - Provides hot-loop rewrite-rule fusion for tabular row decoding (`hashigakari` cursor streams) and token lexing.
+6. **`yamaarashi-adapter-{effectful,polysemy}`** — Effect neutrality bridge.
+   - Implements the orchestrator's tagless capability typeclasses (`MonadWorktree`, `MonadTaskQueue`, etc.)
+     by delegating method calls to the canonical GADTs in `sarutahiko-effect-signatures`.
 
-Dependency rule: `flow → yamaarashi → {conduit, streamly}` adapters; everything → the effect
-signatures (`sarutahiko-effect-signatures`), never a concrete effect system. Adapters are
-optional extras; the kernel has zero streaming-library dependencies.
+---
 
-**Reconciliation with `NIH_PLAN.md` §3.5:** The church-encoded CPS free-monad stream
-kernel (`Stream (Of a) m r`) *is* the Tier-0 public API across the entire program from
-day one. What `NIH_PLAN.md` §3.5's trigger gates govern is *not* whether this clean kernel
-exists (it is coded in Phase 0 as the abstract, dependency-free public contract), but
-whether we write custom low-level high-throughput loop machinery or embed `streamly` as
-the fused execution backend behind the kernel, using `conduit` adapters at byte
-boundaries. This eliminates API churn while preserving benchmark-driven execution choices.
+## 2. The Two-Pass Execution Model & Wart Safeguards
 
-## 2. Kernel design
+The migration from arrows to `selective` + `alga` addresses four specific architectural pitfalls:
 
-### 2.1 The type
+### 2.1 Pass 1: Static Dependency Analysis (`VirtualTree`)
+Before any external tool is spawned or git worktree created, `yamaarashi-spec` walks the workflow AST using
+`Control.Selective.Over (Set ResourceDescriptor)`:
+- It traverses all execution branches—including conditionally deferred or alternative branches—to compute
+  the strict over-approximation of every repository, commit, environment variable, toolchain, and sandbox
+  capability required.
+- **Wart D Safeguard (Pure Descriptors):** Pass 1 inspects pure, inert metadata only (`ResourceDescriptor`).
+  It performs *zero* IO or live resource acquisition, guaranteeing zero leakage during analysis.
 
-```haskell
--- CPS / church-encoded; polymorphic in the base monad
-newtype Stream (Of a) m r =
-  forall s. Stream (s -> (s -> a -> m (Step s)) -> m (Step s) -> m (Step s) -> m r -> m r)
-```
+### 2.2 Pass 2: Scheduler Execution & Early Cutoff
+Once the `VirtualTree` is validated and resources are provisioned:
+- The scheduler traverses the `alga` graph, stepping tasks whose dependencies are satisfied.
+- If an upstream task yields an output identical to a previous run (verified via `kogaki-wire` hash),
+  the scheduler triggers **early cutoff**, pruning downstream execution branches without invocation.
+- **Wart C Safeguard (Clean-Slate Scheduler):** Avoids Neil Mitchell's external `shake` library. The scheduler
+  is implemented natively in ~300 lines of clean GHC2024 code using `alga` and `large-anon`, avoiding
+  Shake's file-based database, transitive package bloat, and `FilePath`-string coupling.
 
-(Exact representation is an implementation matter — `streaming`'s `Stream (Of a) m r` shape
-is the reference; the Codensity encoding is the default, with a benchmarked non-CPS variant
-kept behind the same API if it wins.)
+### 2.3 Boundary Rule: Macro-DAG vs. Agentic Islands
+- **Wart A Safeguard (Static vs. Dynamic):** `Selective` cannot express unbounded loops or dynamically
+  spawned graphs at runtime. Therefore:
+  - The **Macro-DAG** is strictly Selective (static pipeline of target sweeps, build steps, verification gates).
+  - The **Agentic Island** (the inner "generate $\rightarrow$ validate $\rightarrow$ fix" cycle inside a leaf task)
+    executes as a monadic effect loop or state machine within the task runner, bounded by attempt fuel.
+  - Hierarchical decomposition occurs during Pass 1 via `recursion-schemes` corecursion *before* the static DAG is sealed.
 
-Why this shape:
+### 2.4 Why Arrows (Porcupine & Kernmantle) Were Superseded
+- **The Label Collision:** `kernmantle` relies on `OverloadedLabels` (`#task`) to route arrow ports.
+  Sarutahiko's record foundation (`large-anon`, `sarutahiko-fields`) uses `OverloadedLabels` for `#fieldName`.
+  In GHC, sharing `IsLabel` across two foundational paradigms creates insurmountable type inference ambiguities.
+- **Syntactic & Categorical Opacity:** `proc ... -> do` syntax hides execution graphs behind opaque desugared
+  lambdas, preventing static inspection (`Control.Selective.Over`). Selective Applicatives preserve standard
+  applicative syntax (`<*?>`, `branch`, `select`) while exposing inspectable structure.
 
-1. **Fusion-adjacent without RULES.** Left-associated binds stay O(1); pipelines written in
-   the natural aesthetic style do not degrade quadratically. We deliberately trade the last
-   few percent of streamly's fully-fused sequential throughput (§0 decision) for one readable
-   abstract type — and claw it back per-loop via the streamly backend (§3).
-2. **Effect-native.** `m = Eff es` is the intended instantiation. Every step may `send` any
-   effect: log a row-typed event, read a DB cursor, call an MCP tool. No `MonadIO` escape
-   hatches, no lifted-IO seam.
-3. **Adapter-friendly.** Being an ordinary transformer-shaped type, conduit and streamly
-   adapters are mechanical; neither library needs to know we exist.
+---
 
-### 2.2 Resource safety as an effect, not plumbing
+## 3. The Streaming Mixture: Boundary IPC vs. In-Process Fusion
 
-Conduit's real invention — `bracketP` discipline — is re-homed into the shared substrate as
-a `Resource`/`Scoped` effect row member (bracket semantics with guaranteed finalization on
-short-circuit), interpreted once per effect system (`sarutahiko-effects-{effectful,polysemy}`).
-Consequences:
+The division between Conduit, Streamly, and the Kernel is an architectural policy, not a temporary compromise:
 
-- The kernel has *no* finalization machinery of its own; acquisition/finalization are effect
-  operations. Early exit (`take 10` on a million-row cursor) finalizes through the row —
-  under both effect systems, by construction.
-- `yamaarashi-flow` gets uniform teardown for free: an ArrowChoice branch skipped at the DAG
-  level still finalizes inner streams, because both layers share `Eff es`.
-- DB cursors (`hashigakari-core`'s existential `DBCursor` steppers, `HASHIGAKARI_DESIGN.md`
-  §3.4) unfold into `Stream`
-  and are covered by the same guarantee — the §3.5 gate-1 concern is designed out rather
-  than benchmarked away.
-
-### 2.3 What the kernel deliberately does not do
-
-- **No cross-task fusion.** Element fusion stops at `yamaarashi-flow` task boundaries, where
-  chunks materialize for caching. That is the sanctioned throughput-for-aesthetics trade,
-  repaid in resume-after-crash and per-task debugging (`NIH_PLAN.md` §3.6).
-- **No global backpressure policy.** The kernel provides demand-driven pulls; the DAG layer
-  provides task-level pull (a task runs when inputs are ready); each layer owns its
-  discipline, documented per level.
-- **No bidirectional pipe type.** Conduit's Client/Server duality is *not* ported. All our
-  duplex cases factor into one-way streams plus outbound-send-as-effect-operation: MCP stdio
-  (requests + notifications out, responses + notifications in), SSE (out only), DB cursors
-  (pull only). One less contravariant slot, no `Await`/`HaveOutput` ceremony.
-
-## 3. Backend strategy (the "conduit/streamly mixture", resolved)
-
-The mixture is not a compromise between two finalists; it is a *policy*:
-
-| Situation | Reach for | Why |
+| Granularity / Boundary | Chosen Component | Rationale |
 |---|---|---|
-| Default code, aesthetics matter | `yamaarashi` kernel | One abstract type, effect-native, readable signatures |
-| Profiled hot loop (e.g. Parquet column decode, JSON frame lexing) | `yamaarashi-streamly` (`SerialT (Eff es)` inside the body) | Rewriting-rule fusion where it measurably pays; locally concretely typed |
-| Byte boundary / ecosystem interop (HTTP bodies, process pipes, third-party conduit sources) | `yamaarashi-conduit` adapters | Already-proven framing; zero-rewrite interop |
-| Concurrent producers/consumers | kernel strategy wrappers (backed by streamly machinery or `Eff`'s concurrency) | Typed, explicit semantics (§4) |
+| **Public API / Default Signatures** | `yamaarashi` kernel | Single abstract CPS type `Stream (Of a) m r`, zero streaming dependencies, effect-native. |
+| **Sandbox & Process Boundary (IPC)** | `yamaarashi-conduit` | Deterministic framing over OS pipes/sockets (`bracketP`), chunked JSON-RPC framing, leak-free teardown. |
+| **In-Process Hot Loops** | `yamaarashi-streamly` | GHC rewrite-rule fusion inside task bodies, unboxed element throughput for `hashigakari` rows. |
+| **Task / Record Granularity** | `yamaarashi-flow` | Anonymous record chunks (`large-anon`) materialized at `$_` locations, content-addressed caching. |
 
-Rule of thumb recorded for reviewers: **the kernel is the API; the backends are
-implementations.** No user-facing signature may mention conduit or streamly; internal
-signatures may, inside task bodies only.
+---
 
-## 4. Concurrency strategies
+## 4. Effect Neutrality via the Façade Pattern
 
-The kernel exposes strategy wrappers with explicit, documented semantics (typed like
-streamly's `SerialT`/`AsyncT`/`WAsyncT`/`ParallelT`), so "which discipline" is a type-level,
-reviewable choice rather than a runtime accident:
+To satisfy the Dual Interpreter Doctrine (`PLAN.md` Invariant 5) without tying the orchestrator to a concrete
+effect monad, Yamaarashi implements the project-wide **Façade Pattern**:
 
-- `Serial` — strict sequencing (default; matches the aesthetics-first mandate).
-- `Async` — left-biased concurrency: evaluate the left stream; the right runs ahead.
-- `Interleaved` — fair round-robin (WAsync).
-- `Parallel` — race, first result wins.
+1. **Reified GADTs (`sarutahiko-effect-signatures`):**
+   Low-level operations are defined as neutral GADTs (`Worktree`, `TaskQueue`, `EventStore`, `Process`, `ModelAPI`).
+   Interpreted into `Eff es` (`sarutahiko-effect-effectful`) and `Sem r` (`sarutahiko-effect-polysemy`) with
+   Hedgehog parity tests (`sarutahiko-effect-testkit`).
+2. **Consumer Façade (`yamaarashi-flow`):**
+   High-level workflows are written against open capability typeclasses:
+   ```haskell
+   class Monad m => MonadWorktree m where
+     withWorktree :: WorktreeSpec -> (FilePath -> m a) -> m a
 
-Two obligations accompany them:
+   class Monad m => MonadTaskQueue m where
+     claimTask    :: WorkerId -> m (Maybe TaskPacket)
+     completeTask :: TaskId -> TaskResult -> m ()
+   ```
+3. **Adapter Modules:**
+   Thin leaf modules instantiate the typeclasses by sending the corresponding GADT operations:
+   ```haskell
+   -- In yamaarashi-adapter-effectful:
+   instance (Worktree :> es) => MonadWorktree (Eff es) where
+     withWorktree spec k = ...
+   ```
 
-1. **Cancellation ownership** is documented per level: the DAG layer cancels tasks; strategy
-   wrappers cancel their own children; the `Resource` effect reaps anything left. One
-   paragraph each, in this doc's §6 maintenance section and in Haddock.
-2. **Determinism tagging:** `Parallel`/`Interleaved` are incompatible with
-   `yamaarashi-flow`'s cache-replay unless the task is tagged deterministic; the flow layer
-   rejects untagged non-serial strategies in cached tasks (compile-time where the row makes
-   it expressible, else a load-time check).
+---
 
-## 5. Worked examples (the acceptance shapes)
+## 5. Concurrency Strategies & Determinism Tagging
 
-These three recur in `NIH_PLAN.md`; each must exist as an executable example in the repo
-before Phase-2 exit, as the library's conformance targets:
+The kernel exposes strategy wrappers with typed, explicit semantics:
+- `Serial` — Strict sequencing (default; deterministic).
+- `Async` — Left-biased speculative concurrency.
+- `Interleaved` — Fair round-robin streaming.
+- `Parallel` — Race concurrency (first result wins).
 
-1. **Zero-DTO DB→SSE export.** SQL query → existential `DBCursor` stepper → `Stream` of
-   anonymous records → `rcast` drops sensitive fields → SSE frames out. Memory-constant;
-   early-exit finalizes the cursor via `Resource`; no DTO anywhere.
-2. **MCP stdio duplex.** Byte chunks in → conduit framing adapter → request/notification
-   rows → open-variant method dispatch → effect senders (`Tools`, `FileSystem`) → response
-   rows → frames out; outbound server-initiated requests ride an effect operation. This is
-   also `sarutahiko-mcp`'s Phase-1 flagship shape.
-3. **DAG export with resume.** porcupine task graph (fetch → transform → aggregate) with
-   record-typed chunks at `$_` locations; kill mid-run; re-run resumes from cached chunks;
-   an LLM-backed task's cache entry invalidates when model/sampling/prompt-hash keys change.
+**Determinism Rule:** `Parallel` and `Interleaved` strategies are incompatible with cached task replay
+unless tagged with a determinism exemption. `yamaarashi-flow` rejects untagged non-serial execution in cached nodes.
 
-## 6. Maintenance obligations
+---
 
-- The kernel stays dependency-free (no conduit, no streamly, no effect system); adapters and
-  backends carry the dependencies so pinning churn (§3.5 gate 4) is absorbed at the edges.
-- Benchmark ledger (`NIH_PLAN.md` §4): kernel vs. streamly-native vs. conduit on the §5
-  shapes; the §3.5 gates are re-run with this ledger at the Tier-1 exit.
-- Haddock contract: every combinator states its strictness, finalization behavior under
-  short-circuit, and allowed effect rows.
-- If streamly major-version churn forces a second migration in one release cycle, gate 4
-  trips and the `yamaarashi-streamly` backend is demoted to optional-extra while the kernel
-  absorbs its strategies natively.
+## 6. Worked Examples (Acceptance Conformance Shapes)
+
+Each of the following three shapes serves as an executable verification target before Phase 2 exit:
+
+1. **Zero-DTO DB $\rightarrow$ SSE Export:**
+   `hashigakari-sqlite` query $\rightarrow$ existential stepper $\rightarrow$ `Stream` of `large-anon` records $\rightarrow$
+   `rcast` drops sensitive columns $\rightarrow$ `yamaarashi-conduit` SSE frames out. Constant memory; early exit
+   triggers deterministic cleanup via `Resource`.
+2. **MCP Stdio Duplex with Sampling (`utai-mcp`):**
+   Inbound process stdin $\rightarrow$ conduit framing adapter $\rightarrow$ `kogaki-wire` JSON-RPC row decoding $\rightarrow$
+   open-variant method dispatch $\rightarrow$ LLM generation delegated via MCP Sampling (`sampling/createMessage`)
+   back to host REPL $\rightarrow$ response row framed back to stdout.
+3. **Selective Task Workflow with Resumption & Early Cutoff:**
+   `yamaarashi-spec` parses a multi-compiler sweep (Linux + illumos + FreeBSD) $\rightarrow$ Pass 1 extracts `VirtualTree` $\rightarrow$
+   `yamaarashi-flow` scheduler provisions isolated worktrees $\rightarrow$ steps compile tasks in parallel $\rightarrow$
+   verification failure triggers local fix loop $\rightarrow$ killing process mid-run and re-executing resumes cleanly from
+   cached `$_` record chunks.

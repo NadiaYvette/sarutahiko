@@ -322,7 +322,7 @@ Candidates evaluated:
 | **conduit** | Battle-tested; deterministic prompt finalization (its core selling point); mature ecosystem (`conduit-extra`, network, process); SSE/JSON-RPC examples abound in the docs. | Historical design turbulence ("core flaw of pipes and conduit" debates); leftovers concept adds incidental complexity; per-element allocation overhead vs fused designs. | Strong fallback; safest interop. |
 | **streamly** | Best-in-class fused performance (order-of-magnitude benchmarks vs conduit/pipes); folds+parsers model fits byte→row framing well; native concurrency combinators. | Large surface ("hard to evaluate; it's big"); significant API churn across major versions (0.8→0.9→0.10→0.11 breaks); upstream-coupled dependencies have caused ecosystem friction. | Performance favorite; pin exact version; isolate behind the `yamaarashi` kernel. |
 | **streaming / pipes** | Minimal, composable cores. | Lower adoption momentum today; pipes' elegance vs usability tension documented; performance below fused designs. | Not selected. |
-| **porcupine (forward port)** | ArrowFlow task-DAG semantics: declarative pipeline graphs, task-level parallelism, docrecords/record-soup lineage matches the record basis. | Oriented to task graphs and `$_` location trees, not element-level byte streams; unwieldy as the *transport* layer; better as a layer *above* element streams for DAG orchestration. | Use for orchestration/DAG layer, not the element-stream kernel. |
+| **selective + alga (supersedes porcupine)** | Selective Applicative Functor DAGs (`selective`) + algebraic graphs (`alga`): static over-approximation (`Control.Selective.Over`), pure Build Systems à la Carte scheduler. | Bounded statically (inner agent loops run in task runners); requires 2-pass execution. | Selected for `yamaarashi-flow` & `yamaarashi-spec`. Replaces porcupine arrows (avoids `OverloadedLabels` conflict with `large-anon`). |
 | **NIH kernel** | Exact control: effect-integrated `Stream (es :: [Effect]) a`, linear finalization, zero dependency churn; existential steppers unify DB cursors and transports. | Must reimplement framing, parsers, concurrency; ongoing maintenance; risk of subtle resource bugs. | Only if gates below trip. |
 
 **Decision gates (NIH execution engine trigger conditions).** The church-encoded CPS
@@ -331,8 +331,8 @@ the program's abstract, dependency-free public streaming API. The decision gates
 govern *not* whether this clean kernel type exists, but whether we code our own bespoke,
 high-throughput fused loop engines or embed **streamly pinned behind the `yamaarashi`
 kernel** as the element-stream execution backend, with **conduit adapters** for byte
-boundaries and **porcupine's ArrowFlow semantics** re-homed as `yamaarashi-flow` atop the
-kernel:
+boundaries and **Selective + alga orchestration** as `yamaarashi-flow` (with `yamaarashi-spec`
+resource extraction) atop the kernel:
 1. Early-exit finalization of effectful streams proves unsafe or unergonomic under conduit's
    bracket model when combined with effect rows;
 2. Per-element overhead measurably harms the SSE/stdio transport budget (established by
@@ -370,41 +370,42 @@ continuation-based, so this is its own kernel path; evaluate alongside the §3.5
 Tier-1 exit. Net effect on this plan: "pick one winner" becomes "kernel + backends"; the
 NIH trigger gates are unchanged, and the wire flagship remains independent of the outcome.
 
-The hybrid stack is now designed as the **yamaarashi (山嵐, "porcupine") family** —
+The hybrid stack is designed as the **yamaarashi (山嵐) family** —
 `yamaarashi` kernel, `yamaarashi-conduit` / `yamaarashi-streamly` backends,
-`yamaarashi-flow` DAG orchestration — see `YAMAARASHI_DESIGN.md`; the §3.5 gates govern
-*when kernel work is coded*, not whether the design exists.
+`yamaarashi-flow` Selective DAG orchestration, and `yamaarashi-spec` resource extraction
+— see `YAMAARASHI_DESIGN.md`; the §3.5 gates govern *when kernel work is coded*, not whether the design exists.
 
-### 3.6 Layering contract — DAG orchestration over element streams
+### 3.6 Layering contract — Selective DAG orchestration over element streams
 
 Detailed in `YAMAARASHI_DESIGN.md`; the contract in brief:
-`yamaarashi-flow` (porcupine re-homed, base monad `Eff es`) orchestrates *tasks*;
+`yamaarashi-spec` statically extracts resource dependencies (`VirtualTree`) and unfolds tasks;
+`yamaarashi-flow` (Selective Functors + `alga` scheduler) orchestrates *tasks*;
 `yamaarashi` (kernel + streamly/conduit backends) moves *elements* inside task bodies.
 Neither replaces the other; the contract is:
 
-- **Granularity.** Task/chunk caching at porcupine boundaries (`$_` locations); element
-  streaming within bodies. Element-level fusion intentionally does not cross a task edge —
-  that is the throughput-for-aesthetics trade (§0), repaid in resume-after-crash, per-task
-  debugging, and porcupine-viz visualization.
-- **Records.** Task inputs/outputs are anonymous records; `rcast` at boundaries implements
-  row-polymorphic routing. ArrowFlow's ArrowChoice decides *which branch* on values; row
-  types decide *which fields* statically. The two answer orthogonal questions and compose
-  cleanly (porcupine's docrecords/record-soup lineage is why).
+- **Granularity.** Spec over-approximation (`Control.Selective.Over`) and hierarchical unfolding
+  (`recursion-schemes`) at spec boundaries; task/chunk caching at `yamaarashi-flow` boundaries
+  (`$_` locations); element streaming within bodies. Element-level fusion intentionally does not
+  cross a task edge — that is the throughput-for-aesthetics trade (§0), repaid in resume-after-crash,
+  per-task debugging, and early cutoff.
+- **Records.** Task inputs/outputs are anonymous records (`large-anon`); `rcast` at boundaries
+  implements row-polymorphic routing. Selective branching decides *which branch* on runtime values;
+  row types decide *which fields* statically. Replaces arrow notation, completely avoiding
+  `OverloadedLabels` conflicts with `large-anon`.
 - **Kernel locality.** The element kernel choice is per-task-body and invisible to the DAG:
   church-encoded kernel by default, `SerialT (Eff es)` for hot loops, conduit adapters at
   byte boundaries. The conduit/streamly mixture is an implementation detail, not an
   architecture-wide commitment (backend policy in `YAMAARASHI_DESIGN.md` §3).
-- **Backpressure is layered.** Porcupine's pull-based (FRP-flavored) demand drives tasks;
-  the element kernel manages per-element demand within a body. Each layer owns its own
-  discipline; no global backpressure policy.
-- **Resource safety is global.** The `Resource` effect row (shared `Eff es` substrate)
-  finalizes inner element streams even when an ArrowChoice branch is skipped or the pipeline
-  aborts mid-task — one uniform finalization story, no separate bracketP bookkeeping.
-- **Caching vs non-determinism.** Porcupine's Make-like location caching assumes
-  deterministic tasks; LLM-backed tasks carry a purity/determinism tag with invalidation keys
-  (model, sampling params, prompt hash) supplied by `sarutahiko-model`. This is the one
-  place porcupine's build-system heritage needs extending for agent workloads; policy lives
-  in `yamaarashi-flow`.
+- **Effect Neutrality (Façade Pattern).** `yamaarashi-flow` defines and exposes tagless capability
+  typeclasses (`MonadWorktree`, `MonadTaskQueue`), while execution delegates to neutral GADT
+  signatures in `sarutahiko-effect-signatures` through thin adapter packages (`yamaarashi-adapter-effectful`,
+  `yamaarashi-adapter-polysemy`).
+- **Resource safety is global.** The `Resource` effect row (shared substrate) finalizes inner
+  element streams even when an alternative branch is skipped or the pipeline aborts mid-task.
+- **Caching vs non-determinism.** Location caching assumes deterministic tasks; LLM-backed
+  tasks carry a purity/determinism tag with invalidation keys (model, sampling params, prompt hash)
+  supplied by `utai`. Static macro-DAG prunes via early cutoff; dynamic agentic fix/retry loops
+  live strictly inside leaf task runners.
 - **Concurrency is two-level.** Task-level scheduling belongs to the DAG (a task runs when
   its inputs are ready); element-level strategies (streamly async/parallel wrappers) live
   inside bodies. Document per level who owns cancellation.
@@ -467,11 +468,10 @@ Neither replaces the other; the contract is:
   records; `-sqlite`; `-patch`; `-schema` (see `HASHIGAKARI_DESIGN.md`).
 - Extends the minimal SQLite spine writer proven in Phase 1.5 into the full `hashigakari`
   relational AST, dialect compilation, and hasql streaming execution.
-- `hashigakari-beam` (`beam-large-anon`) published as a standalone Hackage bridge.
-- `yamaarashi-flow`: porcupine re-homed over `Eff es` with row-typed chunks (§3.6),
-  including the cache-invalidation policy for non-deterministic (LLM-backed) tasks;
-  `yamaarashi` kernel + backends per `YAMAARASHI_DESIGN.md`.
-- Format packages by demand order: CBOR/MessagePack envelopes → TOML/YAML overlays →
+- `yamaarashi-flow`: Selective Applicative + `alga` workflow orchestrator with row-typed chunks (§3.6),
+  `yamaarashi-spec` resource extractor (`Control.Selective.Over`) and task subdivision,
+  including cache-invalidation policy for non-deterministic (LLM-backed) tasks;
+  `yamaarashi` kernel + conduit/streamly backends per `YAMAARASHI_DESIGN.md`.
   Parquet/Arrow projection pushdown → Dhall bridge → RFC 6902/7396 diff engine wired into
   `db-core` UPDATE synthesis.
 - Protocol packages by demand order: GraphQL → CloudEvents → OTLP enrichment of

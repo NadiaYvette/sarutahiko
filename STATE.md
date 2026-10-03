@@ -120,16 +120,30 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ---
 
-## 5. Next Immediate Phase: Design Document Reconciliation
+## 5. Recent Completed Actions (Design Reconciliation Phase)
 
-With all 6 architectural decisions resolved and blessed, the active task queue transitions to updating the design corpus to align with the blessed architecture:
+1. **Reconciled `REUSE_REGISTER.md`:**
+   - Admitted `selective` (§2.25), `algebraic-graphs` / `alga` (§2.26), and `recursion-schemes` (§2.27).
+   - Updated Porcupine / Kernmantle (§2.12) to record its superseding by Selective + Alga.
+2. **Overhauled `YAMAARASHI_DESIGN.md`:**
+   - Codified the two-pass Selective Applicative workflow orchestrator, Build Systems à la Carte scheduler, streaming mixture (`yamaarashi-conduit`, `yamaarashi-streamly`), `yamaarashi-spec`, and the 4 wart safeguards.
+3. **Reconciled `AGENTIC_TASK_MANAGEMENT_DESIGN.md`:**
+   - Corrected goal drift: restored `hashigakari` as the canonical row-native persistence engine, incorporated the Façade Pattern, Selective workflow DAG, and `utai` + MCP sampling.
+4. **Synchronized `NIH_PLAN.md` & `PLAN.md`:**
+   - Updated §3.5 and §3.6 layering contracts, Phase 4 package entries, and Invariants 4 & 5 to codify Selective workflow DAGs and the Façade Pattern.
 
-1. **`docs/registers/REUSE_REGISTER.md`:**
-   - Add entries for `selective`, `algebraic-graphs`, `recursion-schemes`.
-   - Update Porcupine / Kernmantle entry (§2.12) to reflect superseding by Selective + Alga.
-2. **`docs/notes/YAMAARASHI_DESIGN.md`:**
-   - Update to codify the new Selective workflow orchestrator, Build Systems à la Carte scheduler, streaming mixture (`yamaarashi-conduit`, `yamaarashi-streamly`), and `yamaarashi-spec`.
-3. **`docs/notes/AGENTIC_TASK_MANAGEMENT_DESIGN.md`:**
-   - Reconcile the goal drift: restore `hashigakari` as canonical persistence, incorporate the Façade Pattern, and align with `utai` + MCP sampling.
-4. **`docs/notes/NIH_PLAN.md` & `PLAN.md`:**
-   - Update streaming and workflow layering contracts (§3.5, §3.6) and Phase package matrices.
+---
+
+## 6. Immediate Workqueue (The Frontier)
+
+### [TASK-003] Yamaarashi Minimal Package Skeletons & Toolchain Verification
+* **Objective:** Create the canonical minimal cabal packages and exposed module skeletons for the revised Yamaarashi family adhering strictly to `TASK_PACKET_BEST_PRACTICES.md`.
+* **Deliverables:**
+  1. `packages/yamaarashi`: Minimal GHC2024 cabal package with `Stream (Of a) m r` type stub.
+  2. `packages/yamaarashi-flow`: Minimal cabal package with dependencies on `selective`, `algebraic-graphs`, and `large-anon`.
+  3. `packages/yamaarashi-spec`: Minimal cabal package with dependencies on `recursion-schemes` and `selective`.
+  4. `packages/yamaarashi-conduit`: Minimal framing adapter stub package.
+  5. `packages/yamaarashi-streamly`: Minimal fused backend stub package.
+  6. Register in `cabal.project` and verify `cabal v2-build` passes with zero warnings (`-Wall -Werror`).
+* **Verification Command:** `cabal v2-build packages/yamaarashi*`
+

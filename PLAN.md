@@ -13,8 +13,8 @@ Every change across all packages must satisfy these six invariants:
 1. **Toolchain & Language Baseline:** GHC 9.12.2 / Cabal 3.18, `default-language: GHC2024`. Warnings are errors (`-Wall -Werror`).
 2. **Extensible Records over Ad-Hoc Types:** Core domain models use `large-anon` anonymous extensible records. No monolithic custom record definitions where open rows apply (`sarutahiko-fields`, `sarutahiko-records`).
 3. **Anti-Aeson / Zero-Transitive Bloat:** No dependency on `aeson`. Wire serialization uses hand-rolled, zero-dependency `kogaki` row-typed codecs (`kogaki-core`, `kogaki-wire`).
-4. **Streaming Kernel:** Traversal handles across database, effect, and model layers unify under the canonical existential stepper `Stepper m a` (`docs/notes/EFFECT_CATALOG_DESIGN.md` §4), which unrolls into `yamaarashi` element streams.
-5. **Dual Interpreter Doctrine & Parity Gate:** Every effect signature must provide at least two interpreters (production + pure model, e.g. `effectful` and `polysemy`), verified by a Tasty/Hedgehog parity test (`EFFECT_CATALOG_DESIGN.md` §6.6).
+4. **Streaming & Workflow Kernel:** Traversal handles across database, effect, and model layers unify under the canonical existential stepper `Stepper m a` (`docs/notes/EFFECT_CATALOG_DESIGN.md` §4) and `yamaarashi` element streams. Macro-workflows execute as Selective Applicative DAGs with static over-approximation and early cutoff (`yamaarashi-flow`, `yamaarashi-spec`).
+5. **Dual Interpreter Doctrine & Façade Pattern:** Every effect signature must provide at least two interpreters (production + pure model, e.g. `effectful` and `polysemy`), verified by a Tasty/Hedgehog parity test (`EFFECT_CATALOG_DESIGN.md` §6.6). High-level consumers expose open tagless capability typeclasses (`Monad*`) with thin adapter modules binding them to the underlying GADTs.
 6. **Unbounded Hierarchical Scope Nesting:** Scoped regions (`Region`), correlation lineage (`SpanPath`), and diagnostic ingestion (`ScopeStack`) must support arbitrary recursive finite depth without depth ceilings or flat-scope truncation.
 
 ---
