@@ -360,29 +360,20 @@ runHermesStep wtDir packet dbPath mRepairPrompt attempt = do
       putStrLn $ "=== [yamaarashi-exec] Log destination: " ++ workerLogFile ++ " ==="
 
       let baseArgs =
-            [ "chat"
-            , "--in", wtDir
-            , "--query-file", promptFile
-            , "--cli"           -- Force CLI REPL; prevent TUI Node.js deadlock
-            , "-Q"              -- Quiet headless mode
-            , "--oneshot"
+            [ "--in", wtDir
+            , "-z", T.unpack promptContent
             , "--yolo"
             , "--accept-hooks"
-            , "--format", "text"
             ]
           skillsArgs = case packetSkills packet of
             [] -> ["-s", "code-navigation,tricorder,contextful"]
             ss -> ["-s", T.unpack (T.intercalate "," ss)]
-          turnsArgs = case packetMaxTurns packet of
-            Just n  -> ["--max-turns", show n]
-            Nothing -> ["--max-turns", "40"]
-          budgetArgs = ["--run-budget", show budgetSec]
           modelArgs = case packetModel packet of
             Just m  -> ["-m", T.unpack m]
             Nothing -> []
-          cmdArgs = baseArgs ++ skillsArgs ++ turnsArgs ++ budgetArgs ++ modelArgs
+          cmdArgs = baseArgs ++ skillsArgs ++ modelArgs
 
-      putStrLn $ "=== [yamaarashi-exec] Command: " ++ hermesBin ++ " " ++ unwords cmdArgs ++ " ==="
+      putStrLn $ "=== [yamaarashi-exec] Command: " ++ hermesBin ++ " --in " ++ wtDir ++ " -z <prompt> --yolo --accept-hooks ==="
       mRes <- timeout ((budgetSec + 30) * 1000000) $ do
         (exitCode, outBs, errBs) <- readProcess (proc hermesBin cmdArgs)
         BSL.writeFile workerLogFile (BSL.concat [outBs, "\n--- STDERR ---\n", errBs])
@@ -525,19 +516,25 @@ runVerificationGate wtDir packet = do
               runGateCmd wtDir "sh" [verifyScript]
             else pure (Right ())
 
--- | Execute a verification command and capture its output on failure.
+-- | Execute a verification command and capture its output on failure with a hard 180s timeout.
 runGateCmd :: FilePath -> String -> [String] -> IO (Either Text ())
 runGateCmd workDir cmd args = do
-  (code, outBs, errBs) <- readProcess (setWorkingDir workDir (proc cmd args))
-  case code of
-    ExitSuccess -> do
-      putStrLn $ "  [Gate PASS] " ++ cmd ++ " " ++ unwords args
-      pure (Right ())
-    ExitFailure c -> do
-      let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
-          desc = T.pack cmd <> " " <> T.unwords (map T.pack args)
-      putStrLn $ "  [Gate FAIL] " ++ cmd ++ " " ++ unwords args ++ " (exit " ++ show c ++ ")"
-      pure (Left ("Command failed with exit code " <> T.pack (show c) <> " (" <> desc <> "):\n" <> errText))
+  mRes <- timeout (180 * 1000000) $ readProcess (setWorkingDir workDir (proc cmd args))
+  case mRes of
+    Nothing -> do
+      let desc = T.pack cmd <> " " <> T.unwords (map T.pack args)
+      putStrLn $ "  [Gate TIMEOUT] " ++ cmd ++ " " ++ unwords args ++ " (exceeded 180s)"
+      pure (Left ("Verification command timed out after 180 seconds (" <> desc <> ")"))
+    Just (code, outBs, errBs) ->
+      case code of
+        ExitSuccess -> do
+          putStrLn $ "  [Gate PASS] " ++ cmd ++ " " ++ unwords args
+          pure (Right ())
+        ExitFailure c -> do
+          let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
+              desc = T.pack cmd <> " " <> T.unwords (map T.pack args)
+          putStrLn $ "  [Gate FAIL] " ++ cmd ++ " " ++ unwords args ++ " (exit " ++ show c ++ ")"
+          pure (Left ("Command failed with exit code " <> T.pack (show c) <> " (" <> desc <> "):\n" <> errText))
 
 -- | Trim excessively long error outputs to avoid blowing up prompt budgets.
 trimErrorOutput :: Text -> Text

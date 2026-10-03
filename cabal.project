@@ -18,6 +18,7 @@ packages:
     packages/yamaarashi/yamaarashi-streamly
     packages/yamaarashi/yamaarashi-flow
     packages/yamaarashi/yamaarashi-spec
+    packages/hashigakari/hashigakari-sqlite
 
 optional-packages:
     ../large-records-interfaces/large-anon

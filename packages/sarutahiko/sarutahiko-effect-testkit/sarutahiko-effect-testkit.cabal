@@ -26,12 +26,14 @@ library
     exposed-modules:
         Sarutahiko.Effect.TestKit
         Sarutahiko.Effect.Testkit.Parity
+        Sarutahiko.Effect.Testkit.STM
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,
         containers >= 0.6,
         text >= 2.1,
         time >= 1.12,
+        stm >= 2.5,
         effectful-core >= 2.3,
         polysemy >= 1.9,
         large-anon,

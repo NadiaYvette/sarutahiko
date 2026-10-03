@@ -58,6 +58,7 @@ import Effectful
 import Effectful.Dispatch.Dynamic
 
 import Sarutahiko.Effect.Clock (Clock (..))
+import Sarutahiko.Effect.EventStore (EventStore)
 import Sarutahiko.Effect.Log (Log (..), LogSeverity (..), SomeRow (..))
 import Sarutahiko.Effect.Process
   ( ChildHandle (..)
@@ -66,13 +67,16 @@ import Sarutahiko.Effect.Process
   , ProcessConfig (..)
   )
 import Sarutahiko.Effect.Resource (Resource (..), ResourceKey (..))
+import Sarutahiko.Effect.TaskQueue (TaskQueue)
 import Sarutahiko.Process.Capability (MonadProcess (..))
 import qualified Sarutahiko.Process.Supervisor as Sup
 
-type instance DispatchOf Clock    = Dynamic
-type instance DispatchOf Resource = Dynamic
-type instance DispatchOf Process  = Dynamic
-type instance DispatchOf Log      = Dynamic
+type instance DispatchOf Clock      = Dynamic
+type instance DispatchOf Resource   = Dynamic
+type instance DispatchOf Process    = Dynamic
+type instance DispatchOf Log        = Dynamic
+type instance DispatchOf EventStore = Dynamic
+type instance DispatchOf TaskQueue  = Dynamic
 
 instance (Process :> es) => MonadProcess (Eff es) where
   spawnChild        = send . SpawnChild
