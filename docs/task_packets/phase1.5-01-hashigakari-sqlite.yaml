@@ -23,6 +23,15 @@ dependencies:
 packages:
   - hashigakari-sqlite
 
+executor: hermes
+model: auto/best-coding
+skills:
+  - code-navigation
+  - tricorder
+  - contextful
+max_turns: 40
+run_budget: 900
+
 steps:
   - id: create-skeleton
     name: Package skeleton and direct-sqlite dependency setup
