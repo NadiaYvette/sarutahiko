@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-02T22:40:20+02:00
+* **Timestamp:** 2026-10-03T11:03:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `5a9d44d` (*docs: add task packet best practices and AI coding context management SOTA transcript*)
+* **HEAD Commit:** `661e832` (*fix(kogaki-wire): replace unsafe head, tail, and indexing in Json lexer*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -157,18 +157,30 @@ The following sequential decisions must be resolved to reconcile the revised Yam
    - Implemented corecursive task subdivision via `recursion-schemes` (`hylo`) with `IsPrimitive` granularity scoring and task packet serialization in `packages/yamaarashi-spec/src/Yamaarashi/Spec/Subdivide.hs`.
    - Added Tasty/Hedgehog property test suite in `packages/yamaarashi-spec/test/Spec.hs` (3/3 property tests passing with 100 runs each).
    - Verified all 15 property tests across `yamaarashi`, `yamaarashi-flow`, and `yamaarashi-spec` pass with zero warnings under `-Wall -Werror`.
+10. **Executed Packet 05 — Standalone Yamaarashi Runner & First Dogfood Milestone [TASK-007]:**
+    - Delivered standalone CLI executable `yamaarashi-exec` in `packages/yamaarashi-flow/app/Main.hs` supporting `run <packet.yaml>`.
+    - Registered `typed-process` in `docs/registers/REUSE_REGISTER.md` §2.28 and integrated strongly typed process supervision for git worktree isolation.
+    - Connected SQLite event store ledger recording task lifecycle events (`TASK_STARTED`, `WORKTREE_PROVISIONED`, `STEP_STARTED`, `STEP_EXECUTED`, `VERIFICATION_STARTED`, `VERIFICATION_PASSED`, `COMMIT_CREATED`, `TASK_COMPLETED`, `WORKTREE_TEARDOWN`) into `.yamaarashi/events.sqlite3`.
+    - Successfully executed the dogfood target `docs/task_packets/fix-kogaki-wire-lexer-nonempty.yaml` through `yamaarashi-exec`:
+      1. Spawned isolated worktree at `/home/nyc/src/sarutahiko-wt-fix-kogaki-wire-lexer-nonempty` on branch `yamaarashi/task-fix-kogaki-wire-lexer-nonempty`.
+      2. Applied safe, non-empty refactoring to `Kogaki.Wire.Json.Lexer.hs` via `BSC.uncons`.
+      3. Passed all 3 verification gates: clean compilation under `-Wall -Werror`, all 14 `test-kogaki-wire` invariant tests passing, and grep audit verifying zero calls to `BSC.head`, `BS.tail`, or `!!` remain.
+      4. Generated commit `661e832` with proper attribution trailers and fast-forward merged it into HEAD.
+      5. Bracketed cleanup cleanly unmounted and destroyed the isolated worktree directory and temporary branch.
+    - Verified all test suites across `kogaki-wire`, `yamaarashi`, `yamaarashi-flow`, and `yamaarashi-spec` pass 100% with zero warnings.
+    - **Yamaarashi Orchestrator Bootstrap Series (Packets 01–05) is now COMPLETE!**
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-### [TASK-007] Standalone Yamaarashi Runner & First Dogfood Target (Packet yamaarashi-05-dogfood-harness)
-* **Objective:** Deliver the standalone execution CLI (`yamaarashi-exec`) and execute the first dogfood task packet in an isolated worktree.
+### [TASK-008] Roadmap Task Packet Adaptation & Phase 1.5 Hokora Slice
+* **Objective:** Adapt remaining task packets (`phase2-agent-core.yaml`, `phase3-surfaces-codeintel.yaml`, `phase4-data-protocol.yaml`, `setup-keiro-state.yaml`) to the blessed design decisions (Selective DAG, Façade Pattern, `hashigakari` persistence, `kogaki-wire` zero-Aeson invariant, `utai` LLM substrate) and begin execution through `yamaarashi-exec`.
 * **Deliverables:**
-  1. `packages/yamaarashi-flow/app/Main.hs`: CLI executable `yamaarashi-exec` supporting `run <path>` command.
-  2. Git worktree management runner creating isolated branches and teardown via process isolation.
-  3. Dogfood Target: Execute `docs/task_packets/fix-kogaki-wire-lexer-nonempty.yaml` through `yamaarashi-exec`, verifying isolated worktree creation, build check, verification execution, commit generation, and clean worktree teardown.
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/fix-kogaki-wire-lexer-nonempty.yaml`
+  1. Audit and rewrite existing legacy packets in `docs/task_packets/` to conform to `TASK_PACKET_BEST_PRACTICES.md` and DECISION-001–006.
+  2. Implement `hashigakari-sqlite` embedded carrier providing the SQLite event store and task queue for Phase 1.5 Hokora.
+  3. Execute adapted task packets sequentially using `yamaarashi-exec run`.
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run <packet>`
 
 
 
