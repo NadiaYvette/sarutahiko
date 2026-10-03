@@ -286,8 +286,8 @@ prop_nonempty_contract = property $ do
 EOF
 
 # 5. Update kogaki-wire.cabal test dependencies
-if ! grep -q "kogaki-core" packages/kogaki/kogaki-wire/kogaki-wire.cabal; then
-  sed -i 's/mono-traversable >= 1.0.17,/mono-traversable >= 1.0.17,\n        kogaki-core,/' packages/kogaki/kogaki-wire/kogaki-wire.cabal
+if ! sed -n '/test-suite test-kogaki-wire/,/large-anon/p' packages/kogaki/kogaki-wire/kogaki-wire.cabal | grep -q "kogaki-core"; then
+  sed -i '/test-suite test-kogaki-wire/,/large-anon/ s/kogaki-wire,/kogaki-wire,\n        kogaki-core,/' packages/kogaki/kogaki-wire/kogaki-wire.cabal
 fi
 
 # 6. Update Kogaki.Wire
@@ -540,12 +540,13 @@ import Kogaki.Core.String
   , toByteString
   )
 import Kogaki.Wire.Json.Lexer"""
+assert import_target in dec, "import_target not found in Decode.hs"
 dec = dec.replace(import_target, import_replacement, 1)
 
-instance_target = """instance ToJsonField Text where
-  encodeField t = Just ("\"" <> escapeJsonString (TE.encodeUtf8 t) <> "\"")"""
+instance_target = r'''instance ToJsonField Text where
+  encodeField t = Just ("\"" <> escapeJsonString (TE.encodeUtf8 t) <> "\"")'''
 
-instance_replacement = """instance ToJsonField Text where
+instance_replacement = r'''instance ToJsonField Text where
   encodeField t = Just ("\"" <> escapeJsonString (TE.encodeUtf8 t) <> "\"")
 
 instance FromJsonField LogicalString where
@@ -568,7 +569,8 @@ instance FromJsonField (NonNull LogicalString) where
       Just nn -> Right nn
 
 instance ToJsonField (NonNull LogicalString) where
-  encodeField nn = encodeField (toNullable nn)"""
+  encodeField nn = encodeField (toNullable nn)'''
+assert instance_target in dec, "instance_target not found in Decode.hs"
 dec = dec.replace(instance_target, instance_replacement, 1)
 
 with open('packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Decode.hs', 'w') as f:
@@ -578,10 +580,12 @@ with open('packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Decode.hs', 'w') as 
 with open('packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs', 'r') as f:
     lex_content = f.read()
 
+assert "  ( -- * Tokens\n    JsonToken (..)\n" in lex_content, "tokens export not found in Lexer.hs"
 lex_content = lex_content.replace(
     "  ( -- * Tokens\n    JsonToken (..)\n",
     "  ( -- * Tokens\n    JsonToken (..)\n\n    -- * Domain Conversion\n  , tokenLogicalString\n"
 )
+assert "import Data.Bits (shiftL, (.|.))\n" in lex_content, "Data.Bits import not found in Lexer.hs"
 lex_content = lex_content.replace(
     "import Data.Bits (shiftL, (.|.))\n",
     "import Data.Bits (shiftL, (.|.))\nimport Kogaki.Core.String (LogicalString, fromByteString, fromText)\n"
@@ -599,6 +603,7 @@ tokenLogicalString (TkKey bs)   = case fromByteString bs of
   Left _   -> Nothing
 tokenLogicalString _            = Nothing
 """
+assert token_target in lex_content, "token_target not found in Lexer.hs"
 lex_content = lex_content.replace(token_target, token_replacement, 1)
 
 with open('packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs', 'w') as f:
@@ -608,10 +613,22 @@ with open('packages/kogaki/kogaki-wire/src/Kogaki/Wire/Json/Lexer.hs', 'w') as f
 with open('packages/kogaki/kogaki-wire/test/Main.hs', 'r') as f:
     test_content = f.read()
 
-test_content = test_content.replace(
-    "import Kogaki.Wire.SSE.Parser\n  ( SseEvent (..)\n  , parseSseStream\n  , renderSseEvent\n  , renderSseStream\n  )\n",
-    "import Kogaki.Core.String (LogicalString (..))\nimport Kogaki.Wire.SSE.Parser\n  ( SseEvent (..)\n  , parseSseStream\n  , renderSseEvent\n  , renderSseStream\n  , sseDataLogical\n  )\n"
-)
+sse_import_target = """import Kogaki.Wire.SSE.Parser
+  ( SseEvent (..)
+  , parseSseStream
+  , renderSseEvent
+  , renderSseStream
+  )"""
+sse_import_replacement = """import Kogaki.Core.String (LogicalString (..))
+import Kogaki.Wire.SSE.Parser
+  ( SseEvent (..)
+  , parseSseStream
+  , renderSseEvent
+  , renderSseStream
+  , sseDataLogical
+  )"""
+assert sse_import_target in test_content, "sse_import_target not found in Main.hs"
+test_content = test_content.replace(sse_import_target, sse_import_replacement, 1)
 
 main_old = """-- | Main test runner supporting pattern filters (-p /JsonLexer/, -p /SseRoundTrip/).
 main :: IO ()
@@ -642,8 +659,8 @@ main = do
   rLogical <- if runLogical then testLogicalStringIntegration else pure True
 
   if rJson && rSse && rLogical"""
-
-test_content = test_content.replace(main_old, main_new)
+assert main_old in test_content, "main_old not found in Main.hs"
+test_content = test_content.replace(main_old, main_new, 1)
 
 test_fn = """
 -- | Test LogicalString integration across JSON rows and SSE events.

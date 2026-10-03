@@ -53,6 +53,7 @@ test-suite test-kogaki-wire
         text >= 2.1,
         vector >= 0.13,
         kogaki-wire,
+        kogaki-core,
         sarutahiko-fields,
         sarutahiko-records,
         mono-traversable >= 1.0.17,
