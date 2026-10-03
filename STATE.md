@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T18:38:00+02:00
+* **Timestamp:** 2026-10-03T21:44:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `a91f7f3` (*feat(hashigakari-sqlite): implement embedded SQLite carrier for event store and task queue*)
+* **HEAD Commit:** `b283c4b` (*Implement utai LLM substrate and deterministic mock interpreter*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -225,20 +225,33 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Integrated structured markdown prompt synthesis (`buildHermesPrompt`) embedding task invariants, ground rules, and verbatim YAML blueprints.
     - Updated git commit creator with Linux kernel-style `Assisted-by` attribution reflecting Hermes / OmniRoute models alongside Antigravity architecture attribution.
     - Verified compilation and test suite (`yamaarashi-flow-test`) passing 100% with zero warnings under `-Wall -Werror`.
+17. **Executed Phase 1.5 Packet 02 — `utai-mock` & Native Utai LLM Client [TASK-013] (`b283c4b`):**
+    - Implemented `packages/sarutahiko/sarutahiko-effect-signatures`:
+      * `Sarutahiko.Effect.ModelAPI`: Neutral GADT covering `Complete`, `Stream`, `Embed`, and `Count`.
+    - Implemented `packages/utai/utai`:
+      * `Utai.Types`: Domain re-exports and zero-token local provider profiles (`omnirouteProfile`, `opencodeProfile`, `kaggleProfile`).
+      * `Utai.Capability`: Open tagless capability typeclass `MonadModelAPI` under the Façade Pattern.
+      * `Utai.Wire`: Strictly zero-Aeson wire codecs for OpenAI-compatible completions and SSE streaming.
+      * `Utai.Mock`: Deterministic mock interpreter and fixture store enforcing laws L1–L4.
+      * `Utai.Client`: Direct in-tree zero-cost OpenAI-compatible live client with fail-closed connect/execution timeouts and fallback cascades.
+    - Integrated native `executor: utai` into `yamaarashi-exec`, eliminating subprocess wrapper deadlocks and enabling native in-tree zero-cost task execution.
+    - Added `--allow-empty` to `yamaarashi-exec` commit step for clean milestone recording.
+    - Executed `docs/task_packets/phase1.5-02-utai-mock.yaml` through `yamaarashi-exec`:
+      1. Isolated worktree provisioned and seeded with `./tags`.
+      2. Native `Utai` client queried `mistral/codestral-latest` via local OmniRoute with zero external token burn.
+      3. Passed verification gate (`cabal v2-build utai` and `scripts/tasks/phase1.5-02-utai-mock-verify.sh`).
+      4. Generated commit `b283c4b` with attribution trailers and fast-forward merged to HEAD.
+      5. Bracketed cleanup destroyed worktree and temporary branch.
+    - Verified all 7 Tasty/Hedgehog property tests in `utai` and all 6 repository package test suites pass 100% with zero warnings under `-Wall -Werror`.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-> [!NOTE] Phase 1.5 Packet 01 COMPLETE & Zero-Token Hermes Delegation Proven
-> `hashigakari-sqlite` embedded carrier, STM testkit carrier, and all parity tests are COMPLETE (`a91f7f3`).
-> `yamaarashi-exec` is equipped with Hermes `-z` one-shot zero-token execution and 180s verification gate timeouts.
-> Operational frontier is primed for Phase 1.5 Packet 02 (`phase1.5-02-utai-mock`).
-
-### [TASK-013] Execute Phase 1.5 Packet 02: phase1.5-02-utai-mock
-* **Objective:** Implement `packages/utai/utai` and `utai-mock` deterministic carrier.
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-02-utai-mock.yaml`
+> [!NOTE] Phase 1.5 Packet 02 COMPLETE & Native Zero-Cost LLM Invocation Active
+> `utai` LLM substrate, `ModelAPI` GADT, `utai-mock` deterministic carrier, `Utai.Client` native live carrier, and `executor: utai` are COMPLETE (`b283c4b`).
+> Operational frontier is primed for Phase 1.5 Packet 03 (`phase1.5-03-hokora-slice`).
 
 ### [TASK-014] Execute Phase 1.5 Packet 03: phase1.5-03-hokora-slice
-* **Objective:** Assemble Phase 1.5 Hokora autonomous turn vertical slice.
+* **Objective:** Assemble Phase 1.5 Hokora autonomous turn vertical slice (`HOKORA_SPEC.md`).
 * **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-03-hokora-slice.yaml`
