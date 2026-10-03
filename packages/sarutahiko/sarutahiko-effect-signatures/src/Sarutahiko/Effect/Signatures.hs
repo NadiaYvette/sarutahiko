@@ -12,11 +12,13 @@ module Sarutahiko.Effect.Signatures
   , module Sarutahiko.Effect.Worktree
   , module Sarutahiko.Effect.TaskQueue
   , module Sarutahiko.Effect.EventStore
+  , module Sarutahiko.Effect.ModelAPI
   ) where
 
 import Sarutahiko.Effect.Clock
 import Sarutahiko.Effect.EventStore
 import Sarutahiko.Effect.Log
+import Sarutahiko.Effect.ModelAPI
 import Sarutahiko.Effect.Process
 import Sarutahiko.Effect.Resource
 import Sarutahiko.Effect.Stepper

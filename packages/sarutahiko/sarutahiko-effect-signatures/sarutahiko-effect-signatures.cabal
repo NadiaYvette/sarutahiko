@@ -33,6 +33,7 @@ library
         Sarutahiko.Effect.Worktree
         Sarutahiko.Effect.TaskQueue
         Sarutahiko.Effect.EventStore
+        Sarutahiko.Effect.ModelAPI
     build-depends:
 
         base >= 4.20 && < 5,

@@ -1,0 +1,71 @@
+cabal-version:      3.14
+name:               utai
+version:            0.1.0.0
+synopsis:           Canonical LLM substrate, ModelAPI signature, wire codecs, and deterministic mock carrier
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Language, Effects, Network
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -Werror
+
+library
+    import:           commons
+    exposed-modules:
+        Utai
+        Utai.Types
+        Utai.Capability
+        Utai.Mock
+        Utai.Wire
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
+        effectful-core >= 2.3,
+        large-anon,
+        sarutahiko-fields >= 0.1,
+        sarutahiko-records,
+        sarutahiko-effect-signatures >= 0.1,
+        kogaki-core >= 0.1,
+        kogaki-wire >= 0.1,
+        transformers >= 0.6,
+        yamaarashi
+    hs-source-dirs:   src
+
+test-suite test-utai
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        effectful-core >= 2.3,
+        large-anon,
+        sarutahiko-records,
+        sarutahiko-effect-signatures,
+        kogaki-core,
+        kogaki-wire,
+        yamaarashi,
+        utai,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

@@ -24,6 +24,10 @@ dependencies:
 packages:
   - utai
 
+executor: hermes
+model: auto/best-coding
+run_budget: 900
+
 steps:
   - id: create-skeleton
     name: Package skeleton and dependencies setup

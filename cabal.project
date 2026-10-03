@@ -19,6 +19,7 @@ packages:
     packages/yamaarashi/yamaarashi-flow
     packages/yamaarashi/yamaarashi-spec
     packages/hashigakari/hashigakari-sqlite
+    packages/utai/utai
 
 optional-packages:
     ../large-records-interfaces/large-anon
