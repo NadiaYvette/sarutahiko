@@ -1,0 +1,49 @@
+---
+id: yamaarashi-05-dogfood-harness
+title: Build standalone Yamaarashi runner executable and execute first dogfood task
+description: |
+  Deliver the standalone execution CLI (`yamaarashi-exec`) and execute the first
+  dogfood task packet in an isolated worktree.
+
+  Components:
+  - CLI executable in `packages/yamaarashi-flow/app/Main.hs`.
+  - Integration with `typed-process` for worktree isolation (`git worktree add/remove`).
+  - Integration with SQLite event store carrier (`hashigakari-sqlite`).
+  - First Dogfood Target: Execute `docs/task_packets/fix-kogaki-wire-lexer-nonempty.yaml`
+    through `yamaarashi-exec`, verifying automatic worktree creation, build check,
+    verification execution, commit generation, and clean worktree teardown.
+
+dependencies:
+  - yamaarashi-01-skeletons
+  - yamaarashi-02-streaming-kernel
+  - yamaarashi-03-selective-flow
+  - yamaarashi-04-spec-extraction
+
+packages:
+  - packages/yamaarashi-flow
+
+steps:
+  - id: implement-cli-runner
+    name: Implement yamaarashi-exec CLI
+    action: |
+      In packages/yamaarashi-flow/app/Main.hs:
+      - Implement CLI options parser accepting a task packet path (`yamaarashi-exec run <path>`).
+      - Connect to SQLite event ledger table.
+      - Instantiate worktree isolation runner using `typed-process`.
+    duration: "45m"
+
+  - id: execute-dogfood-task
+    name: The Dogfood Milestone: Execute fix-kogaki-wire-lexer-nonempty
+    action: |
+      Run `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/fix-kogaki-wire-lexer-nonempty.yaml`:
+      - Verify isolated worktree is spawned.
+      - Verify lexer modifications pass build and test checks.
+      - Verify git commit is created with proper attribution trailers.
+      - Verify worktree is cleanly removed.
+    duration: "45m"
+
+success_criteria:
+  - `yamaarashi-exec` compiles and runs.
+  - Dogfood task completes with exit-code 0.
+  - Changes from `fix-kogaki-wire-lexer-nonempty.yaml` are committed cleanly by the orchestrator.
+  - Yamaarashi is established as the self-contained execution substrate for subsequent project tasks.

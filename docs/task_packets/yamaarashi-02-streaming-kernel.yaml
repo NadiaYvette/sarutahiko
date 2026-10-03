@@ -1,0 +1,66 @@
+---
+id: yamaarashi-02-streaming-kernel
+title: Implement the church-encoded element streaming kernel and boundary adapters
+description: |
+  Implement the core CPS free-monad element streaming kernel in `packages/yamaarashi`,
+  along with the boundary adapters in `packages/yamaarashi-conduit` and `packages/yamaarashi-streamly`.
+
+  Adheres to YAMAARASHI_DESIGN.md:
+  - `newtype Stream (Of a) m r` with O(1) left-associated binds via Codensity.
+  - Zero external dependencies in `yamaarashi`.
+  - Typed concurrency strategy wrappers (`Serial`, `Async`, `Interleaved`, `Parallel`).
+  - Unrolling bridge from `Sarutahiko.Effect.Stepper`.
+  - Conduit framing adapters for stdio JSON-RPC and process pipes in `yamaarashi-conduit`.
+  - In-process `SerialT` embedding in `yamaarashi-streamly`.
+
+dependencies:
+  - yamaarashi-01-skeletons
+
+packages:
+  - packages/yamaarashi
+  - packages/yamaarashi-conduit
+  - packages/yamaarashi-streamly
+
+steps:
+  - id: implement-kernel
+    name: Implement Stream (Of a) m r in yamaarashi
+    action: |
+      In packages/yamaarashi/src/Yamaarashi.hs:
+      - Define `data Of a b = !a :> b` pair producer shape.
+      - Define church-encoded / CPS `Stream (Of a) m r`.
+      - Implement core combinators: `yield`, `await`, `fold`, `map`, `filter`, `take`, `drop`.
+      - Implement `unfoldStepper :: Monad m => Stepper m a -> Stream (Of a) m ()` bridging
+        the canonical existential stepper from sarutahiko-effect-signatures.
+      - Define typed concurrency wrappers (`Serial`, `Async`, `Interleaved`, `Parallel`).
+    duration: "45m"
+
+  - id: implement-conduit-adapter
+    name: Implement boundary framing adapters in yamaarashi-conduit
+    action: |
+      In packages/yamaarashi-conduit/src/Yamaarashi/Conduit.hs:
+      - Implement bidirectional conversion: `streamToConduit` and `conduitToStream`.
+      - Implement stdio JSON-RPC line framing (`linesConduit`, `jsonRpcFraming`).
+      - Ensure deterministic resource bracketing via the Resource effect row.
+    duration: "30m"
+
+  - id: implement-streamly-backend
+    name: Implement fused hot-loop embedding in yamaarashi-streamly
+    action: |
+      In packages/yamaarashi-streamly/src/Yamaarashi/Streamly.hs:
+      - Implement `toStreamly` and `fromStreamly` adapters for `SerialT`.
+      - Provide high-throughput row-folding combinators.
+    duration: "30m"
+
+  - id: verify-streaming-tests
+    name: Test and verification gate
+    action: |
+      Add test suite in packages/yamaarashi/test/Spec.hs:
+      - Test stream composition, folds, and short-circuit finalization.
+      - Verify stepper unrolling produces identical results to drainStepper.
+      - Run `cabal v2-test yamaarashi`.
+    duration: "20m"
+
+success_criteria:
+  - `Stream (Of a) m r` compiles with zero streaming dependencies in `yamaarashi`.
+  - Stepper unrolling verified against `Sarutahiko.Effect.Stepper`.
+  - All unit/property tests pass.

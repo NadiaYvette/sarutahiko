@@ -1,0 +1,69 @@
+---
+id: yamaarashi-01-skeletons
+title: Create package skeletons and establish toolchain verification gate for Yamaarashi family
+description: |
+  Establish the initial package structure, Cabal files, and exposed module stubs
+  for all five packages in the revised Yamaarashi family:
+  - packages/yamaarashi (kernel)
+  - packages/yamaarashi-conduit (IPC / process / framing adapter)
+  - packages/yamaarashi-streamly (fused hot-loop backend)
+  - packages/yamaarashi-flow (Selective task DAG orchestrator)
+  - packages/yamaarashi-spec (specification AST and VirtualTree analyzer)
+
+  Follows TASK_PACKET_BEST_PRACTICES.md strictly: verifies minimal buildable skeletons,
+  canonical GHC2024 language, cabal-version: 3.14, and zero warnings (-Wall -Werror)
+  before any functional implementation begins.
+
+dependencies: []
+
+packages:
+  - packages/yamaarashi
+  - packages/yamaarashi-conduit
+  - packages/yamaarashi-streamly
+  - packages/yamaarashi-flow
+  - packages/yamaarashi-spec
+
+steps:
+  - id: create-skeletons
+    name: Create minimal package layouts and Cabal files
+    action: |
+      Create the 5 package directories under packages/ with their respective
+      .cabal files and exposed stub modules exporting their package namespace:
+      1. packages/yamaarashi:
+         - yamaarashi.cabal (exposed-modules: Yamaarashi)
+         - src/Yamaarashi.hs
+      2. packages/yamaarashi-conduit:
+         - yamaarashi-conduit.cabal (exposed-modules: Yamaarashi.Conduit)
+         - src/Yamaarashi/Conduit.hs
+      3. packages/yamaarashi-streamly:
+         - yamaarashi-streamly.cabal (exposed-modules: Yamaarashi.Streamly)
+         - src/Yamaarashi/Streamly.hs
+      4. packages/yamaarashi-flow:
+         - yamaarashi-flow.cabal (exposed-modules: Yamaarashi.Flow)
+         - src/Yamaarashi/Flow.hs
+      5. packages/yamaarashi-spec:
+         - yamaarashi-spec.cabal (exposed-modules: Yamaarashi.Spec)
+         - src/Yamaarashi/Spec.hs
+
+      All .cabal files must use cabal-version: 3.14, default-language: GHC2024,
+      license: BSD-3-Clause, and commons with -Wall -Werror.
+    duration: "15m"
+
+  - id: register-cabal-project
+    name: Register packages in cabal.project
+    action: |
+      Add the 5 packages to the `packages:` stanza in cabal.project.
+    duration: "5m"
+
+  - id: verify-toolchain-build
+    name: Build-check verification gate
+    action: |
+      Run `cabal v2-build packages/yamaarashi*` to confirm that all five package
+      skeletons configure, resolve dependencies, and compile with zero errors and
+      zero warnings under GHC 9.12.2 / GHC2024.
+    duration: "5m"
+
+success_criteria:
+  - All 5 packages exist with canonical Cabal metadata and stub source files.
+  - `cabal v2-build packages/yamaarashi*` succeeds with exit-code 0.
+  - Zero compiler warnings (-Wall -Werror enforced).

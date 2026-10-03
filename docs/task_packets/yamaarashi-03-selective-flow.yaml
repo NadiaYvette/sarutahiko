@@ -1,0 +1,68 @@
+---
+id: yamaarashi-03-selective-flow
+title: Implement Selective workflow DAG orchestrator and Build Systems à la Carte scheduler
+description: |
+  Implement `packages/yamaarashi-flow`, the macro-task workflow orchestrator in the
+  Yamaarashi family, replacing porcupine ArrowFlow per YAMAARASHI_DESIGN.md.
+
+  Components:
+  - Workflow DAG representation over `algebraic-graphs` (`alga`) and `selective`.
+  - Clean-slate *Build Systems à la Carte* execution scheduler with topological execution,
+    memoization, and early cutoff (avoiding external Shake bloat).
+  - Materialization of intermediate records (`large-anon` / `sarutahiko-records`) cached at
+    `$_` content-addressed keys.
+  - Definition of open tagless-final capability typeclasses (`MonadWorktree`, `MonadTaskQueue`)
+    under the project-wide Façade Pattern.
+
+dependencies:
+  - yamaarashi-01-skeletons
+  - yamaarashi-02-streaming-kernel
+
+packages:
+  - packages/yamaarashi-flow
+  - packages/sarutahiko-effect-signatures
+
+steps:
+  - id: define-flow-ast
+    name: Define Selective Workflow AST and DAG Types
+    action: |
+      In packages/yamaarashi-flow/src/Yamaarashi/Flow/Types.hs:
+      - Define `TaskNode` and `TaskGraph` over `algebraic-graphs`.
+      - Define `Flow` selective applicative functor over task actions.
+      - Add support for content-addressed cache keys and determinism tags.
+    duration: "45m"
+
+  - id: implement-scheduler
+    name: Implement Build Systems à la Carte Execution Scheduler
+    action: |
+      In packages/yamaarashi-flow/src/Yamaarashi/Flow/Scheduler.hs:
+      - Implement topological task runner.
+      - Implement memoization and cache lookup at `$_` locations.
+      - Implement early cutoff: if a task's output matches previous hash, downstream nodes
+        are pruned from execution.
+    duration: "60m"
+
+  - id: implement-facade-classes
+    name: Define Tagless Capability Classes and Adapters
+    action: |
+      In packages/yamaarashi-flow/src/Yamaarashi/Flow/Capability.hs:
+      - Define `class Monad m => MonadWorktree m where withWorktree :: ...`
+      - Define `class Monad m => MonadTaskQueue m where claimTask :: ...`
+      Provide instances for `Eff es` and `Sem r` via thin adapter modules delegating to
+      canonical GADTs in `sarutahiko-effect-signatures`.
+    duration: "30m"
+
+  - id: verify-flow-resumption
+    name: Verification Gate (Resumption and Early Cutoff)
+    action: |
+      Add test suite in packages/yamaarashi-flow/test/Spec.hs:
+      - Run a 3-step DAG (A -> B -> C), kill mid-run after B, re-run and assert A and B
+        are skipped via cache and only C executes.
+      - Assert early cutoff prunes downstream execution when an upstream node's output is identical.
+      - Run `cabal v2-test yamaarashi-flow`.
+    duration: "30m"
+
+success_criteria:
+  - `yamaarashi-flow` compiles clean with zero warnings.
+  - Mid-run resumption and early cutoff verified by passing tests.
+  - Zero `OverloadedLabels` conflicts with `large-anon`.

@@ -1,0 +1,64 @@
+---
+id: yamaarashi-04-spec-extraction
+title: Implement Spec AST, VirtualTree static over-approximation, and task subdivision
+description: |
+  Implement `packages/yamaarashi-spec`, the specification extraction and analysis engine
+  in the Yamaarashi family.
+
+  Components:
+  - Specification AST representing project targets, compiler toolchains, and verification commands.
+  - Pass 1 Static Analysis via `Control.Selective.Over (Set ResourceDescriptor)` to compute
+    the `VirtualTree` (the complete over-approximation of required resources) without performing IO.
+  - Corecursive task unfolding via `recursion-schemes` (`ana`/`hylo`) paired with an `IsPrimitive`
+    granularity heuristic to recursively decompose macroscopic goals into atomic leaf task packets.
+  - Emitter for task packets adhering to `TASK_PACKET_BEST_PRACTICES.md`.
+
+dependencies:
+  - yamaarashi-01-skeletons
+  - yamaarashi-03-selective-flow
+
+packages:
+  - packages/yamaarashi-spec
+
+steps:
+  - id: define-spec-ast
+    name: Define Specification AST and Resource Descriptors
+    action: |
+      In packages/yamaarashi-spec/src/Yamaarashi/Spec/Types.hs:
+      - Define `SpecNode`, `TaskSpec`, and pure `ResourceDescriptor` (git repo, branch,
+        worktree path, toolchains, sandbox policy).
+      - Ensure `ResourceDescriptor` is purely inert data with no IO operations.
+    duration: "40m"
+
+  - id: implement-virtualtree-walker
+    name: Implement Control.Selective.Over Static Analysis Walker
+    action: |
+      In packages/yamaarashi-spec/src/Yamaarashi/Spec/VirtualTree.hs:
+      - Implement static traversal using `Control.Selective.Over`.
+      - Calculate the strict union of all potential resource dependencies across all branches.
+    duration: "45m"
+
+  - id: implement-task-subdivision
+    name: Implement Recursive Task Subdivision
+    action: |
+      In packages/yamaarashi-spec/src/Yamaarashi/Spec/Subdivide.hs:
+      - Implement `IsPrimitive` heuristic predicate scoring task granularity.
+      - Implement `ana` / `hylo` corecursive unfolding decomposing non-primitive specifications.
+      - Emit validated leaf task packets conforming to `TASK_PACKET_BEST_PRACTICES.md`.
+    duration: "45m"
+
+  - id: verify-spec-extraction
+    name: Test and verification gate
+    action: |
+      Add test suite in packages/yamaarashi-spec/test/Spec.hs:
+      - Feed a multi-target specification (e.g. cross-compiler sweep); verify static
+        `VirtualTree` over-approximation matches expected toolchains without executing IO.
+      - Feed a macroscopic task; verify subdivision terminates and all generated leaves
+        satisfy `IsPrimitive`.
+      - Run `cabal v2-test yamaarashi-spec`.
+    duration: "30m"
+
+success_criteria:
+  - `yamaarashi-spec` compiles clean with zero warnings.
+  - Static `VirtualTree` extraction verified to be 100% pure (zero IO).
+  - Recursive unfolding produces valid primitive task packets.
