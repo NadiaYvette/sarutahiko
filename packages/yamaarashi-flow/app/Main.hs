@@ -367,7 +367,7 @@ fixedLexerContent = T.unlines
   , "          (keyBytes, remainder) <- parseRawString rest"
   , "          let !nextStack = InObject ObjExpectColon : stackRest"
   , "          (TkKey keyBytes :) <$> go (skipWhitespace remainder) nextStack"
-  , "        _ -> Left \"Expected string key starting with '\"'\""
+  , "        _ -> Left \"Expected string key starting with quote\""
   , ""
   , "    parseValue :: ByteString -> [Ctx] -> Either Text [JsonToken]"
   , "    parseValue !rawBs !stack = do"
