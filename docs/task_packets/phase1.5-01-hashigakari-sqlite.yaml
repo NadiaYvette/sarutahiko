@@ -51,7 +51,8 @@ steps:
     action: |
       In packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/EventStore.hs:
       - Create table `events` with columns (id, session_id, event_type, payload, created_at).
-      - Implement `runEventStoreSqlite :: Connection -> Eff (EventStore : es) a -> Eff es a`.
+      - Implement `runEventStoreSqlite :: Database -> Eff (EventStore : es) a -> Eff es a`.
+      - Note: In direct-sqlite (`Database.SQLite3`), the database handle is `Database` (not `Connection`).
       - Support conversation-tail folds and stream replay.
     duration: "45m"
 
@@ -61,7 +62,8 @@ steps:
       In packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/TaskQueue.hs:
       - Create table `task_queue` with status, lease_until, payload.
       - Implement `enqueueTask`, `claimTask`, `completeTask`, `failTask`.
-      - Implement `runTaskQueueSqlite :: Connection -> Eff (TaskQueue : es) a -> Eff es a`.
+      - Implement `runTaskQueueSqlite :: Database -> Eff (TaskQueue : es) a -> Eff es a`.
+      - Note: In direct-sqlite (`Database.SQLite3`), the database handle is `Database` (not `Connection`).
     duration: "45m"
 
   - id: verify-parity
