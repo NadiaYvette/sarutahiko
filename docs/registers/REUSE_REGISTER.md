@@ -516,3 +516,17 @@ transitive bloat); Q3 passes (industry standard, rock solid).
 
 
 
+
+### 2.29 mono-traversable (Monomorphic sequence polymorphism and NonNull guarantees) — REUSED (2026-10-03)
+Michael Snoyman's `mono-traversable` library.
+Provides type classes for monomorphic containers (`MonoFunctor`, `MonoFoldable`, `MonoTraversable`)
+and specifically `Data.NonNull.NonNull` for type-level non-emptiness guarantees over
+`ByteString`, `Text`, `Vector`, and lists.
+Role: Type-level non-emptiness constraints across wire codecs (`kogaki-wire`), JSON-RPC batch
+processing (`sarutahiko-jsonrpc`), and MCP protocol framing (`sarutahiko-mcp`). Replaces defensive
+runtime assertions and partial sequence operations (`head`, `tail`, `init`) with compile-time
+structural non-emptiness proofs, ensuring protocol compliance (e.g. JSON-RPC 2.0 §6 batch requirements)
+and eliminating zero-element crashes.
+Q1 passes (pure structural typing, directly aligns with the zero-partial-functions invariant);
+Q2 passes (clean typeclass hierarchy and lightweight `NonNull` newtype wrapper);
+Q3 passes (mature, stable, widely relied upon in high-assurance Haskell).

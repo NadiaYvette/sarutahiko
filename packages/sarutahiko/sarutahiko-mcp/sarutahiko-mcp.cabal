@@ -39,6 +39,7 @@ library
         sarutahiko-records,
         sarutahiko-jsonrpc,
         sarutahiko-schema,
+        mono-traversable >= 1.0.17,
         sarutahiko-process,
     hs-source-dirs:   src
 
@@ -59,6 +60,7 @@ test-suite test-mcp
         sarutahiko-records,
         sarutahiko-jsonrpc,
         sarutahiko-schema,
+        mono-traversable >= 1.0.17,
         sarutahiko-process,
         sarutahiko-mcp,
         tasty,

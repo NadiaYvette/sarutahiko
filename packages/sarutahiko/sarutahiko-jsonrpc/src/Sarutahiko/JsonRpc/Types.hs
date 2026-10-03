@@ -4,7 +4,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -fplugin=Data.Record.Anon.Plugin #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 -- |
 -- Module      : Sarutahiko.JsonRpc.Types
@@ -13,6 +15,7 @@
 -- Implements Task Packet TP-1.2: types for JSON-RPC 2.0 identifiers,
 -- requests, responses, and errors, integrated with 'kogaki-wire' and
 -- 'sarutahiko-records'.
+-- Enforces type-level non-emptiness constraints via 'Data.NonNull.NonNull'.
 module Sarutahiko.JsonRpc.Types
   ( -- * Identifiers
     JsonRpcId (..)
@@ -37,8 +40,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BSC
 import Data.Functor.Identity (Identity (..))
 import Data.Int (Int64)
+import Data.NonNull (NonNull, fromNullable, toNullable)
 import Data.Record.Anon (AllFields, KnownFields)
 import Data.Record.Anon.Advanced (Record)
+import Data.String (IsString (..))
 import Data.Text (Text)
 import qualified Data.Text.Encoding as TE
 import GHC.Generics (Generic)
@@ -46,6 +51,12 @@ import GHC.Generics (Generic)
 import Kogaki.Wire.Json.Decode (ToJsonField, encodeJsonRow)
 import Kogaki.Wire.Json.Lexer (JsonToken (..))
 import Sarutahiko.Records.Envelope (WireEnvelope (..))
+
+-- | IsString instance for 'NonNull Text' enabling string literals with -XOverloadedStrings.
+instance IsString (NonNull Text) where
+  fromString s = case fromNullable (fromString s) of
+    Just nn -> nn
+    Nothing -> error "IsString (NonNull Text): empty string literal is invalid for NonNull"
 
 -- | JSON-RPC 2.0 identifier. Numbers MUST NOT contain fractional parts.
 --
@@ -75,7 +86,7 @@ parseJsonRpcId _            = Nothing
 -- @since 0.1.0.0
 data JsonRpcRequest r = JsonRpcRequest
   { reqId     :: !(Maybe JsonRpcId)
-  , reqMethod :: !Text
+  , reqMethod :: !(NonNull Text)
   , reqParams :: !(Record Identity r)
   }
 
@@ -84,7 +95,7 @@ data JsonRpcRequest r = JsonRpcRequest
 -- @since 0.1.0.0
 data RawJsonRpcRequest = RawJsonRpcRequest
   { rawReqId     :: !(Maybe JsonRpcId)
-  , rawReqMethod :: !Text
+  , rawReqMethod :: !(NonNull Text)
   , rawReqParams :: !(Maybe ByteString)
   } deriving stock (Eq, Show, Generic)
 
@@ -112,11 +123,12 @@ encodeJsonRpcRequest
   => JsonRpcRequest r
   -> ByteString
 encodeJsonRpcRequest (JsonRpcRequest mId method params) =
-  case mId of
+  let methodBytes = TE.encodeUtf8 (toNullable method)
+  in case mId of
     Nothing ->
-      "{\"jsonrpc\":\"2.0\",\"method\":\"" <> TE.encodeUtf8 method <> "\",\"params\":" <> encodeJsonRow params <> "}"
+      "{\"jsonrpc\":\"2.0\",\"method\":\"" <> methodBytes <> "\",\"params\":" <> encodeJsonRow params <> "}"
     Just reqIdent ->
-      "{\"id\":" <> encodeJsonRpcId reqIdent <> ",\"jsonrpc\":\"2.0\",\"method\":\"" <> TE.encodeUtf8 method <> "\",\"params\":" <> encodeJsonRow params <> "}"
+      "{\"id\":" <> encodeJsonRpcId reqIdent <> ",\"jsonrpc\":\"2.0\",\"method\":\"" <> methodBytes <> "\",\"params\":" <> encodeJsonRow params <> "}"
 
 -- | Encode a 'JsonRpcResponse r' to canonical JSON bytes.
 --

@@ -9,6 +9,7 @@
 -- Implements Task Packet TP-1.5: stdio and memory-backed MCP protocol server hosting
 -- agent tools, handling handshakes, and enforcing the StateGuard rejection invariant
 -- (-32600 ServerNotInitialized on any request received prior to notifications/initialized).
+-- Enforces type-level non-emptiness constraints via 'Data.NonNull.NonNull'.
 module Sarutahiko.MCP.Server
   ( -- * Server Instance
     McpServer
@@ -28,11 +29,13 @@ module Sarutahiko.MCP.Server
   , formatErrorResponse
   ) where
 
-import Control.Concurrent.MVar (MVar, newMVar, readMVar, modifyMVar)
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes)
+import Data.NonNull (fromNullable, toNullable)
+import qualified Data.NonNull as NN
 import Data.Text (Text)
 
 import Sarutahiko.JsonRpc.Dispatch (parseRawRequests)
@@ -109,18 +112,21 @@ handleMcpPayload server payload = do
   case parseRawRequests payload of
     Left parseErr ->
       pure (Just (formatErrorResponse Nothing parseErr))
-    Right (isBatch, []) ->
-      if isBatch
-        then pure (Just (formatErrorResponse Nothing (errInvalidRequest "Empty batch array")))
-        else pure Nothing
-    Right (isBatch, reqs) -> do
-      responses <- mapM (dispatchParsedRequest server) reqs
-      case catMaybes responses of
-        [] -> pure Nothing
-        activeResponses@(firstRes : _) ->
+    Right (isBatch, rawRequests) ->
+      case fromNullable rawRequests of
+        Nothing ->
           if isBatch
-            then pure (Just ("[" <> BS.intercalate "," activeResponses <> "]"))
-            else pure (Just firstRes)
+            then pure (Just (formatErrorResponse Nothing (errInvalidRequest "Empty batch array")))
+            else pure Nothing
+        Just validBatch ->
+          if isBatch
+            then do
+              responses <- mapM (dispatchParsedRequest server) (toNullable validBatch)
+              case fromNullable (catMaybes responses) of
+                Nothing -> pure Nothing
+                Just activeResponses ->
+                  pure (Just ("[" <> BS.intercalate "," (toNullable activeResponses) <> "]"))
+            else dispatchParsedRequest server (NN.head validBatch)
 
 -- | Dispatch an item parsed by 'parseRawRequests'.
 dispatchParsedRequest
@@ -137,7 +143,7 @@ handleMcpRequest :: McpServer -> RawJsonRpcRequest -> IO (Maybe ByteString)
 handleMcpRequest server req = do
   st <- readMVar (msStateVar server)
   let mId = rawReqId req
-      method = rawReqMethod req
+      method = toNullable (rawReqMethod req)
       mParams = rawReqParams req
 
   -- Check StateGuard invariant

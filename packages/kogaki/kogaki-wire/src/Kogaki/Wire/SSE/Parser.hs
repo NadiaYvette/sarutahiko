@@ -11,9 +11,15 @@
 -- (SSE Round-Trip Equivalence): zero-copy, newline-delimited framing
 -- for Server-Sent Events over raw byte streams without requiring heavyweight
 -- web servers or framework dependencies.
+-- Enforces type-level non-emptiness constraints via 'Data.NonNull.NonNull'.
 module Kogaki.Wire.SSE.Parser
   ( -- * Core Event Type
     SseEvent (..)
+
+    -- * Non-Empty Tokens & Field Labels
+  , SseFieldLabel
+  , mkFieldLabel
+  , renderDataLine
 
     -- * Stream Parsing & Rendering
   , parseSseStream
@@ -25,11 +31,23 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import Data.Maybe (isJust)
+import Data.NonNull (NonNull, fromNullable, toNullable)
 import Data.Text (Text)
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
 import GHC.Generics (Generic)
 import Text.Read (readMaybe)
+
+-- | Non-empty byte sequence representing an SSE field label (e.g. "id", "event", "data").
+type SseFieldLabel = NonNull ByteString
+
+-- | Construct a validated non-empty SSE field label.
+mkFieldLabel :: ByteString -> Maybe SseFieldLabel
+mkFieldLabel = fromNullable
+
+-- | Render a guaranteed non-empty SSE data line.
+renderDataLine :: NonNull ByteString -> ByteString
+renderDataLine line = "data: " <> toNullable line <> "\n"
 
 -- | A discrete Server-Sent Event frame.
 --
@@ -68,33 +86,38 @@ parseSseStream input = go (splitLines input) Nothing Nothing [] Nothing
             else go rest Nothing Nothing [] Nothing
 
       -- Comment line: ignore
-      | BSC.head line == ':' =
+      | BSC.take 1 line == ":" =
           go rest mId mEv dataLines mRet
 
       -- Field line: parse field name and value
       | otherwise =
           let (field, rawVal) = BSC.break (== ':') line
-              val = if not (BS.null rawVal) && BSC.head rawVal == ':'
-                      then let stripped = BS.tail rawVal
-                           in if not (BS.null stripped) && BSC.head stripped == ' '
-                                then BS.tail stripped
-                                else stripped
-                      else ""
-          in case field of
-            "id" ->
-              let !newId = Just (TE.decodeUtf8With TEE.lenientDecode val)
-              in go rest newId mEv dataLines mRet
-            "event" ->
-              let !newEv = Just (TE.decodeUtf8With TEE.lenientDecode val)
-              in go rest mId newEv dataLines mRet
-            "retry" ->
-              let !newRetry = readMaybe (BSC.unpack val)
-              in go rest mId mEv dataLines (newRetry <|> mRet)
-            "data" ->
-              go rest mId mEv (val : dataLines) mRet
-            _ ->
-              -- Unknown field names are ignored per SSE spec
+              val = case BSC.uncons rawVal of
+                Just (':', stripped) ->
+                  case BSC.uncons stripped of
+                    Just (' ', restVal) -> restVal
+                    _                   -> stripped
+                _ -> ""
+          in case fromNullable field of
+            Nothing ->
+              -- Field label is empty
               go rest mId mEv dataLines mRet
+            Just fieldLabel ->
+              case toNullable fieldLabel of
+                "id" ->
+                  let !newId = Just (TE.decodeUtf8With TEE.lenientDecode val)
+                  in go rest newId mEv dataLines mRet
+                "event" ->
+                  let !newEv = Just (TE.decodeUtf8With TEE.lenientDecode val)
+                  in go rest mId newEv dataLines mRet
+                "retry" ->
+                  let !newRetry = readMaybe (BSC.unpack val)
+                  in go rest mId mEv dataLines (newRetry <|> mRet)
+                "data" ->
+                  go rest mId mEv (val : dataLines) mRet
+                _ ->
+                  -- Unknown field names are ignored per SSE spec
+                  go rest mId mEv dataLines mRet
 
     hasEventContent mId mEv dataLines mRet =
       isJust mId || isJust mEv || not (null dataLines) || isJust mRet
@@ -111,22 +134,20 @@ parseSseStream input = go (splitLines input) Nothing Nothing [] Nothing
     Just x  <|> _ = Just x
     Nothing <|> y = y
 
--- | Split a byte stream into lines on CRLF, LF, or CR.
+-- | Split a byte stream into lines on CRLF, LF, or CR with zero partial functions.
 splitLines :: ByteString -> [ByteString]
 splitLines bs
   | BS.null bs = []
   | otherwise  =
       let (line, rest) = BSC.break (\c -> c == '\n' || c == '\r') bs
-      in if BS.null rest
-           then [line]
-           else case BSC.head rest of
-             '\r' ->
-               let afterCr = BS.tail rest
-               in if not (BS.null afterCr) && BSC.head afterCr == '\n'
-                    then line : splitLines (BS.tail afterCr)
-                    else line : splitLines afterCr
-             '\n' -> line : splitLines (BS.tail rest)
-             _    -> line : splitLines rest
+      in case BSC.uncons rest of
+        Nothing -> [line]
+        Just ('\r', afterCr) ->
+          case BSC.uncons afterCr of
+            Just ('\n', afterLf) -> line : splitLines afterLf
+            _                    -> line : splitLines afterCr
+        Just ('\n', afterLf) -> line : splitLines afterLf
+        Just (_, remainder)  -> line : splitLines remainder
 
 -- | Render a single 'SseEvent' frame to its canonical wire byte representation.
 -- Guaranteed to satisfy Law Invariant 2 (SSE Round-Trip Equivalence).

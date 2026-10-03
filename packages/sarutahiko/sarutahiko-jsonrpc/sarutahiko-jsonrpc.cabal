@@ -35,7 +35,8 @@ library
         large-anon,
         kogaki-wire,
         sarutahiko-fields,
-        sarutahiko-records
+        sarutahiko-records,
+        mono-traversable >= 1.0.17
     hs-source-dirs:   src
 
 test-suite test-jsonrpc
@@ -52,4 +53,5 @@ test-suite test-jsonrpc
         kogaki-wire,
         sarutahiko-fields,
         sarutahiko-records,
+        mono-traversable >= 1.0.17,
         sarutahiko-jsonrpc
