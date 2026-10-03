@@ -92,7 +92,7 @@ runTaskPacket path = do
     -- Step 2: Verification Gate
     putStrLn "=== [yamaarashi-exec] Running verification gate ==="
     logEvent dbPath (packetId packet) "VERIFICATION_STARTED" "cabal v2-build & cabal v2-test"
-    runVerificationGate wtDir (packetId packet)
+    runVerificationGate wtDir packet
     logEvent dbPath (packetId packet) "VERIFICATION_PASSED" "All build and audit checks passed"
 
     -- Step 3: Git Commit
@@ -134,16 +134,22 @@ parsePacket path txt = do
       findVal key = case filter (T.isPrefixOf (key <> ":")) lns of
         (l:_) -> T.strip (T.drop (T.length key + 1) l)
         []    -> ""
+      extractList key =
+        let afterKey = drop 1 $ dropWhile (\l -> not (T.isPrefixOf (key <> ":") l)) lns
+            items = takeWhile (\l -> T.isPrefixOf "  - " l || T.isPrefixOf "- " l) afterKey
+            clean l = T.strip (T.dropWhile (\c -> c == ' ' || c == '-') (fst (T.breakOn "#" l)))
+        in filter (not . T.null) (map clean items)
       pId = findVal "id"
       pTitle = findVal "title"
       pDesc = findVal "description"
+      pPackages = extractList "packages"
   if T.null pId
     then throwIO (userError $ "Malformed task packet in " ++ path ++ ": missing 'id'")
     else pure $ TaskPacket
       { packetId = pId
       , packetTitle = if T.null pTitle then pId else pTitle
       , packetDescription = pDesc
-      , packetPackages = []
+      , packetPackages = pPackages
       }
 
 -- | Execute task actions inside the isolated worktree directory.
@@ -163,11 +169,12 @@ executeTaskStep wtDir tId = do
           putStrLn $ "  -> Running task script: " ++ customScript
           runProcess_ (setWorkingDir wtDir (proc "sh" [customScript]))
         else
-          putStrLn "  -> No custom transformation required for this task."
+          putStrLn "  -> No custom transformation script found; ready for in-worktree execution."
 
 -- | Verification gate: builds packages, runs tests, and audits code.
-runVerificationGate :: FilePath -> Text -> IO ()
-runVerificationGate wtDir tId = do
+runVerificationGate :: FilePath -> TaskPacket -> IO ()
+runVerificationGate wtDir packet = do
+  let tId = packetId packet
   case tId of
     "fix-kogaki-wire-lexer-nonempty" -> do
       -- 1. Build check
@@ -191,19 +198,42 @@ runVerificationGate wtDir tId = do
         ExitFailure other ->
           throwIO (userError $ "Grep audit exited with code: " ++ show other)
     _ -> do
-      putStrLn "  [Gate 1/1] Running general cabal v2-build..."
-      runProcess_ (setWorkingDir wtDir (proc "cabal" ["v2-build"]))
+      let pkgs = packetPackages packet
+      if null pkgs
+        then do
+          putStrLn "  [Gate 1/1] Running general cabal v2-build..."
+          runProcess_ (setWorkingDir wtDir (proc "cabal" ["v2-build"]))
+        else do
+          mapM_ (\pkg -> do
+            putStrLn $ "  [Gate] Building package: " ++ T.unpack pkg
+            runProcess_ (setWorkingDir wtDir (proc "cabal" ["v2-build", T.unpack pkg]))
+            ) pkgs
+
+      let verifyScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ "-verify.sh"
+      hasVerify <- doesFileExist verifyScript
+      if hasVerify
+        then do
+          putStrLn $ "  [Gate] Running verification script: " ++ verifyScript
+          runProcess_ (setWorkingDir wtDir (proc "sh" [verifyScript]))
+        else pure ()
 
 -- | Create git commit in worktree with standard attribution trailers.
 createGitCommit :: FilePath -> TaskPacket -> IO Text
 createGitCommit wtDir packet = do
   runProcess_ (setWorkingDir wtDir (proc "git" ["add", "-A"]))
 
-  let commitMsg = "fix(kogaki-wire): replace unsafe head, tail, and indexing in Json lexer\n\n\
-                  \Substitute pattern-matching and BSC.uncons for all partial operations in\n\
-                  \Kogaki.Wire.Json.Lexer to make non-emptiness explicit.\n\n\
-                  \Ref: " <> packetId packet <> " (" <> packetTitle packet <> ")\n\n\
-                  \Assisted-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
+  let commitMsg = case packetId packet of
+        "fix-kogaki-wire-lexer-nonempty" ->
+          "fix(kogaki-wire): replace unsafe head, tail, and indexing in Json lexer\n\n\
+          \Substitute pattern-matching and BSC.uncons for all partial operations in\n\
+          \Kogaki.Wire.Json.Lexer to make non-emptiness explicit.\n\n\
+          \Ref: " <> packetId packet <> " (" <> packetTitle packet <> ")\n\n\
+          \Assisted-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
+        _ ->
+          packetTitle packet <> "\n\n" <>
+          packetDescription packet <> "\n\n" <>
+          "Ref: " <> packetId packet <> "\n\n" <>
+          "Assisted-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
 
   runProcess_ (setWorkingDir wtDir (proc "git" ["commit", "-m", T.unpack commitMsg]))
 
