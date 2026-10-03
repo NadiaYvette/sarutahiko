@@ -23,14 +23,9 @@ dependencies:
 packages:
   - hashigakari-sqlite
 
-executor: hermes
-model: auto/best-coding
-skills:
-  - code-navigation
-  - tricorder
-  - contextful
-max_turns: 40
-run_budget: 900
+executor: agy
+model: gemini-3.8-flash
+run_budget: 600
 
 steps:
   - id: create-skeleton

@@ -7,6 +7,7 @@ module Main (main) where
 import Control.Exception (bracket, throwIO)
 import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy as BSL
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -22,6 +23,7 @@ import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (takeDirectory, (</>))
 import System.Process.Typed
+import System.Timeout (timeout)
 
 -- | Parsed task packet envelope.
 data TaskPacket = TaskPacket
@@ -57,10 +59,10 @@ printHelp = do
   putStrLn "  --help             Show this help message"
   putStrLn ""
   putStrLn "Execution Engines (set in packet via 'executor:'):"
-  putStrLn "  executor: hermes   Delegates turn execution to a spawned Hermes leaf worker"
-  putStrLn "                     with code-navigation, tricorder, and zero-token free fleet."
+  putStrLn "  executor: agy      Delegates turn execution to Antigravity CLI print mode (fast, robust)."
+  putStrLn "  executor: hermes   Delegates turn execution to a spawned Hermes leaf worker (--cli -Q)."
   putStrLn "  executor: script   Runs scripts/tasks/<id>.sh in the isolated worktree."
-  putStrLn "  executor: auto     Uses script if scripts/tasks/<id>.sh exists, else hermes."
+  putStrLn "  executor: auto     Uses script if scripts/tasks/<id>.sh exists, else agy."
 
 -- | Execute a task packet through an isolated worktree with SQLite event tracking.
 runTaskPacket :: FilePath -> IO ()
@@ -208,7 +210,7 @@ parsePacket path txt = do
       }
 
 -- | Execute task actions inside the isolated worktree directory.
--- Returns the executor name that ran the step ("hermes", "script", or "inline").
+-- Returns the executor name that ran the step ("agy", "hermes", "script", or "inline").
 executeTaskStep :: FilePath -> TaskPacket -> FilePath -> IO Text
 executeTaskStep wtDir packet dbPath = do
   let tId = packetId packet
@@ -229,18 +231,69 @@ executeTaskStep wtDir packet dbPath = do
             else throwIO (userError $ "Explicit script executor requested, but script missing: " ++ customScript)
         "hermes" ->
           runHermesStep wtDir packet dbPath >> pure "hermes"
+        "agy" ->
+          runAgyStep wtDir packet dbPath >> pure "agy"
         "auto" ->
           if scriptExists
             then runScriptStep wtDir customScript >> pure "script"
-            else runHermesStep wtDir packet dbPath >> pure "hermes"
+            else runAgyStep wtDir packet dbPath >> pure "agy"
         other ->
-          throwIO (userError $ "Unknown executor: " ++ T.unpack other ++ " (expected 'hermes', 'script', or 'auto')")
+          throwIO (userError $ "Unknown executor: " ++ T.unpack other ++ " (expected 'agy', 'hermes', 'script', or 'auto')")
 
 -- | Execute task script in the isolated worktree.
 runScriptStep :: FilePath -> FilePath -> IO ()
 runScriptStep wtDir scriptPath = do
   putStrLn $ "  -> Running task script: " ++ scriptPath
   runProcess_ (setWorkingDir wtDir (proc "sh" [scriptPath]))
+
+-- | Delegate task execution to Antigravity CLI in non-interactive print mode.
+runAgyStep :: FilePath -> TaskPacket -> FilePath -> IO ()
+runAgyStep wtDir packet dbPath = do
+  mAgy <- findExecutable "agy"
+  case mAgy of
+    Nothing -> throwIO (userError "Agy executor requested, but 'agy' executable was not found in PATH.")
+    Just agyBin -> do
+      let tId = packetId packet
+          promptFile = wtDir </> ".worker-task-prompt.md"
+          promptContent = buildWorkerPrompt packet
+          budgetSec = maybe 600 id (packetRunBudget packet)
+          budgetStr = show budgetSec ++ "s"
+          logDir = takeDirectory dbPath </> "logs"
+          workerLogFile = logDir </> (T.unpack tId ++ "-agy.log")
+
+      createDirectoryIfMissing True logDir
+      TIO.writeFile promptFile promptContent
+      logEvent dbPath tId "AGY_SPAWNED" ("Prompt written to " <> T.pack promptFile)
+      putStrLn $ "=== [yamaarashi-exec] Spawning Agy leaf worker in: " ++ wtDir ++ " ==="
+      putStrLn $ "=== [yamaarashi-exec] Log destination: " ++ workerLogFile ++ " ==="
+
+      let modelArgs = case packetModel packet of
+            Just m  -> ["--model", T.unpack m]
+            Nothing -> []
+          cmdArgs =
+            [ "-p", T.unpack promptContent
+            , "--dangerously-skip-permissions"
+            , "--print-timeout", budgetStr
+            ] ++ modelArgs
+
+      putStrLn $ "=== [yamaarashi-exec] Running: " ++ agyBin ++ " -p <prompt> --dangerously-skip-permissions --print-timeout " ++ budgetStr ++ " ==="
+      mRes <- timeout ((budgetSec + 30) * 1000000) $ do
+        (exitCode, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc agyBin cmdArgs))
+        BSL.writeFile workerLogFile (BSL.concat [outBs, "\n--- STDERR ---\n", errBs])
+        pure exitCode
+
+      case mRes of
+        Nothing -> do
+          let errMsg = "Agy execution timed out after " ++ show budgetSec ++ " seconds."
+          logEvent dbPath tId "AGY_TIMEOUT" (T.pack errMsg)
+          throwIO (userError errMsg)
+        Just ExitSuccess -> do
+          logEvent dbPath tId "AGY_SUCCEEDED" "Agy task execution exited with code 0"
+          putStrLn "=== [yamaarashi-exec] Agy leaf worker completed successfully ==="
+        Just (ExitFailure code) -> do
+          let errMsg = "Agy execution failed with exit code " ++ show code ++ " (see " ++ workerLogFile ++ ")"
+          logEvent dbPath tId "AGY_FAILED" (T.pack errMsg)
+          throwIO (userError errMsg)
 
 -- | Delegate task execution to a spawned Hermes leaf worker agent.
 runHermesStep :: FilePath -> TaskPacket -> FilePath -> IO ()
@@ -250,15 +303,24 @@ runHermesStep wtDir packet dbPath = do
     Nothing -> throwIO (userError "Hermes executor requested, but 'hermes' executable was not found in PATH.")
     Just hermesBin -> do
       let tId = packetId packet
-          promptFile = wtDir </> ".hermes-task-prompt.md"
-          promptContent = buildHermesPrompt packet
+          promptFile = wtDir </> ".worker-task-prompt.md"
+          promptContent = buildWorkerPrompt packet
+          budgetSec = maybe 900 id (packetRunBudget packet)
+          logDir = takeDirectory dbPath </> "logs"
+          workerLogFile = logDir </> (T.unpack tId ++ "-hermes.log")
+
+      createDirectoryIfMissing True logDir
       TIO.writeFile promptFile promptContent
       logEvent dbPath tId "HERMES_SPAWNED" ("Prompt written to " <> T.pack promptFile)
       putStrLn $ "=== [yamaarashi-exec] Spawning Hermes leaf worker in: " ++ wtDir ++ " ==="
+      putStrLn $ "=== [yamaarashi-exec] Log destination: " ++ workerLogFile ++ " ==="
+
       let baseArgs =
             [ "chat"
             , "--in", wtDir
             , "--query-file", promptFile
+            , "--cli"           -- Force CLI REPL; prevent TUI Node.js deadlock
+            , "-Q"              -- Quiet headless mode
             , "--oneshot"
             , "--yolo"
             , "--accept-hooks"
@@ -270,28 +332,34 @@ runHermesStep wtDir packet dbPath = do
           turnsArgs = case packetMaxTurns packet of
             Just n  -> ["--max-turns", show n]
             Nothing -> ["--max-turns", "40"]
-          budgetArgs = case packetRunBudget packet of
-            Just b  -> ["--run-budget", show b]
-            Nothing -> ["--run-budget", "900"]
+          budgetArgs = ["--run-budget", show budgetSec]
           modelArgs = case packetModel packet of
             Just m  -> ["-m", T.unpack m]
             Nothing -> []
           cmdArgs = baseArgs ++ skillsArgs ++ turnsArgs ++ budgetArgs ++ modelArgs
 
       putStrLn $ "=== [yamaarashi-exec] Command: " ++ hermesBin ++ " " ++ unwords cmdArgs ++ " ==="
-      exitCode <- runProcess (proc hermesBin cmdArgs)
-      case exitCode of
-        ExitSuccess -> do
+      mRes <- timeout ((budgetSec + 30) * 1000000) $ do
+        (exitCode, outBs, errBs) <- readProcess (proc hermesBin cmdArgs)
+        BSL.writeFile workerLogFile (BSL.concat [outBs, "\n--- STDERR ---\n", errBs])
+        pure exitCode
+
+      case mRes of
+        Nothing -> do
+          let errMsg = "Hermes execution timed out after " ++ show budgetSec ++ " seconds."
+          logEvent dbPath tId "HERMES_TIMEOUT" (T.pack errMsg)
+          throwIO (userError errMsg)
+        Just ExitSuccess -> do
           logEvent dbPath tId "HERMES_SUCCEEDED" "Hermes task execution exited with code 0"
           putStrLn "=== [yamaarashi-exec] Hermes leaf worker completed successfully ==="
-        ExitFailure code -> do
-          let errMsg = "Hermes execution failed with exit code " ++ show code
+        Just (ExitFailure code) -> do
+          let errMsg = "Hermes execution failed with exit code " ++ show code ++ " (see " ++ workerLogFile ++ ")"
           logEvent dbPath tId "HERMES_FAILED" (T.pack errMsg)
           throwIO (userError errMsg)
 
--- | Construct structured prompt markdown for the spawned Hermes leaf worker.
-buildHermesPrompt :: TaskPacket -> Text
-buildHermesPrompt packet = T.unlines
+-- | Construct structured prompt markdown for the spawned leaf worker.
+buildWorkerPrompt :: TaskPacket -> Text
+buildWorkerPrompt packet = T.unlines
   [ "# Autonomous Task Packet: " <> packetTitle packet
   , ""
   , "## Packet Identifier"
@@ -373,9 +441,13 @@ runVerificationGate wtDir packet = do
 -- | Create git commit in worktree with standard attribution trailers.
 createGitCommit :: FilePath -> TaskPacket -> Text -> IO Text
 createGitCommit wtDir packet actualExecutor = do
-  let promptFile = wtDir </> ".hermes-task-prompt.md"
+  let promptFile = wtDir </> ".worker-task-prompt.md"
   promptExists <- doesFileExist promptFile
   when promptExists $ removeFile promptFile
+
+  let hermesPromptFile = wtDir </> ".hermes-task-prompt.md"
+  hermesPromptExists <- doesFileExist hermesPromptFile
+  when hermesPromptExists $ removeFile hermesPromptFile
 
   runProcess_ (setWorkingDir wtDir (proc "git" ["add", "-A"]))
 
@@ -383,7 +455,12 @@ createGitCommit wtDir packet actualExecutor = do
         "hermes" ->
           let m = case packetModel packet of
                 Just mdl -> "Hermes Agent (" <> mdl <> ")"
-                Nothing  -> "Hermes Agent (OmniRoute / auto/best-coding)"
+                Nothing  -> "Hermes Agent"
+          in "Assisted-by: " <> m <> "\nOrchestrated-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
+        "agy" ->
+          let m = case packetModel packet of
+                Just mdl -> "Antigravity CLI (" <> mdl <> ")"
+                Nothing  -> "Antigravity CLI (Gemini 3.8 Flash)"
           in "Assisted-by: " <> m <> "\nOrchestrated-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
         _ ->
           "Assisted-by: Antigravity (Google DeepMind / Gemini 3.8 Flash)\n"
