@@ -1,173 +1,79 @@
-# keiro task packet – phase‑2‑agent‑core
+---
 id: phase2-agent-core
-title: Build the full Agent Core (turn loop, tool registry, plugin system, sessions, hooks)
+title: Build the full Agent Core (turn loop, tool registry, session persistence, hooks)
 description: |
-  Using the extensible‑record + algebraic‑effects foundation established
-  in the refactor packets, implement the Hermes‑style agent core:
-  * an interpreted ReAct‑style turn program (`Eff es`) that can make
-    at most one model call and at most one tool call per turn,
-  * a dynamic tool/command/skill/hook registry built from record‑effect
-    extensions,
-  * session persistence with prompt‑cache‑safe compression,
-  * hook system with bounded/fail‑closed semantics,
-  * plugin loading/unloading with capability grants and kill‑lists.
-  This phase produces the binary `sarutahiko chat` that can replay a
-  real Hermes session and load a ported plugin.
+  Using the extensible-record + algebraic-effects foundation established in Phase 1
+  and proved in Phase 1.5 Hokora, implement the full Hermes-style agent core:
+  * Interpreted ReAct-style turn program with bounded iteration and fail-closed termination.
+  * Dynamic tool, command, skill, and hook registry built from extensible records.
+  * Session persistence backed by `hashigakari-sqlite` with prompt-cache-safe prefix ordering.
+  * Hook execution engine with deadline enforcement and fail-closed timeouts.
+  * Plugin system with capability grants and kill-lists.
+  * Standalone executable `sarutahiko chat` replaying real Hermes sessions.
 
 dependencies:
-  - refactor-effects-records
-  - refactor-logical-string
+  - phase1.5-03-hokora-slice
 
 packages:
-  - sarutahiko-agent           # packages/agent-core
-  - sarutahiko-session         # packages/session
-  - sarutahiko-config          # packages/config
-  - sarutahiko-hooks           # packages/hooks
-  - sarutahiko-plugins         # packages/plugins
-  - sarutahiko-model           # packages/model   (utai)
-  - sarutahiko-effect-signatures # (already present)
-  - sarutahiko-effects-effectful
-  - sarutahiko-effects-polysemy
-  - yamaarashi                 # streaming kernel
-  - hashigakari-core           # for session store (minimal SQLite writer)
-  - sarutahiko-log             # structured logging
+  - packages/sarutahiko-agent
+  - packages/sarutahiko-session
+  - packages/sarutahiko-hooks
+  - packages/sarutahiko-plugins
 
 steps:
-  - name: Design turn‑program signature
+  - id: create-agent-skeletons
+    name: Create package skeletons and cabal definitions
     action: |
-      Define the effect signature for a turn:
-        data TurnEffect (es :: [Effect]) where
-          ModelAPI   :: ModelAPI :<: es => Eff es Text
-          Tools      :: Tools    :<: es => Eff ToolCallId
-          SessionStore :: SessionStore :<: es => Eff es ()
-          Log        :: Log      :<: es => Eff es ()
-          Resource   :: Resource :<: es => Eff es ()
-      The turn program will be a value of type `∀ es. (ModelAPI :<: es,
-                                                    Tools :<: es,
-                                                    SessionStore :<: es,
-                                                    Log :<: es,
-                                                    Resource :<: es) =>
-                                                    Text -> Eff es Text`.
-    owner: ${{ github.actor }}
-    duration: "1h"
+      In packages/sarutahiko-agent, packages/sarutahiko-session,
+         packages/sarutahiko-hooks, packages/sarutahiko-plugins:
+      - Create minimal cabal files importing commons.
+      - Add dependencies on utai, hashigakari-sqlite, sarutahiko-records,
+        sarutahiko-effect-signatures, yamaarashi-flow.
+      - Register in cabal.project and verify clean build.
+    duration: "40m"
 
-  - name: Implement the interpreted ReAct loop
+  - id: implement-turn-engine
+    name: Implement interpreted ReAct agent loop
     action: |
-      Write `agentTurn :: Text -> Eff es Text` that:
-        1. opens a session (`SessionStore`),
-        2. appends the user message,
-        3. calls `completeStream` (ModelAPI) → assistant reply,
-        4. inspects the reply for a tool request (`wantTool`),
-        5. if present, invokes the tool via `Tools` (spawning an MCP subprocess
-           over stdio, using yamaarashi framing, Resource‑bracketed),
-        6. awaits observation,
-        7. calls `completeWithObservation`,
-        8. appends assistant + observation messages,
-        9. closes the session,
-       10. returns final assistant text.
-      Use `reader`, `gets`, `modify'`, `trace`, `throwError`,
-      `liftIO` for process spawn, and the `Resource` effect for
-      bracketing the subprocess.
-    owner: ${{ github.actor }}
-    duration: "3h"
+      In packages/sarutahiko-agent/src/Sarutahiko/Agent/Turn.hs:
+      - Define `agentTurn :: (MonadModelAPI m, MonadTaskQueue m, MonadEventStore m, MonadProcess m) => Text -> m Text`.
+      - Enforce single model call + at most one tool call per turn step.
+      - Resource-bracket all tool subprocesses using `typed-process`.
+    duration: "45m"
 
-  - name: Build dynamic tool/command/skill/hook registry
+  - id: implement-tool-registry
+    name: Build dynamic tool/command/skill/hook registry
     action: |
-      * Define a registry record type:
-          type ToolRegistryRec =
-            '[ "tools"   := Map ToolName ToolSpec
-             , "commands":= Map CmdName CmdSpec
-             , "skills"  := Map SkillName SkillSpec
-             , "hooks"   := Map HookName HookSpec ]`
-      * Provide effect‑sender operations:
-          `registerTool :: ToolSpec -> Eff es ()`
-          `lookupTool   :: ToolName -> Eff es (Maybe ToolSpec)`
-          etc., implemented as `modify' $ \r -> r & #tools %~ Map.insert …`
-      * Make the registry a `Reader` effect so that any layer can
-        `reader #tools .at name` to look up a tool.
-      * Hooks are executed via a `HookDispatch` effect that reads the
-        hook record, runs it with a deadline (`timeout`), and fails closed
-        on hang.
-    owner: ${{ github.actor }}
-    duration: "2h"
+      In packages/sarutahiko-agent/src/Sarutahiko/Agent/Registry.hs:
+      - Define `ToolRegistryRec` over large-anon extensible records.
+      - Implement registration, lookup, and capability permission checking.
+    duration: "45m"
 
-  - name: Session persistence & prompt‑cache safety
+  - id: implement-session-engine
+    name: Session persistence and prompt-cache safety
     action: |
-      * Use `hashigakari-core` with a minimal SQLite `Stepper` to
-        append `SessionOpened`, `MessageAppended`, `ToolInvoked`,
-        `ToolObserved`, `SessionClosed` events (spine v0.2 rows).
-      * Implement the conversation‑tail reducer (pure fold) that can
-        recompute the session state from the event log.
-      * Add a compression effect (`Compress`) that, when triggered,
-        replaces the current session with a compressed summary
-        (additive only, per Hermes invariants).
-      * Ensure that mid‑conversation toolset swaps are prohibited
-        (the tool registry is read‑only after session start).
-    owner: ${{ github.actor }}
-    duration: "2h"
+      In packages/sarutahiko-session/src/Sarutahiko/Session.hs:
+      - Connect to `hashigakari-sqlite` event store.
+      - Implement conversation-tail reducer guaranteeing strict prompt-cache prefix preservation.
+    duration: "45m"
 
-  - name: Plugin system (manifest + loading)
+  - id: implement-hooks-and-plugins
+    name: Hook supervisor and capability-bounded plugin loader
     action: |
-      * Define a plugin manifest format (YAML) that lists:
-          - provided tools/commands/skills/hooks
-          - required capabilities (effects)
-          - kill‑list, grant‑list, load deadlines
-      * At load time, extend the registry record with the plugin’s
-        provisions (using record‑extension `<+>`).
-      * Apply kill‑lists and grants via the `CapabilityGrant` effect
-        (checked before allowing a tool/command to be invoked).
-      * Enforce load deadlines with a `Timer` effect that aborts
-        loading if the deadline passes.
-    owner: ${{ github.actor }}
-    duration: "2h"
+      In packages/sarutahiko-hooks and packages/sarutahiko-plugins:
+      - Implement fail-closed hook execution with strict timeouts.
+      - Implement plugin manifest loader with capability allowlists and kill-lists.
+    duration: "45m"
 
-  - name: Wire up the CLI entry point (`sarutahiko chat`)
+  - id: verify-agent-core
+    name: Test suite and session replay verification
     action: |
-      * Create an executable that:
-          - reads command line arguments (one‑shot mode or REPL),
-          - builds an initial config record (defaults ⊕ file ⊕ env ⊕ profile),
-          - builds an initial empty session state,
-          - runs `agentTurn` under the `effectful` interpreter
-            (with `Resource`, `Trace`, `Fail`, `IO` carriers).
-      * In REPL mode, loop until `:exit` or EOF, preserving the
-        session store across turns.
-    owner: ${{ github.actor }}
-    duration: "1h"
-
-  - name: Test suite
-    action: |
-      * Unit tests for each component (turn logic, registry,
-        session store, plugin loader) using pure carriers
-        (`runState`, `runReader`, `runTracePure`, `runFailEither`).
-      * Integration test: start a real MCP subprocess tool (e.g. a
-        simple echo tool), run `sarutahiko chat "summarize this file"`,
-        verify that the event log contains the expected rows and
-        that the final output matches the tool’s result.
-      * Replay test: record a session with the real model, delete
-        derived state, replay from the event log, and assert byte‑
-        identical summary (as per Hokora replay property).
-    owner: ${{ github.actor }}
-    duration: "3h"
-
-  - name: Benchmark & performance check
-    action: |
-      Run `cabal bench` for the agent core; ensure that the turn
-      loop does not introduce >10% overhead compared to a baseline
-      that uses the same effect handlers but without the registry
-      indirection.
-    owner: ${{ github.actor }}
-    duration: "1h"
+      In packages/sarutahiko-agent/test/Spec.hs:
+      - Add property tests verifying turn step bounded execution.
+      - Replay recorded Hermes session fixture; verify bit-identical output.
+    duration: "30m"
 
 success_criteria:
-  - The `sarutahiko chat` executable builds and runs.
-  - It can replay a real Hermes session (provided as a fixture) and
-    produce the same final assistant output.
-  - A ported Hermes plugin (simple tool) loads successfully,
-    appears in the tool registry, and can be invoked via the agent.
-  - All unit and integration tests pass.
-  - No violation of Hermes invariants (no mid‑conversation toolset
-    swaps, compression is the only sanctioned context mutation,
-    hook deadlines are respected, kill‑lists honoured).
-  - The codebase still compiles after the previous two refactor
-    packets (i.e., the changes are additive and do not break existing
-    functionality).
+  - All Phase 2 packages compile with zero warnings under `-Wall -Werror`.
+  - All unit and property tests pass via `cabal v2-test sarutahiko-agent`.
+  - Session state persists and restores deterministically via SQLite.

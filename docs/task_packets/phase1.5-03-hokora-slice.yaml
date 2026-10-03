@@ -1,0 +1,68 @@
+---
+id: phase1.5-03-hokora-slice
+title: Assemble Phase 1.5 Hokora autonomous turn vertical slice
+description: |
+  Implement `packages/hokora`, the Phase 1.5 vertical slice proving the
+  skinny spine protocol per HOKORA_SPEC.md and PLAN.md §4.
+
+  Components:
+  - Autonomous single-turn ReAct execution loop.
+  - End-to-end integration of `utai-mock` (ModelAPI), `sarutahiko-mcp` (Tool execution),
+    and `hashigakari-sqlite` (Session event log).
+  - Conversation-tail reducer (pure fold) hydrating session context from the event stream.
+  - Doc-drift judge verifying design documentation consistency.
+  - Executable `hokora-run` CLI demonstrating a full mocked autonomous agent turn.
+
+dependencies:
+  - phase1.5-01-hashigakari-sqlite
+  - phase1.5-02-utai-mock
+
+packages:
+  - packages/hokora
+
+steps:
+  - id: create-skeleton
+    name: Package skeleton and dependencies setup
+    action: |
+      In packages/hokora:
+      - Create hokora.cabal importing commons.
+      - Add dependencies on hashigakari-sqlite, utai, sarutahiko-mcp,
+        sarutahiko-jsonrpc, sarutahiko-effect-signatures, yamaarashi-flow.
+      - Register in cabal.project and verify clean build.
+    duration: "30m"
+
+  - id: implement-turn-loop
+    name: Implement the ReAct turn program
+    action: |
+      In packages/hokora/src/Hokora/Turn.hs:
+      - Implement `executeTurn :: (MonadModelAPI m, MonadEventStore m, MonadMCP m) => Text -> m Text`:
+        1. Log user message to EventStore.
+        2. Call ModelAPI -> response with tool call.
+        3. Dispatch tool call through MCP client.
+        4. Log observation to EventStore.
+        5. Call ModelAPI with observation -> final assistant response.
+        6. Log assistant response to EventStore.
+    duration: "45m"
+
+  - id: implement-session-reducer
+    name: Implement conversation-tail reducer
+    action: |
+      In packages/hokora/src/Hokora/Reducer.hs:
+      - Pure fold over the event stream reconstructing active context window.
+      - Verify prompt-cache prefix stability.
+    duration: "30m"
+
+  - id: implement-cli-and-tests
+    name: Implement hokora-run executable and test suite
+    action: |
+      In packages/hokora/app/Main.hs and packages/hokora/test/Spec.hs:
+      - Add executable `hokora-run` running a scripted turn.
+      - Test end-to-end execution with Tasty/Hedgehog verifying all events
+        are recorded in SQLite and final output matches expected mock generation.
+    duration: "45m"
+
+success_criteria:
+  - `packages/hokora` compiles with zero warnings under `-Wall -Werror`.
+  - `cabal v2-test hokora` passes 100%.
+  - `cabal v2-run hokora:exe:hokora-run` executes a complete autonomous turn with exit-code 0.
+  - Full validation of Phase 1.5 Skinny Spine proof.

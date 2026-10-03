@@ -169,18 +169,31 @@ The following sequential decisions must be resolved to reconcile the revised Yam
       5. Bracketed cleanup cleanly unmounted and destroyed the isolated worktree directory and temporary branch.
     - Verified all test suites across `kogaki-wire`, `yamaarashi`, `yamaarashi-flow`, and `yamaarashi-spec` pass 100% with zero warnings.
     - **Yamaarashi Orchestrator Bootstrap Series (Packets 01–05) is now COMPLETE!**
+11. **Adapted Roadmap Task Packets for Yamaarashi Execution [TASK-008]:**
+    - Audited, rewritten, and structured the entire sequence of roadmap task packets in `docs/task_packets/` conforming to `TASK_PACKET_BEST_PRACTICES.md` and the 6 blessed design decisions:
+      * `phase1.5-01-hashigakari-sqlite.yaml`: Embedded SQLite carrier for `EventStore` and `TaskQueue` under the Façade Pattern (DECISION-002, DECISION-003), replacing legacy `setup-keiro-state.yaml`.
+      * `phase1.5-02-utai-mock.yaml`: LLM substrate `utai` with `ModelAPI` GADT and `utai-mock` deterministic replay carrier for Hokora slice testing (DECISION-005).
+      * `phase1.5-03-hokora-slice.yaml`: Phase 1.5 autonomous turn vertical slice proving the skinny spine protocol (`HOKORA_SPEC.md`).
+      * `refactor-logical-string.yaml`: Structured `LogicalString` and UTF-8 codecs conforming to `KOGAKI_DESIGN.md` §3.
+      * `phase2-agent-core.yaml`: Full agent core ReAct turn loop, tool registry, and session persistence.
+      * `phase3-surfaces-codeintel.yaml`: TUI, Gateway, ACP surfaces, and ctags-compatible tag extractor.
+      * `phase4-data-protocol.yaml`: Full relational query AST, dialect syntax (Postgres, SQLite, MySQL, MongoDB, Redis, ODBC), Dhall row bridge, and streamly fusion.
+    - Cleaned up obsolete untracked `.keiro/tasks/`.
+    - Enhanced `yamaarashi-exec` in `packages/yamaarashi-flow/app/Main.hs` to automatically parse `packages:` from YAML and execute targeted package builds/tests and custom verification scripts in isolated worktrees.
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-### [TASK-008] Roadmap Task Packet Adaptation & Phase 1.5 Hokora Slice
-* **Objective:** Adapt remaining task packets (`phase2-agent-core.yaml`, `phase3-surfaces-codeintel.yaml`, `phase4-data-protocol.yaml`, `setup-keiro-state.yaml`) to the blessed design decisions (Selective DAG, Façade Pattern, `hashigakari` persistence, `kogaki-wire` zero-Aeson invariant, `utai` LLM substrate) and begin execution through `yamaarashi-exec`.
+### [TASK-009] Execute Phase 1.5 Packet 01: hashigakari-sqlite embedded carrier
+* **Objective:** Implement `packages/hashigakari-sqlite`, the embedded SQLite carrier for the event store and task queue, and verify its execution through `yamaarashi-exec`.
 * **Deliverables:**
-  1. Audit and rewrite existing legacy packets in `docs/task_packets/` to conform to `TASK_PACKET_BEST_PRACTICES.md` and DECISION-001–006.
-  2. Implement `hashigakari-sqlite` embedded carrier providing the SQLite event store and task queue for Phase 1.5 Hokora.
-  3. Execute adapted task packets sequentially using `yamaarashi-exec run`.
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run <packet>`
+  1. `packages/hashigakari-sqlite/hashigakari-sqlite.cabal`: Cabal package importing commons with `direct-sqlite` dependency.
+  2. `packages/hashigakari-sqlite/src/Hashigakari/Sqlite/Stepper.hs`: Existential `sqlite3_step` row stepper.
+  3. `packages/hashigakari-sqlite/src/Hashigakari/Sqlite/EventStore.hs`: SQLite interpreter for `EventStore` GADT.
+  4. `packages/hashigakari-sqlite/src/Hashigakari/Sqlite/TaskQueue.hs`: SQLite interpreter for `TaskQueue` GADT with atomic leases.
+  5. `packages/hashigakari-sqlite/test/Spec.hs`: Tasty/Hedgehog parity test suite against in-memory STM carrier.
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-01-hashigakari-sqlite.yaml`
 
 
 

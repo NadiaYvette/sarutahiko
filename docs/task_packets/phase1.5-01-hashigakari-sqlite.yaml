@@ -1,0 +1,74 @@
+---
+id: phase1.5-01-hashigakari-sqlite
+title: Implement hashigakari-sqlite embedded carrier for event store and task queue
+description: |
+  Implement `packages/hashigakari-sqlite`, the embedded SQLite carrier for the
+  event store and task queue per DECISION-003 and HASHIGAKARI_DESIGN.md.
+
+  Components:
+  - SQLite Stepper wrapping `direct-sqlite`'s `sqlite3_step` into the canonical
+    existential `Stepper m (Record Identity r)`.
+  - Production interpreter for `EventStore` GADT appending `large-anon` rows to an
+    append-only event log table (`events`).
+  - Production interpreter for `TaskQueue` GADT with atomic transaction leases
+    and status transitions (Pending, Claimed, Completed, Failed).
+  - Open tagless capability typeclass instances for `MonadEventStore` and `MonadTaskQueue`
+    under the project-wide Façade Pattern (DECISION-002).
+  - Pure in-memory STM carrier in `packages/sarutahiko-effect-testkit` for zero-IO testing.
+  - Parity test suite verifying identical behavior between SQLite and STM carriers.
+
+dependencies:
+  - yamaarashi-05-dogfood-harness
+
+packages:
+  - packages/hashigakari-sqlite
+
+steps:
+  - id: create-skeleton
+    name: Package skeleton and direct-sqlite dependency setup
+    action: |
+      In packages/hashigakari-sqlite:
+      - Create hashigakari-sqlite.cabal importing commons.
+      - Add dependency on direct-sqlite, large-anon, sarutahiko-records,
+        sarutahiko-effect-signatures, yamaarashi.
+      - Register in cabal.project and verify clean build.
+    duration: "30m"
+
+  - id: implement-sqlite-stepper
+    name: Implement existential sqlite3_step row stepper
+    action: |
+      In packages/hashigakari-sqlite/src/Hashigakari/Sqlite/Stepper.hs:
+      - Implement `stepRow :: Statement -> Stepper IO (Record Identity r)`.
+      - Bracket statement finalization to guarantee resource release on short-circuit.
+    duration: "45m"
+
+  - id: implement-event-store-interpreter
+    name: Implement EventStore GADT interpreter and table schema
+    action: |
+      In packages/hashigakari-sqlite/src/Hashigakari/Sqlite/EventStore.hs:
+      - Create table `events` with columns (id, session_id, event_type, payload, created_at).
+      - Implement `runEventStoreSqlite :: Connection -> Eff (EventStore : es) a -> Eff es a`.
+      - Support conversation-tail folds and stream replay.
+    duration: "45m"
+
+  - id: implement-task-queue-interpreter
+    name: Implement TaskQueue GADT interpreter with atomic transaction leases
+    action: |
+      In packages/hashigakari-sqlite/src/Hashigakari/Sqlite/TaskQueue.hs:
+      - Create table `task_queue` with status, lease_until, payload.
+      - Implement `enqueueTask`, `claimTask`, `completeTask`, `failTask`.
+      - Implement `runTaskQueueSqlite :: Connection -> Eff (TaskQueue : es) a -> Eff es a`.
+    duration: "45m"
+
+  - id: verify-parity
+    name: Test suite and parity gate
+    action: |
+      In packages/hashigakari-sqlite/test/Spec.hs:
+      - Run dual-interpreter parity property tests against in-memory STM carrier.
+      - Verify atomic leases prevent duplicate claims across concurrent workers.
+    duration: "30m"
+
+success_criteria:
+  - `packages/hashigakari-sqlite` compiles with zero warnings under `-Wall -Werror`.
+  - All property tests pass via `cabal v2-test hashigakari-sqlite`.
+  - Event log and task leases operate hermetically with zero external network daemons.

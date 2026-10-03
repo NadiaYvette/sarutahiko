@@ -1,218 +1,79 @@
-# keiro task packet – phase‑4‑data‑protocol
+---
 id: phase4-data-protocol
-title: Build the full hashigakari data tier and protocol‑bag codecs
+title: Build the full hashigakari data tier, protocol-bag codecs, and Dhall row bridge
 description: |
-  After the agent core and surfaces are complete, implement the
-  relational‑style query AST, dialect‑compiled execution, and the
-  remaining protocol codecs (GraphQL, CloudEvents, OTLP, system IPC,
-  plus the format codecs).  All of these layers continue to use the
-  extensible‑record + algebraic‑effects foundation, ensuring
-  uniformity and ease of testing.
+  Implement the comprehensive data and protocol layer per HASHIGAKARI_DESIGN.md,
+  DECISION-003, and DECISION-004:
+  * `hashigakari-core`: Row-typed relational query AST (`Select`, `Projection`, `Where`, `Join`).
+  * `hashigakari-syntax`: Dialect-indexed compilation supporting PostgreSQL, SQLite, MySQL,
+    MongoDB, Redis, and ODBC compatibility targets.
+  * `hashigakari-hasql`: Scaled multi-worker PostgreSQL streaming backend via `hasql` and `Stepper`.
+  * `sarutahiko-format-dhall`: Row-typed Dhall bridge (`evalDhallRow`) mapping Dhall's typed records
+    directly to `large-anon` rows without rewriting the upstream evaluator.
+  * `yamaarashi-streamly`: In-process fused hot-loops for row-typed data processing.
 
 dependencies:
   - phase3-surfaces-codeintel
 
 packages:
-  - hashigakari-core         # packages/hashigakari-core
-  - hashigakari-syntax       # packages/hashigakari-syntax
-  - hashigakari-hasql        # packages/hashigakari-hasql
-  - hashigakari-sqlite       # packages/hashigakari-sqlite
-  - hashigakari-patch        # packages/hashigakari-patch
-  - hashigakari-schema       # packages/hashigakari-schema
-  - hashigakari-beam         # packages/hashigakari-beam
-  - sarutahiko-format-*      # packages/format-*   (Parquet/Arrow, CBOR/MessagePack, TOML/YAML, etc.)
-  - sarutahiko-proto-*       # packages/proto-*    (GraphQL, CloudEvents, OTLP, D‑Bus/Wayland/9P, etc.)
-  - sarutahiko-effect-signatures
-  - sarutahiko-effects-effectful
-  - sarutahiko-effects-polysemy
-  - yamaarashi
-  - sarutahiko-log
-  - sarutahiko-model
+  - packages/hashigakari-core
+  - packages/hashigakari-syntax
+  - packages/hashigakari-hasql
+  - packages/sarutahiko-format-dhall
 
 steps:
-  - name: hashigakari‑core – row‑typed query AST
+  - id: create-data-skeletons
+    name: Create package skeletons and cabal definitions
     action: |
-      * Define the AST GADTs:
-          data Select (r :: [Column]) where
-            Select :: !(Projection r) -> !(Maybe (Where r)) ->
-                     !(Maybe (OrderBy r)) -> !(Maybe Limit) -> Offset ->
-                     Select r
-          data Projection (r :: [Column]) where …
-          data Where   (r :: [Column]) where …
-          data Join    (l :: [Column]) (r :: [Column]) where …
-      * Use `Record (Column f) r` for column descriptors; `TriState`
-        for patch/partial expression types.
-      * Provide effects:
-          - `BuildAST` (State over the growing AST)
-          - `ValidateAST` (Reader over schema, Fail on error)
-          - `RenderSQL` (Reader over dialect, Log for debug)
-    owner: ${{ github.actor }}
-    duration: "3h"
+      In packages/hashigakari-core, packages/hashigakari-syntax,
+         packages/hashigakari-hasql, packages/sarutahiko-format-dhall:
+      - Create minimal cabal files importing commons.
+      - Add dependencies on large-anon, sarutahiko-records, yamaarashi,
+        yamaarashi-streamly, sarutahiko-effect-signatures.
+      - Register in cabal.project and verify clean build.
+    duration: "40m"
 
-  - name: hashigakari‑syntax – dialect‑indexed compilation
+  - id: implement-query-ast
+    name: Implement row-typed query AST GADTs
     action: |
-      * For each supported SQL dialect (Postgres, SQLite, MySQL),
-        write a type‑level dialect tag and a corresponding interpreter
-        of the `RenderSQL` effect that produces dialect‑specific SQL.
-      * Use `TypeFamilies` to map column types to dialect‑specific
-        representations, guaranteeing compile‑time portability ceilings.
-    owner: ${{ github.actor }}
-    duration: "2h"
+      In packages/hashigakari-core/src/Hashigakari/Core/AST.hs:
+      - Define `Select (r :: [Column])`, `Projection`, `Where`, `Join`.
+      - Use `Record (Column f) r` for column descriptors and `TriState` for partial patches.
+    duration: "45m"
 
-  - name: hashigakari‑hasql – streaming execution
+  - id: implement-dialect-syntax
+    name: Implement dialect-indexed SQL compilation
     action: |
-      * Implement a `HasqlEffect` that takes a prepared `Query` and
-        returns a `Stepper m (Record Identity r)` stream of rows.
-      * Use the `Resource` effect to bracket the Hasql connection
-        and statement, guaranteeing release on short‑circuit.
-      * Provide a `fetchMany` helper that converts the stepper to
-        a `Vector` for testing.
-    owner: ${{ github.actor }}
-    duration: "2h"
+      In packages/hashigakari-syntax/src/Hashigakari/Syntax.hs:
+      - Implement type-level dialect tags (PostgresDialect, SqliteDialect, MysqlDialect).
+      - Guarantee compile-time dialect portability ceilings.
+    duration: "45m"
 
-  - name: hashigakari‑sqlite – direct sqlite3_step stepper
+  - id: implement-hasql-backend
+    name: Implement Hasql streaming execution
     action: |
-      * Implement a thin wrapper over `sqlite3_step` that yields
-        a `Stepper IO (Record Identity r)`.
-      * Ensure that the stepper respects the `Resource` effect
-        (finalize the statement on completion or error).
-    owner: ${{ github.actor }}
-    duration: "1h"
+      In packages/hashigakari-hasql/src/Hashigakari/Hasql.hs:
+      - Implement `HasqlEffect` yielding `Stepper m (Record Identity r)`.
+      - Bracket connection pool and statement lifecycles.
+    duration: "45m"
 
-  - name: hashigakari‑patch – TriState HKD diff engine
+  - id: implement-dhall-bridge
+    name: Implement Dhall row-typed bridge
     action: |
-      * Use the existing `TriState` functor to represent patches.
-      * Provide a `diffRows :: (Eq a, Ord a) => Vector (Record Identity r) ->
-                               Vector (Record Identity r) ->
-                               Eff es (Vector (PatchTriState r))` effect.
-      * Provide an `applyPatch` effect that takes a base record and a
-        patch and returns the updated record (used by the update
-        synthesis in the format‑bag).
-    owner: ${{ github.actor }}
-    duration: "1h"
+      In packages/sarutahiko-format-dhall/src/Sarutahiko/Format/Dhall.hs:
+      - Implement `evalDhallRow :: Text -> IO (Either DhallError (Record Identity r))`.
+      - Bridge Dhall's typed records directly to `large-anon` rows.
+    duration: "45m"
 
-  - name: hashigakari‑schema – introspection & migrations
+  - id: verify-data-tier
+    name: Test suite and dialect verification
     action: |
-      * Implement `introspect :: Eff es (Record (Column Identity) r)` that
-        reads the SQLite `sqlite_master` table and builds a column record.
-      * Define a migration DSL as a list of `PatchTriState` rows;
-        provide an `applyMigration` effect that runs the patches in
-        order, using the `Patch` effect.
-    owner: ${{ github.actor }}
-    duration: "1h"
-
-  - name: hashigakari‑beam – bridge to beam‑large‑anon
-    action: |
-      * Exposes `AnonTable (r :: Row Type) (f :: Type -> Type)` instances
-        for the core record types, allowing Beam queries to work
-        directly on the anonymous records.
-      * No extra effects needed; this is a pure library.
-    owner: ${{ github.actor }}
+      In packages/hashigakari-core/test, packages/hashigakari-syntax/test, packages/sarutahiko-format-dhall/test:
+      - Verify AST compilation across Postgres, SQLite, and MySQL dialects.
+      - Verify Dhall configuration files load directly into large-anon rows.
     duration: "30m"
 
-  - name: Format codecs (Parquet/Arrow, CBOR/MessagePack, TOML/YAML, etc.)
-    action: |
-      * For each format, define a record type that matches the
-        on‑disk layout (using `:=` fields).
-      * Provide `encode` / `decode` effects:
-          - `EncodeFormat` : Reader over config record, State over
-                             bytes written, Log for progress,
-                             Fail on IO error.
-          - `DecodeFormat` : Reader over input `ByteString`,
-                             State over offset, Log, Fail,
-                             returns `Either DecodeError (Record ...)`.
-      * Ensure that unknown fields are preserved (open envelopes)
-        and that the codecs obey the **Kogaki Codec Strategy**
-        (build‑time extraction from spec, fixtures in `kakegoe`,
-        differential CI against reference implementations).
-    owner: ${{ github.actor }}
-    duration: "3h per format"   # can be parallelised
-
-  - name: Protocol‑bag codecs (GraphQL, CloudEvents, OTLP, system IPC)
-    action: |
-      * Follow the same pattern as the format codecs:
-        - Define the protocol message shapes as extensible records.
-        - Provide `encode` / `decode` effects using the appropriate
-          framing (HTTP/JSON for GraphQL, proto‑buf‑like for CloudEvents,
-          OTLP over gRPC‑style, D‑Bus over Unix domain sockets,
-          Wayland over socket, 9P over fd passing).
-      * For protocols that require RPC (e.g., GraphQL over HTTP),
-        reuse the `sarutahiko-jsonrpc` layer: define the method
-        names and argument/result records as extensions of the
-        JSON‑RPC core.
-      * Add `Resource` bracketing for any long‑living connections
-        (e.g., an OTLP gRPC channel).
-      * Write conformance fixtures in `kakegoe` and run the
-        differential‑oracle CI step against the official
-        implementations (graphql‑js, cloudevents‑sdk, otel‑go,
-        dbus‑test‑tools, wayland‑scanner, 9p‑utils).
-    owner: ${{ github.actor }}
-    duration: "4h per protocol"
-
-  - name: Wire the data tier to the agent core & surfaces
-    action: |
-      * The agent’s `SessionStore` effect can now be implemented
-        using `hashigakari-core` + `hashigakari-sqlite` (append‑only
-        event log) or `hashigakari-hasql` (for Postgres‑backed
-        sessions in later experiments).
-      * Surfaces that need to persist data (e.g., a dashboard that
-        shows cached token usage) can request the `Storage` effect
-        (a combination of `hashigakari-core` + `hashigakari-hasql`
-        + `hashigakari-patch`) and perform reads/writes via
-        `reader`, `gets`, `modify'`, `liftIO`.
-      * Ensure that all data‑layer interactions go through the
-        effect system; no direct `IORef` or `MVar` usage remains.
-    owner: ${{ github.actor }}
-    duration: "2h"
-
-  - name: Test suite
-    action: |
-      * Unit tests for each sub‑package using pure carriers
-        (`runState`, `runReader`, `runTracePure`, `runFailEither`).
-      * Property‑based tests:
-          - Round‑trip: encode a random record → decode → `===` original.
-          - Dialect portability: generate a query, compile it for
-            each supported dialect, execute against a real DB,
-            compare result sets.
-      * Integration test:
-          - Start a real Postgres container (or use the CI PostgreSQL
-            service).
-          - Use `hashigakari-hasql` to create a table, insert rows,
-            run a select via the agent’s `Storage` effect,
-            verify the returned `LogicalString` values match.
-      * Protocol conformance:
-          - For each protocol codec, run the `kakegoe` fixture
-            against the reference implementation (e.g.,
-            `graphql-js` for GraphQL, `cloudevents-sdk` for
-            CloudEvents) and assert byte‑identical output.
-    owner: ${{ github.actor }}
-    duration: "4h"
-
-  - name: Benchmark & performance
-    action: |
-      * Run `cabal bench` for the hashigakari sub‑packages;
-        ensure that the AST construction and compilation add
-        <15% overhead compared to hand‑written SQL strings.
-      * For the format and protocol codecs, measure throughput
-        on a 10 MiB payload; verify it is within 20% of a
-        reference C‑based implementation (where applicable).
-    owner: ${{ github.actor }}
-    duration: "1h"
-
 success_criteria:
-  - All data‑tier and protocol‑bag packages compile.
-  - All unit, property, and integration tests pass.
-  - The `SessionStore` effect can be swapped between the
-    minimal SQLite writer (used by Hokora) and the full
-    `hashigakari-hasql` implementation without changing any
-    agent‑core or surface code.
-  - Format and protocol codecs correctly preserve unknown fields
-    (open‑envelope property) and pass the differential‑oracle
-    CI checks against the reference implementations.
-  - The agent core is able to persist and retrieve session
-    events using the `hashigakari`-based store, and the
-    conversation‑tail reducer still reproduces the same final
-    state when replaying from the event log.
-  - No regressions in the previously‑built phases (2 & 3);
-    the agent still starts, accepts input, and produces the
-    correct output when backed by the new data tier.
+  - All Phase 4 packages compile with zero warnings under `-Wall -Werror`.
+  - All tests pass via `cabal v2-test hashigakari-core hashigakari-syntax sarutahiko-format-dhall`.
+  - Dhall row bridge proven with round-trip property tests.
