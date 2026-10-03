@@ -1,0 +1,58 @@
+---
+id: sweep-02-mono-traversable-nonempty
+title: Integrate mono-traversable for type-level non-emptiness constraints
+description: |
+  Register and integrate `mono-traversable` across wire codecs and protocol packages
+  per REUSE_REGISTER.md §2.18 and the zero-partial-functions invariant. Enforce
+  `Data.NonNull.NonNull` on monomorphic sequences (`ByteString`, `Text`, `Vector`) where
+  emptiness is invalid at the type level, eliminating defensive runtime guards and
+  preventing regressions.
+
+dependencies:
+  - sweep-01-effect-facade
+
+packages:
+  - kogaki-wire
+  - sarutahiko-jsonrpc
+  - sarutahiko-mcp
+
+steps:
+  - id: register-mono-traversable
+    name: Register mono-traversable in REUSE_REGISTER.md and configure cabal dependencies
+    action: |
+      - Document `mono-traversable` in docs/registers/REUSE_REGISTER.md §2.29 for
+        sequence polymorphism and `NonNull` type-level non-emptiness guarantees.
+      - Add `mono-traversable >= 1.0.17` dependency to `kogaki-wire`, `sarutahiko-jsonrpc`,
+        and `sarutahiko-mcp`.
+    duration: "20m"
+
+  - id: enforce-nonempty-jsonrpc
+    name: Enforce NonNull on JSON-RPC batch requests and method identifiers
+    action: |
+      In packages/sarutahiko/sarutahiko-jsonrpc:
+      - Change batch dispatch to accept `NonNull [JsonRpcRequest]`.
+      - Represent method names as `NonNull Text`.
+      - Ensure empty batches fail at compile time or return spec-compliant -32600
+        upon unvalidated wire decoding.
+    duration: "40m"
+
+  - id: enforce-nonempty-wire-tokens
+    name: Enforce NonNull on SSE event data and header lines in kogaki-wire
+    action: |
+      In packages/kogaki/kogaki-wire:
+      - Use `NonNull ByteString` for SSE event field labels and non-empty data lines.
+      - Verify round-trip bit-identical SSE framing invariant.
+    duration: "35m"
+
+  - id: verify-nonempty-invariants
+    name: Test suite and non-emptiness verification
+    action: |
+      - Run `cabal v2-test kogaki-wire sarutahiko-jsonrpc sarutahiko-mcp`.
+      - Verify all tests pass with zero warnings under `-Wall -Werror`.
+      - Audit with grep confirming zero calls to partial sequence operations.
+    duration: "30m"
+
+success_criteria:
+  - `mono-traversable` registered in `REUSE_REGISTER.md`.
+  - Batch and wire protocol payloads type-level bounded with `NonNull`.
+  - All property and specification conformance tests pass 100%.

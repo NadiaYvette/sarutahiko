@@ -1,0 +1,77 @@
+---
+id: sweep-01-effect-facade
+title: Establish repo-wide Façade Pattern for effect framework neutrality
+description: |
+  Sweep existing process and protocol packages to conform to DECISION-002 and the
+  project-wide Façade Pattern. Reconcile the canonical Process effect GADT in
+  `sarutahiko-effect-signatures`, define the open `MonadProcess` capability typeclass,
+  relocate concrete effect system interpreters into `sarutahiko-effect-effectful` and
+  `sarutahiko-effect-polysemy`, and purge direct `effectful-core` dependencies from
+  `sarutahiko-process` and `sarutahiko-mcp`.
+
+dependencies:
+  - yamaarashi-05-dogfood-harness
+
+packages:
+  - sarutahiko-effect-signatures
+  - sarutahiko-process
+  - sarutahiko-mcp
+  - sarutahiko-effect-effectful
+  - sarutahiko-effect-polysemy
+  - sarutahiko-effect-testkit
+
+steps:
+  - id: reconcile-process-gadt
+    name: Promote full subprocess supervisor GADT to sarutahiko-effect-signatures
+    action: |
+      In packages/sarutahiko/sarutahiko-effect-signatures/src/Sarutahiko/Effect/Process.hs:
+      - Replace toy stub with full process lifecycle GADT:
+        `SpawnChild :: !ProcessConfig -> Process m ChildHandle`
+        `ReadStdout :: !ChildHandle -> Process m ByteString`
+        `WriteStdin :: !ChildHandle -> !ByteString -> Process m ()`
+        `WaitChild  :: !ChildHandle -> Process m ExitCode`
+        `PollChild  :: !ChildHandle -> Process m (Maybe ExitCode)`
+        `KillChild  :: !ChildHandle -> !ProcessSignal -> Process m ()`
+        `CloseChildHandles :: !ChildHandle -> Process m ()`
+      - Include `ProcessConfig`, `ChildHandle`, `ChildProcessId`, `ProcessSignal`,
+        `ProcessTerminationReason`, and default environment allowlist.
+      - Maintain strictly zero effect framework dependencies.
+    duration: "30m"
+
+  - id: define-monad-process-facade
+    name: Define MonadProcess tagless capability typeclass in sarutahiko-process
+    action: |
+      In packages/sarutahiko/sarutahiko-process/src/Sarutahiko/Process.hs:
+      - Define `class Monad m => MonadProcess m` exposing:
+        `spawnChild`, `readStdout`, `writeStdin`, `waitChild`, `pollChild`, `killChild`, `closeChildHandles`.
+      - Implement tagless resource-bracketed runner `withSupervisedChild`.
+      - Keep pure environment hygiene (`cleanseEnvironment`) and POSIX signal definitions.
+      - Remove `Effectful` imports and `DispatchOf` instance from `Sarutahiko.Process.Signature`.
+      - Remove `effectful-core` dependency from `sarutahiko-process.cabal` and `sarutahiko-mcp.cabal`.
+    duration: "40m"
+
+  - id: effectful-polysemy-adapters
+    name: Implement dual-effect interpreters and MonadProcess instances
+    action: |
+      In packages/sarutahiko/sarutahiko-effect-effectful:
+      - Add `type instance DispatchOf Process = Dynamic`.
+      - Expose `runProcessIO` and `runProcessMock`.
+      - Provide `instance (Process :> es, IOE :> es) => MonadProcess (Eff es)`.
+      In packages/sarutahiko/sarutahiko-effect-polysemy:
+      - Add Polysemy interpreter `runProcessIOPoly` and `runProcessMockPoly`.
+      - Provide `instance (P.Member Process r, P.Member (P.Embed IO) r) => MonadProcess (P.Sem r)`.
+    duration: "45m"
+
+  - id: verify-parity
+    name: Update dual-interpreter testkit and verify parity
+    action: |
+      In packages/sarutahiko/sarutahiko-effect-testkit:
+      - Update `runProcessParity` to test `spawnChild`, `readStdout`, and `waitChild`
+        across both runtimes on POSIX `/bin/sh -c "echo hello"` or true/false.
+      - Verify 100% test pass.
+    duration: "30m"
+
+success_criteria:
+  - `sarutahiko-process` and `sarutahiko-mcp` have zero dependencies on `effectful-core` or `polysemy`.
+  - All 6 touched packages compile with zero warnings under `-Wall -Werror`.
+  - Dual-interpreter parity verified via `cabal v2-test sarutahiko-effect-testkit`.

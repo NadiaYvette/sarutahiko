@@ -192,15 +192,35 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ## 6. Immediate Workqueue (The Frontier)
 
-### [TASK-009] Execute Phase 1.5 Packet 01: hashigakari-sqlite embedded carrier
-* **Objective:** Implement `packages/hashigakari/hashigakari-sqlite`, the embedded SQLite carrier for the event store and task queue, and verify its execution through `yamaarashi-exec`.
+### [TASK-009] Execute Pre-Phase 1.5 Sweep 01: sweep-01-effect-facade
+* **Objective:** Establish repository-wide effect framework neutrality under DECISION-002 (Façade Pattern). Reconcile the canonical `Process` GADT in `sarutahiko-effect-signatures`, define open `MonadProcess` capability typeclass in `sarutahiko-process`, relocate concrete interpreters to `sarutahiko-effect-effectful` and `sarutahiko-effect-polysemy`, and purge direct `effectful-core` dependencies from `sarutahiko-process` and `sarutahiko-mcp`.
 * **Deliverables:**
-  1. `packages/hashigakari/hashigakari-sqlite/hashigakari-sqlite.cabal`: Cabal package importing commons with `direct-sqlite` dependency.
-  2. `packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/Stepper.hs`: Existential `sqlite3_step` row stepper.
-  3. `packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/EventStore.hs`: SQLite interpreter for `EventStore` GADT.
-  4. `packages/hashigakari/hashigakari-sqlite/src/Hashigakari/Sqlite/TaskQueue.hs`: SQLite interpreter for `TaskQueue` GADT with atomic leases.
-  5. `packages/hashigakari/hashigakari-sqlite/test/Spec.hs`: Tasty/Hedgehog parity test suite against in-memory STM carrier.
+  1. `packages/sarutahiko/sarutahiko-effect-signatures/src/Sarutahiko/Effect/Process.hs`: Unified neutral `Process` GADT.
+  2. `packages/sarutahiko/sarutahiko-process/src/Sarutahiko/Process.hs`: Open `MonadProcess` capability typeclass with tagless bracketed runner.
+  3. `packages/sarutahiko/sarutahiko-process/sarutahiko-process.cabal` & `packages/sarutahiko/sarutahiko-mcp/sarutahiko-mcp.cabal`: Zero `effectful-core` dependencies.
+  4. `packages/sarutahiko/sarutahiko-effect-effectful/` & `packages/sarutahiko/sarutahiko-effect-polysemy/`: Production interpreters and `MonadProcess` instances.
+  5. `packages/sarutahiko/sarutahiko-effect-testkit/`: Dual-interpreter parity property tests.
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/sweep-01-effect-facade.yaml`
+
+### [TASK-010] Execute Pre-Phase 1.5 Sweep 02: sweep-02-mono-traversable-nonempty
+* **Objective:** Register and integrate `mono-traversable` across wire codecs and protocol packages for type-level non-emptiness guarantees (`Data.NonNull.NonNull`).
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/sweep-02-mono-traversable-nonempty.yaml`
+
+### [TASK-011] Execute refactor-logical-string
+* **Objective:** Introduce `LogicalString` and UTF-8 codecs in `kogaki-core` per `KOGAKI_DESIGN.md` §3.
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/refactor-logical-string.yaml`
+
+### [TASK-012] Execute Phase 1.5 Packet 01: phase1.5-01-hashigakari-sqlite
+* **Objective:** Implement `packages/hashigakari/hashigakari-sqlite` embedded carrier for event store and task queue.
 * **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-01-hashigakari-sqlite.yaml`
+
+### [TASK-013] Execute Phase 1.5 Packet 02: phase1.5-02-utai-mock
+* **Objective:** Implement `packages/utai/utai` and `utai-mock` deterministic carrier.
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-02-utai-mock.yaml`
+
+### [TASK-014] Execute Phase 1.5 Packet 03: phase1.5-03-hokora-slice
+* **Objective:** Assemble Phase 1.5 Hokora autonomous turn vertical slice.
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-03-hokora-slice.yaml`
 
 
 

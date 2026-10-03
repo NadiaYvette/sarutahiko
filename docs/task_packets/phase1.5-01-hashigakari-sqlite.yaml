@@ -18,7 +18,7 @@ description: |
   - Parity test suite verifying identical behavior between SQLite and STM carriers.
 
 dependencies:
-  - yamaarashi-05-dogfood-harness
+  - sweep-02-mono-traversable-nonempty
 
 packages:
   - hashigakari-sqlite
