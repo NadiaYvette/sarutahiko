@@ -240,7 +240,7 @@ module Sarutahiko.Process.Supervisor
   , cleanseEnvironment
   ) where
 
-import Control.Concurrent (forkIO, killThread, threadDelay)
+import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
 import Control.Exception (IOException, catch)
 import Control.Monad (unless)
 import qualified Data.ByteString as BS
@@ -249,7 +249,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Time.Clock (nominalDiffTimeToSeconds)
+import Data.Time.Clock (NominalDiffTime, nominalDiffTimeToSeconds)
 import Data.Word (Word64)
 import GHC.IO.Handle (BufferMode (..), Handle, hClose, hFlush, hSetBuffering)
 import System.Environment (getEnvironment)
@@ -282,8 +282,6 @@ data ProcessEntry = ProcessEntry
   , peStderr       :: !(Maybe Handle)
   , peWatchdog     :: !(Maybe ThreadId)
   }
-
-type ThreadId = Control.Concurrent.ThreadId
 
 data ProcessTable = ProcessTable
   { ptNextId :: !(IORef Word64)
@@ -328,7 +326,7 @@ spawnProcessIO pt cfg = do
   atomicModifyIORef' (ptProcs pt) (\m -> (Map.insert cidWord entry m, ()))
   pure handle
 
-watchdogThread :: ProcessHandle -> Data.Time.Clock.NominalDiffTime -> IO ()
+watchdogThread :: ProcessHandle -> NominalDiffTime -> IO ()
 watchdogThread ph limit = do
   let micros = round (nominalDiffTimeToSeconds limit * 1000000) :: Int
   threadDelay micros
@@ -877,6 +875,8 @@ runLogIOPoly = P.interpret $ \case
 EOF
 
 # 9. Update sarutahiko-effect-testkit
+sed -i 's/sarutahiko-records/sarutahiko-records, sarutahiko-process/' packages/sarutahiko/sarutahiko-effect-testkit/sarutahiko-effect-testkit.cabal
+
 cat <<'EOF' > packages/sarutahiko/sarutahiko-effect-testkit/src/Sarutahiko/Effect/Testkit/Parity.hs
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedLabels #-}
