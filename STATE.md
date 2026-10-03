@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T17:03:00+02:00
+* **Timestamp:** 2026-10-03T18:38:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `71a461b` (*docs(tasks): clarify direct-sqlite Database handle in phase1.5-01 task packet*)
+* **HEAD Commit:** `a91f7f3` (*feat(hashigakari-sqlite): implement embedded SQLite carrier for event store and task queue*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -24,13 +24,22 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 2. **Archived Pre-Pivot Yamaarashi Skeletons (`d8521eb`):**
    - Captured all uncommitted WIP stubs under `packages/yamaarashi*`, experiment `.cabal` changes, and `cabal.project` modifications to isolated archive branch `archive/yamaarashi-pre-pivot-skeletons`.
    - Created clean working branch `nadia.chambers/yamaarashi-redesign` at `5a9d44d`.
+3. **Executed Phase 1.5 Packet 01 — `hashigakari-sqlite` [TASK-012] (`a91f7f3`):**
+   - Implemented `packages/hashigakari/hashigakari-sqlite`:
+     * Existential row stepper wrapping `direct-sqlite`'s `sqlite3_step` (`stepRow`).
+     * Production interpreter for `EventStore` GADT appending `large-anon` rows to `events` table with stream replay and tail folds.
+     * Production interpreter for `TaskQueue` GADT with atomic transaction leases (`claimTaskSqlite`) and backoff retry on `ErrorBusy`.
+     * Open tagless capability typeclass instances for `MonadEventStore` and `MonadTaskQueue` under the Façade Pattern (`Hashigakari.Sqlite.Capability`).
+   - Implemented in-memory STM carrier in `packages/sarutahiko/sarutahiko-effect-testkit` (`Sarutahiko.Effect.Testkit.STM`) for zero-IO testing.
+   - Added comprehensive Tasty/Hedgehog test suite in `test/Spec.hs` verifying all 4 properties (EventStore parity, TaskQueue parity, concurrency/atomic leases, and stream replay) passing 100% with zero warnings under `-Wall -Werror`.
+   - Upgraded `yamaarashi-exec` with bounded iterative repair loops ($K=3$), Hermes `-z` oneshot non-interactive execution, and 180s hard timeouts on verification gates.
 
 ---
 
 ## 3. Active Blockers & Known Hazards
 
 * **Model Downgrade / Free Fleet Churn:** Dynamic auto-routing via OmniRoute may silently fall back from high-tier models to under-parameterized endpoints. Capability checking remains mandatory.
-* **Hermes Kanban Daemon Caution:** The experimental SQLite background daemon (`hermes kanban watch` / `dispatch`) can experience claim stalls. Direct CLI invocation (`hermes chat -q`) or expect driver scripts are preferred when executing on the free fleet.
+* **Hermes One-Shot Flag:** Use `hermes --in <dir> -z <prompt> --accept-hooks --yolo` for headless CLI execution; avoids TUI Node.js deadlock and bypasses interactive TTY requirements.
 
 ---
 
@@ -221,14 +230,10 @@ The following sequential decisions must be resolved to reconcile the revised Yam
 
 ## 6. Immediate Workqueue (The Frontier)
 
-> [!NOTE] Strategic Pause Boundary & Zero-Token Delegation Ready
-> Foundational refactors and first-class Hermes execution delegation are COMPLETE.
-> `yamaarashi-exec` is equipped to delegate task packets directly to zero-token Hermes instances (`executor: hermes`) with local code intelligence tools (`tags`, `tricorder`).
-> Operational frontier is primed for Phase 1.5 Packet 01 (`phase1.5-01-hashigakari-sqlite`).
-
-### [TASK-012] Execute Phase 1.5 Packet 01: phase1.5-01-hashigakari-sqlite
-* **Objective:** Implement `packages/hashigakari/hashigakari-sqlite` embedded carrier for event store and task queue.
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-01-hashigakari-sqlite.yaml`
+> [!NOTE] Phase 1.5 Packet 01 COMPLETE & Zero-Token Hermes Delegation Proven
+> `hashigakari-sqlite` embedded carrier, STM testkit carrier, and all parity tests are COMPLETE (`a91f7f3`).
+> `yamaarashi-exec` is equipped with Hermes `-z` one-shot zero-token execution and 180s verification gate timeouts.
+> Operational frontier is primed for Phase 1.5 Packet 02 (`phase1.5-02-utai-mock`).
 
 ### [TASK-013] Execute Phase 1.5 Packet 02: phase1.5-02-utai-mock
 * **Objective:** Implement `packages/utai/utai` and `utai-mock` deterministic carrier.
