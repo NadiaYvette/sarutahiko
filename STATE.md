@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T21:44:00+02:00
+* **Timestamp:** 2026-10-03T22:15:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `b283c4b` (*Implement utai LLM substrate and deterministic mock interpreter*)
+* **HEAD Commit:** `23983d4` (*Assemble Phase 1.5 Hokora autonomous turn vertical slice*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -242,16 +242,25 @@ The following sequential decisions must be resolved to reconcile the revised Yam
       3. Passed verification gate (`cabal v2-build utai` and `scripts/tasks/phase1.5-02-utai-mock-verify.sh`).
       4. Generated commit `b283c4b` with attribution trailers and fast-forward merged to HEAD.
       5. Bracketed cleanup destroyed worktree and temporary branch.
-    - Verified all 7 Tasty/Hedgehog property tests in `utai` and all 6 repository package test suites pass 100% with zero warnings under `-Wall -Werror`.
+18. **Executed Phase 1.5 Packet 03 — Hokora Autonomous Turn Vertical Slice [TASK-014] (`7af5470` / `23983d4`):**
+    - Implemented `packages/hokora/hokora`:
+      * `Hokora.Types`: Spine v0.2 payload schemas (`SessionOpenedPayload`, `MessagePayload`, `ToolInvokedPayload`, `ToolObservedPayload`, `SessionClosedPayload`), strictly zero-Aeson encoders/decoders over `kogaki-wire`, `TurnResult`, `SessionContext`, and deterministic `fnv1a64Hex` hashing.
+      * `Hokora.Reducer`: Pure fold over the event stream hydrating `SessionContext` with fail-closed filtering over unknown events and computing deterministic prompt-cache prefix hash per `HOKORA_SPEC.md` §4 Step 6.
+      * `Hokora.Turn`: Autonomous single-turn ReAct program in `Eff es` and tagless capability typeclasses (`MonadModelAPI`, `MonadEventStore`), with in-process conforming MCP server integration (`mkStandardEchoServer`, `dispatchMcpServer`).
+      * `app/Main.hs`: CLI executable `hokora-run` executing end-to-end autonomous turn with real SQLite event logging and summary reporting.
+      * `test/Spec.hs`: Tasty/Hedgehog test suite verifying 4 properties (turn without tools, turn with MCP tools, reducer replay parity, and prefix hash stability) passing 100% (100 runs each).
+    - Thesis measurement: Hokora delivered in **664 lines core / 891 total lines** (well within budget ≤2,000 lines).
+    - Executed cleanly via `yamaarashi-exec run docs/task_packets/phase1.5-03-hokora-slice.yaml` using native zero-cost `utai` executor, passed verification gates, and fast-forward merged to HEAD.
+    - **Phase 1.5 (Skinny Spine Proof) is now COMPLETE!**
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-> [!NOTE] Phase 1.5 Packet 02 COMPLETE & Native Zero-Cost LLM Invocation Active
-> `utai` LLM substrate, `ModelAPI` GADT, `utai-mock` deterministic carrier, `Utai.Client` native live carrier, and `executor: utai` are COMPLETE (`b283c4b`).
-> Operational frontier is primed for Phase 1.5 Packet 03 (`phase1.5-03-hokora-slice`).
+> [!NOTE] Phase 1.5 COMPLETE & Skinny Spine Protocol Proven
+> All three Phase 1.5 packets (`hashigakari-sqlite`, `utai-mock`, and `hokora-slice`) are COMPLETE and VERIFIED.
+> Operational frontier is advanced to Phase 2 (`phase2-agent-core`).
 
-### [TASK-014] Execute Phase 1.5 Packet 03: phase1.5-03-hokora-slice
-* **Objective:** Assemble Phase 1.5 Hokora autonomous turn vertical slice (`HOKORA_SPEC.md`).
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase1.5-03-hokora-slice.yaml`
+### [TASK-015] Execute Phase 2: phase2-agent-core
+* **Objective:** Implement full agent core ReAct turn loop, tool registry, session persistence, and multi-turn conversation execution (`docs/task_packets/phase2-agent-core.yaml`).
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase2-agent-core.yaml`
