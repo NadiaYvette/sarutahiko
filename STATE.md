@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T16:50:00+02:00
+* **Timestamp:** 2026-10-03T17:03:00+02:00
 * **Git Branch:** `nadia.chambers/yamaarashi-redesign`
-* **HEAD Commit:** `6b9cb1b` (*feat(yamaarashi-flow): add agy executor, fix hermes headless flags, and add timeouts*)
+* **HEAD Commit:** `71a461b` (*docs(tasks): clarify direct-sqlite Database handle in phase1.5-01 task packet*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
