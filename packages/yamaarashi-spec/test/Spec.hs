@@ -7,7 +7,7 @@ import qualified Data.Text as T
 import Hedgehog
 import Test.Tasty
 import Test.Tasty.Hedgehog
-import Yamaarashi.Flow.Types (TaskId (..))
+import Sarutahiko.Effect.TaskQueue (TaskId (..))
 import Yamaarashi.Spec
 
 main :: IO ()

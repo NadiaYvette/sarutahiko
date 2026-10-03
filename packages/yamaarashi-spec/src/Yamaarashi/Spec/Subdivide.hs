@@ -24,7 +24,7 @@ module Yamaarashi.Spec.Subdivide
 import Data.Functor.Foldable (hylo)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Yamaarashi.Flow.Types (TaskId (..))
+import Sarutahiko.Effect.TaskQueue (TaskId (..))
 import Yamaarashi.Spec.Types (AtomicTask (..), SpecNode (..))
 
 -- | Heuristic predicate determining if a specification node is atomic / primitive.

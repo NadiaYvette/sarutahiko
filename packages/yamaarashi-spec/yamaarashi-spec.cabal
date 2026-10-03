@@ -34,8 +34,8 @@ library
         text >= 2.1,
         selective >= 0.5,
         recursion-schemes >= 5.2,
-        yamaarashi,
-        yamaarashi-flow
+        sarutahiko-effect-signatures,
+        yamaarashi
     hs-source-dirs:   src
 
 test-suite yamaarashi-spec-test
@@ -49,7 +49,7 @@ test-suite yamaarashi-spec-test
         text >= 2.1,
         selective >= 0.5,
         recursion-schemes >= 5.2,
-        yamaarashi-flow,
+        sarutahiko-effect-signatures,
         yamaarashi-spec,
         tasty,
         hedgehog,

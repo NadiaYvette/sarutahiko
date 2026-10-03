@@ -20,7 +20,7 @@ module Yamaarashi.Spec.Types
 
 import Data.Set (Set)
 import Data.Text (Text)
-import Yamaarashi.Flow.Types (TaskId (..))
+import Sarutahiko.Effect.TaskQueue (TaskId (..))
 
 -- | Pure inert resource requirements needed for static over-approximation.
 --

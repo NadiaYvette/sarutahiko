@@ -502,5 +502,17 @@ macroscopic project goals down into atomic, machine-checkable leaf task packets.
 Q1 passes (canonical categorical recursion); Q2 passes (standard recursion combinators);
 Q3 passes (mature, established ecosystem standard).
 
+### 2.28 typed-process (Strongly typed process execution and management) — REUSED (2026-10-03)
+Michael Snoyman's `typed-process` library.
+Provides typed process invocation, stream redirection, exit-code guarantees, and safe
+concurrency for external process supervision.
+Role: Subprocess supervisor and git worktree isolation management in `packages/yamaarashi-flow`
+(`yamaarashi-exec`). Enables spawning hermetic worktrees (`git worktree add --detach`) and
+running external toolchain commands (cabal, git, compilers) with deterministic timeout and
+cleanup boundaries without leaking child processes.
+Q1 passes (purely process management at the system boundary); Q2 passes (typed handles, no
+transitive bloat); Q3 passes (industry standard, rock solid).
+
+
 
 
