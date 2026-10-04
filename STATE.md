@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-04T16:15:00+02:00
+* **Timestamp:** 2026-10-04T16:50:00+02:00
 * **Git Branch:** `master`
-* **HEAD Commit:** `0a5b36a` (*docs(audit): incorporate tutoring insights on kernmantle vs large-records and relocate audits*)
+* **HEAD Commit:** `5e403b9` (*Build TUI, Gateway, ACP surfaces and incremental tag extractor*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -303,19 +303,32 @@ The following sequential decisions must be resolved to reconcile the revised Yam
       * Documented the 6 retrospective coexistence strategies (the Airlock let-binding pattern, in-line `TypeApplications`, proxy funneling, polite plugin yield on unresolved variables, porting `kernmantle` onto `large-anon`, and GHC arrow typechecker eager type propagation).
       * Confirmed that while coexistence answers turned up retrospectively, deeper categorical, architectural, and ergonomic concerns conclusively justify superseding arrows (categorical opacity preventing static over-approximation via `Control.Selective.Over`, escaping skolems in nested tuple environments, ergonomic degradation, and clean alignment of `selective` + `alga` with *Build Systems à la Carte*).
     - Updated `docs/INDEX.md` inventory table registering the relocated audit reports and new tutoring transcript.
+23. **Executed Phase 3 — Surfaces & Code Intelligence (`sarutahiko-tui`, `sarutahiko-gateway`, `sarutahiko-acp`, `sarutahiko-tags`) [TASK-016] (`029e790` / `5e403b9`):**
+    - Implemented full 4-package Tier 3 surfaces and code intelligence per `NIH_PLAN.md` §4:
+      * `packages/sarutahiko/sarutahiko-tui`: Terminal UI with extensible record state (`TuiState`), declarative layout, streaming token rendering, keypress cancellation, and JSON-RPC 2.0 communication with agent core. (6 Hedgehog properties passing 100%).
+      * `packages/sarutahiko/sarutahiko-gateway`: Multi-platform chat gateway (Telegram, Discord, Slack, Webhook) via `GatewayEffect`, bracketed streaming, and tagless capabilities. (4 Hedgehog properties passing 100%).
+      * `packages/sarutahiko/sarutahiko-acp`: Agent Client Protocol stdio JSON-RPC adapter for Zed/editor integration with initialization handshake and tool dispatch. (4 Hedgehog properties passing 100%).
+      * `packages/sarutahiko/sarutahiko-tags`: Fast scope-stack symbol tag extractor for Haskell and C emitting Vi/Ex and Universal Ctags JSON Lines format, with standalone CLI executable `sarutahiko-tags`. (4 Hedgehog properties passing 100%).
+    - Authored comprehensive verification script `scripts/tasks/phase3-surfaces-codeintel-verify.sh` auditing all 4 packages, all 18 property tests, ctags CLI execution (Vi & JSON Lines), zero-Aeson compliance, and zero partial functions.
+    - Updated `docs/registers/ATTRIBUTION_REGISTER.md` recording intellectual provenance for Brick, Telega, Discord-haskell, Slack-web, Zed ACP, and Universal Ctags lineages.
+    - Configured task packet `docs/task_packets/phase3-surfaces-codeintel.yaml` targeting native zero-cost `utai` executor with local OmniRoute (`mistral/codestral-latest`).
+    - Executed cleanly via `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase3-surfaces-codeintel.yaml`.
+    - Passed all verification gates (100% PASS), generated commit `5e403b9` with attribution trailers, and fast-forward merged to `master`.
+    - **Phase 3 (Surfaces & Code Intelligence) is now COMPLETE!**
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-> [!NOTE] Phase 2 COMPLETE & Agent Core Operational
-> All four Phase 2 packages (`sarutahiko-session`, `sarutahiko-hooks`, `sarutahiko-plugins`, `sarutahiko-agent`) are COMPLETE and VERIFIED with 16/16 Hedgehog property tests passing.
-> Operational frontier is advanced to Phase 3 (`phase3-surfaces-codeintel`).
+> [!NOTE] Phase 3 COMPLETE & Surfaces / Code Intelligence Operational
+> All four Phase 3 packages (`sarutahiko-tui`, `sarutahiko-gateway`, `sarutahiko-acp`, `sarutahiko-tags`) are COMPLETE and VERIFIED with 18/18 Hedgehog property tests passing.
+> Operational frontier is advanced to Phase 4 (`phase4-data-protocol`).
 
-### [TASK-016] Execute Phase 3: phase3-surfaces-codeintel
-* **Objective:** Implement user surfaces (Rich TUI / Brick, Gateway JSON-RPC / MCP server) and code intelligence (ctags-compatible tag extractor, AST symbol navigation) per `docs/task_packets/phase3-surfaces-codeintel.yaml`.
+### [TASK-017] Execute Phase 4: phase4-data-protocol
+* **Objective:** Implement full hashigakari data tier, dialect syntax compilation, Hasql streaming execution, and Dhall row bridge per `docs/task_packets/phase4-data-protocol.yaml` and `HASHIGAKARI_DESIGN.md`.
 * **Target Packages:**
-  - `sarutahiko-tui`
-  - `sarutahiko-gateway`
-  - `sarutahiko-codeintel`
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase3-surfaces-codeintel.yaml`
+  - `hashigakari-core`
+  - `hashigakari-syntax`
+  - `hashigakari-hasql`
+  - `sarutahiko-format-dhall`
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase4-data-protocol.yaml`

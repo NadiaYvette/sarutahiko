@@ -30,9 +30,9 @@ Phase 1.5: Hokora Vertical Slice (Skinny Spine Proof)          [COMPLETED]
    ▼
 Phase 2: Full Agent Core & Memory Engine (utaibon)            [COMPLETED]
    ▼
-Phase 3: Observability (kagami-ita) & Surfaces (Rich TUI)      [NEXT]
+Phase 3: Observability & Surfaces (TUI, Gateway, ACP, Tags)    [COMPLETED]
    ▼
-Phase 4: Code Intelligence & Typed Model Arena                 [QUEUED]
+Phase 4: Data Tier & Protocol Codecs                           [NEXT]
 ```
 
 ---
@@ -95,5 +95,27 @@ Phase 1 establishes the row-typed protocol foundations:
    - 16/16 Hedgehog properties passing 100% across all 4 packages with zero warnings under `-Wall -Werror`.
    - Verification script `scripts/tasks/phase2-agent-core-verify.sh` verified end-to-end.
    - Task packet `docs/task_packets/phase2-agent-core.yaml` verified via `yamaarashi-exec` using zero-cost native `utai` executor.
+
+---
+
+## 6. Phase 3 Surfaces & Code Intelligence Acceptance [COMPLETED]
+
+1. **Terminal UI (`sarutahiko-tui`):** **VERIFIED**
+   - Extensible record state (`TuiState`), declarative layout, streaming token rendering, keypress cancellation, and JSON-RPC 2.0 communication with agent core.
+   - 6 Hedgehog properties passing 100%.
+2. **Multi-Platform Chat Gateway (`sarutahiko-gateway`):** **VERIFIED**
+   - Telegram, Discord, Slack, and Webhook adapter matrix via `GatewayEffect`, bracketed streaming, and tagless capabilities.
+   - 4 Hedgehog properties passing 100%.
+3. **Agent Client Protocol Adapter (`sarutahiko-acp`):** **VERIFIED**
+   - Stdio JSON-RPC adapter for Zed/editor integration with initialization handshake and tool dispatch.
+   - 4 Hedgehog properties passing 100%.
+4. **Scope-Stack Tag Extractor (`sarutahiko-tags`):** **VERIFIED**
+   - Fast scope-stack symbol tag extractor for Haskell and C emitting Vi/Ex and Universal Ctags JSON Lines format.
+   - Standalone CLI executable `sarutahiko-tags`.
+   - 4 Hedgehog properties passing 100%.
+5. **Verification & Audit Gate:** **VERIFIED**
+   - 18/18 Hedgehog properties passing 100% across all 4 packages with zero warnings under `-Wall -Werror`.
+   - Verification script `scripts/tasks/phase3-surfaces-codeintel-verify.sh` verified end-to-end.
+   - Task packet `docs/task_packets/phase3-surfaces-codeintel.yaml` verified via `yamaarashi-exec` using zero-cost native `utai` executor.
 
 
