@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-03T23:30:00+02:00
+* **Timestamp:** 2026-10-04T11:36:00+02:00
 * **Git Branch:** `master`
-* **HEAD Commit:** `04ab7f8` (*Build the full Agent Core (turn loop, tool registry, session persistence, hooks)*)
+* **HEAD Commit:** `70e2574` (*build(cabal): migrate forked large-records dependency to zero-friction source-repository-package*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -279,6 +279,12 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Executed cleanly via `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase2-agent-core.yaml` using zero-cost native `utai` executor with local OmniRoute (`mistral/codestral-latest`).
     - Passed all verification gates, generated commit `04ab7f8` with attribution trailers, and fast-forward merged to `master`.
     - **Phase 2 (Agent Core) is now COMPLETE!**
+20. **Migrated Forked Dependencies to Zero-Friction `source-repository-package` (`70e2574`):**
+    - Pushed maintainer fork branch `nadia.chambers/large-records-interfaces-001` (with `beam-large-anon` and interop extensions) to `git@github.com:NadiaYvette/large-records.git` with tag `v0.4.0-nadia`.
+    - Migrated `sarutahiko/cabal.project` from fragile local relative paths (`../large-records-interfaces`) to declarative `source-repository-package` with tag `v0.4.0-nadia`.
+    - Dropped obsolete unmodified sibling references (`../effectful`, `../polysemy`).
+    - Added gitignored `cabal.project.local` pattern with `cabal.project.local.example` for zero-impact local multi-repo co-development.
+    - Verified all test suites, builds, and CLI executions pass 100% cleanly without local sibling dependencies.
 
 ---
 
