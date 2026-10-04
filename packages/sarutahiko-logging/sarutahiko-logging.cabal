@@ -1,0 +1,22 @@
+cabal-version:       >=1.10
+name:                sarutahiko-logging
+version:             0.1.0.0
+synopsis:            Structured logging wrapper for Sarutahiko
+description:         Provides a MonadLogging effect signature and a fast-logger based implementation.
+license:             BSD3
+license-file:        LICENSE
+author:              Nadia Yvette
+maintainer:          nyvette@example.com
+category:            Development
+build-type:          Simple
+extra-source-files:  README.md
+
+library
+  exposed-modules:     Sarutahiko.Logging
+  hs-source-dirs:      src
+  build-depends:       base >=4.17 && <5,
+                       fast-logger,
+                       bytestring,
+                       text,
+                       sarutahiko-observability
+  default-language:    GHC2024

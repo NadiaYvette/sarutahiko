@@ -538,3 +538,73 @@ and eliminating zero-element crashes.
 Q1 passes (pure structural typing, directly aligns with the zero-partial-functions invariant);
 Q2 passes (clean typeclass hierarchy and lightweight `NonNull` newtype wrapper);
 Q3 passes (mature, stable, widely relied upon in high-assurance Haskell).
+
+### 2.15 prometheus-client (metrics exporter)
+- **Library:** `prometheus-client` (Haskell) – provides Counter, Gauge, Histogram types and a HTTP `/metrics` endpoint.
+- **Q1:** Core provides row‑typed metric primitives that can be wrapped in our façade (`MonadMetrics`).
+- **Q2:** Integration seam is the `MetricExporter` effect interpreter; all contact occurs via that interpreter, no leakage into signatures.
+- **Q3:** Library is stable, lightweight, and widely used; maintenance cost is lower than implementing a custom exporter.
+- **Decision:** REUSE (adopt).
+
+### 2.16 fast-logger (structured logging)
+- **Library:** `fast-logger` – high‑performance logging with configurable backends.
+- **Q1:** Core offers a pure logging buffer that can be wrapped in a `MonadLogging` effect.
+- **Q2:** Seam is a thin adapter module; no core signatures altered.
+- **Q3:** Actively maintained, small surface area.
+- **Decision:** REUSE.
+
+### 2.17 opentelemetry-collector (OTLP push backend)
+- **Library:** `opentelemetry-collector` – client for sending metrics/traces via OTLP gRPC.
+- **Q1:** Core handles OTLP payloads that map to our `MetricExporter`/`TraceExporter` rows.
+- **Q2:** Adapter layer translates our rows to OTLP protobuf messages.
+- **Q3:** Mature project, less effort than building a custom gRPC exporter.
+- **Decision:** REUSE.
+
+### 2.18 jaeger-client (trace exporter)
+- **Library:** `jaeger-client` – provides Jaeger-compatible trace export over UDP/HTTP.
+- **Q1:** Core implements trace span representation that can be mapped to Jaeger spans.
+- **Q2:** Integration via a `TraceExporter` interpreter.
+- **Q3:** Widely used, stable, low maintenance.
+- **Decision:** REUSE.
+
+### 2.19 t-digest (quantile sketch library)
+- **Library:** `t-digest` (local `~/src/t-digest`) – merge‑able quantile sketch used for histogram metrics.
+- **Q1:** Core provides the exact primitive we need for metric aggregation.
+- **Q2:** Seam is a pure Haskell module; we import it directly in `sarutahiko-metrics`.
+- **Q3:** Already part of the repo, no external maintenance.
+- **Decision:** REUSE (internal).
+
+### 2.20 prometheus-client (metrics exporter)
+- **Library:** `prometheus-client` – provides Counter, Gauge, Histogram types and a HTTP `/metrics` endpoint.
+- **Q1:** Core provides metric primitives that can be wrapped in our `MonadMetrics` façade.
+- **Q2:** Integration seam is a thin `MetricExporter` interpreter; no signature leakage.
+- **Q3:** Stable, lightweight, widely used; lower maintenance than a custom exporter.
+- **Decision:** REUSE.
+
+### 2.21 fast-logger (structured logging)
+- **Library:** `fast-logger` – high‑performance logging with configurable backends.
+- **Q1:** Core offers a pure logging buffer suitable for a `MonadLogging` effect.
+- **Q2:** Seam is a thin adapter module; signatures remain untouched.
+- **Q3:** Actively maintained, small surface area.
+- **Decision:** REUSE.
+
+### 2.22 opentelemetry-collector (OTLP push backend)
+- **Library:** `opentelemetry-collector` – client for sending metrics/traces via OTLP gRPC.
+- **Q1:** Core handles OTLP payloads that map to our `MetricExporter`/`TraceExporter` rows.
+- **Q2:** Adapter translates our rows to OTLP protobuf messages.
+- **Q3:** Mature project, less effort than building a custom gRPC exporter.
+- **Decision:** REUSE.
+
+### 2.23 jaeger-client (trace exporter)
+- **Library:** `jaeger-client` – provides Jaeger‑compatible trace export over UDP/HTTP.
+- **Q1:** Core implements trace span representation that maps to Jaeger spans.
+- **Q2:** Integration via a `TraceExporter` interpreter.
+- **Q3:** Widely used, stable, low maintenance.
+- **Decision:** REUSE.
+
+### 2.24 t‑digest (quantile sketch library – internal `~/src/t-digest`)
+- **Library:** `t‑digest` – merge‑able quantile sketch used for histogram metrics.
+- **Q1:** Core provides the exact primitive needed for metric aggregation.
+- **Q2:** Seam is a pure Haskell module; imported directly in `sarutahiko-metrics`.
+- **Q3:** Already part of the repo, no external maintenance.
+- **Decision:** REUSE (internal).

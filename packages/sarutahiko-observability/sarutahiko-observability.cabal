@@ -1,0 +1,23 @@
+cabal-version:       >=1.10
+name:                sarutahiko-observability
+version:             0.1.0.0
+synopsis:            Observability orchestration wrapper for Sarutahiko
+description:         This package provides the top‑level orchestration of metrics and tracing exporters, and the replay CLI support.
+license:             BSD3
+license-file:        LICENSE
+author:              Nadia Yvette
+maintainer:          nyvette@example.com
+category:            Development
+build-type:          Simple
+extra-source-files:  README.md
+
+library
+  exposed-modules:     Sarutahiko.Observability
+  hs-source-dirs:      src
+  build-depends:       base >=4.17 && <5,
+                       sarutahiko-metrics,
+                       sarutahiko-tracing,
+                       sarutahiko-logging,
+                       bytestring,
+                       text
+  default-language:    GHC2024

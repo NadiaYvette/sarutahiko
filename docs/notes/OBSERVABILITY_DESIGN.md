@@ -170,3 +170,45 @@ registry: *mawari-butai* (廻り舞台, the revolving stage — the 360° view),
 (花道, the runway through the audience — the path from stage to observers), *mie*
 (見得, the dramatic held pose — snapshot semantics; narrower, reserved). See
 `NIH_PLAN.md` §6.1.
+
+## 10. Phase 7 – Observability & Metrics Integration Design Addendum
+
+### Telemetry transport
+- **Pull**: expose a Prometheus `/metrics` HTTP endpoint via the gateway (`sarutahiko-gateway`).
+- **Push**: optionally push metrics and traces to an OpenTelemetry Collector (OTLP gRPC) for downstream aggregation.
+
+### Metrics catalog
+We will emit the following core metrics (all using the `t‑digest` quantile sketch from `~/src/t-digest` for histogram‑style aggregations):
+- `model_api_requests_total` (counter)
+- `model_api_latency_seconds` (histogram via t‑digest)
+- `event_store_txns_total` (counter)
+- `task_queue_wait_seconds` (histogram via t‑digest)
+- `process_spawns_total` (counter)
+- `tool_usage_total{tool="..."}` (counter per tool)
+- `cache_hit_ratio` (gauge)
+
+### Tracing model
+- Extend the `corr` field of the envelope to contain a **trace ID** and a **span ID** for every turn, tool call, DB transaction, and subprocess spawn.
+- Provide a Jaeger/OTLP gRPC endpoint (`/traces`) that streams the row‑typed trace events, implemented as an effect interpreter conforming to the façade pattern.
+
+### Replay / Serviceability
+- Extend `kakegoe` with a `sarutahiko-replay` CLI that reads the event store and, given a correlation ID, reconstructs the full turn sequence (including nested tool calls) for offline debugging.
+
+### Package layout (façade pattern)
+Four new wrapper packages will expose effect signatures and interpreters using extensible‑record rows:
+- `sarutahiko-observability` – top‑level orchestration of exporters and replay support.
+- `sarutahiko-metrics` – metrics effect signature (`MonadMetrics m`) and Prometheus exporter implementation.
+- `sarutahiko-logging` – structured logging effect (`MonadLogging m`) built on `fast-logger`.
+- `sarutahiko-tracing` – tracing effect (`MonadTracing m`) with OTLP gRPC support.
+Each package will provide a pure row‑typed capability (`Observe :<: es`) that can be added to the interpreter row at run‑time.
+
+### Export endpoint
+The Prometheus and OTLP exporters will be wired into the `sarutahiko-gateway` binary, activated via command‑line flags (`--metrics`, `--traces`).
+
+### Security & privacy
+- **Never expose raw prompt text** in metric or trace payloads; only aggregate counts, latencies, and hashed identifiers.
+- Apply the existing `scrub‑manifest` policy to any payload that may contain secrets before it leaves the process.
+
+### Integration tests
+- Add a dedicated verification script `scripts/tasks/phase7-observability-verify.sh` that builds the project, runs a short synthetic workload, and asserts that all expected metrics are present and that a trace can be retrieved via the gRPC endpoint.
+- Hedgehog property: the sum of per‑tool counters equals `model_api_requests_total`.

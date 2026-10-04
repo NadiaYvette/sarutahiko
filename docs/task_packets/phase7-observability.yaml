@@ -1,0 +1,17 @@
+executor: sarutahiko
+packages:
+  - sarutahiko-observability
+  - sarutahiko-metrics
+  - sarutahiko-logging
+  - sarutahiko-tracing
+actions:
+  - name: build
+    description: Build all observability packages
+    command: cabal v2-build packages/sarutahiko-*
+  - name: test
+    description: Run test suites for the new packages
+    command: cabal v2-test packages/sarutahiko-*
+  - name: verify
+    description: Verify metrics endpoint via verification script
+    command: scripts/tasks/phase7-observability-verify.sh
+verification: scripts/tasks/phase7-observability-verify.sh

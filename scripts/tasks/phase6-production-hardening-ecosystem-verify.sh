@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Ensure script runs from repository root
+git_dir=$(git rev-parse --show-toplevel)
+cd "$git_dir"
 
 echo "=== [Verification Gate] Auditing Phase 6: Production Hardening & Full Ecosystem Integration ==="
 

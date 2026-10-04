@@ -1,0 +1,22 @@
+cabal-version:       >=1.10
+name:                sarutahiko-metrics
+version:             0.1.0.0
+synopsis:            Metrics effect wrapper for Sarutahiko
+description:         Provides a MonadMetrics effect signature and a Prometheus exporter implementation.
+license:             BSD3
+license-file:        LICENSE
+author:              Nadia Yvette
+maintainer:          nyvette@example.com
+category:            Development
+build-type:          Simple
+extra-source-files:  README.md
+
+library
+  exposed-modules:     Sarutahiko.Metrics
+  hs-source-dirs:      src
+  build-depends:       base >=4.17 && <5,
+                       prometheus-client,
+                       bytestring,
+                       text,
+                       sarutahiko-observability
+  default-language:    GHC2024
