@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-04T16:50:00+02:00
+* **Timestamp:** 2026-10-04T17:18:00+02:00
 * **Git Branch:** `master`
-* **HEAD Commit:** `5e403b9` (*Build TUI, Gateway, ACP surfaces and incremental tag extractor*)
+* **HEAD Commit:** `724309b` (*Build the full hashigakari data tier, protocol-bag codecs, and Dhall row bridge*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -315,20 +315,31 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Executed cleanly via `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase3-surfaces-codeintel.yaml`.
     - Passed all verification gates (100% PASS), generated commit `5e403b9` with attribution trailers, and fast-forward merged to `master`.
     - **Phase 3 (Surfaces & Code Intelligence) is now COMPLETE!**
+24. **Executed Phase 4 — Data Protocols (`hashigakari-core`, `hashigakari-syntax`, `hashigakari-hasql`, `sarutahiko-format-dhall`) [TASK-017] (`1668a12` / `724309b`):**
+    - Implemented full 4-package Tier 4 data protocol layer per `NIH_PLAN.md` §4, `HASHIGAKARI_DESIGN.md`, DECISION-003, and DECISION-004:
+      * `packages/hashigakari/hashigakari-core`: Row-typed relational query AST (`Select`, `Projection`, `Where`, `Join`, `Table`, `Filter`, `OrderBy`, `Limit`, `Offset`), column descriptors (`Column`), typed expressions (`Expr`), and RFC 7396 TriState patch algebra (`Patch`, diff, apply). (4 Hedgehog properties passing 100%).
+      * `packages/hashigakari/hashigakari-syntax`: Dialect-indexed SQL compilation supporting PostgreSQL, SQLite, and MySQL; type-level capability ceilings (`Supports` type family enforcing dialect features like `JSONB`, `WindowFunctions`, `PositionalPlaceholders`); minimal TriState UPDATE statement generation. (5 Hedgehog properties passing 100%).
+      * `packages/hashigakari/hashigakari-hasql`: Scaled PostgreSQL execution backend, thread-safe connection pool with bracketed leases (`withHasqlPool`), existential `Stepper IO (Record Identity r)` streaming cursors, `HasqlEffect` GADT, and `MonadHasql` capability typeclass with pure mock interpreter. (4 Hedgehog properties passing 100%).
+      * `packages/sarutahiko/sarutahiko-format-dhall`: Total, dependency-light Dhall record parser and evaluator bridging typed Dhall records directly into `large-anon` rows (`evalDhallRow`, `evalDhallRowText`, `renderDhallRow`) without intermediate Aeson ASTs. (4 Hedgehog properties passing 100%).
+    - Authored comprehensive verification script `scripts/tasks/phase4-data-protocol-verify.sh` auditing all 4 packages, all 17 property tests, strict Zero-Aeson compliance, and zero partial functions.
+    - Updated `docs/registers/ATTRIBUTION_REGISTER.md`, `NOTICE.md`, and `CREDITS.md` recording intellectual provenance for Beam, Rel8, Hasql, SQLite, and Dhall lineages.
+    - Configured task packet `docs/task_packets/phase4-data-protocol.yaml` targeting native zero-cost `utai` executor with local OmniRoute (`mistral/codestral-latest`).
+    - Executed cleanly via `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase4-data-protocol.yaml`.
+    - Passed all verification gates (100% PASS), generated commit `724309b` with attribution trailers, and fast-forward merged to `master`.
+    - **Phase 4 (Data Protocols) is now COMPLETE!**
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-> [!NOTE] Phase 3 COMPLETE & Surfaces / Code Intelligence Operational
-> All four Phase 3 packages (`sarutahiko-tui`, `sarutahiko-gateway`, `sarutahiko-acp`, `sarutahiko-tags`) are COMPLETE and VERIFIED with 18/18 Hedgehog property tests passing.
-> Operational frontier is advanced to Phase 4 (`phase4-data-protocol`).
+> [!NOTE] Phase 4 COMPLETE & Data Tier / Protocol Codecs Operational
+> All four Phase 4 packages (`hashigakari-core`, `hashigakari-syntax`, `hashigakari-hasql`, `sarutahiko-format-dhall`) are COMPLETE and VERIFIED with 17/17 Hedgehog property tests passing.
+> Operational frontier is advanced to Phase 5 (`phase5-self-hosting-orchestration`).
 
-### [TASK-017] Execute Phase 4: phase4-data-protocol
-* **Objective:** Implement full hashigakari data tier, dialect syntax compilation, Hasql streaming execution, and Dhall row bridge per `docs/task_packets/phase4-data-protocol.yaml` and `HASHIGAKARI_DESIGN.md`.
+### [TASK-018] Execute Phase 5: Self-Hosting & Full Native Orchestration
+* **Objective:** Self-host the full Sarutahiko agent loop as the primary task execution engine in `yamaarashi-flow`, wire `hashigakari-sqlite`/`hasql` unified storage, and deploy standalone orchestrator.
 * **Target Packages:**
+  - `sarutahiko-agent`
+  - `yamaarashi-flow`
   - `hashigakari-core`
-  - `hashigakari-syntax`
-  - `hashigakari-hasql`
-  - `sarutahiko-format-dhall`
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase4-data-protocol.yaml`
+* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- test`

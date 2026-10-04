@@ -32,7 +32,9 @@ Phase 2: Full Agent Core & Memory Engine (utaibon)            [COMPLETED]
    ▼
 Phase 3: Observability & Surfaces (TUI, Gateway, ACP, Tags)    [COMPLETED]
    ▼
-Phase 4: Data Tier & Protocol Codecs                           [NEXT]
+Phase 4: Data Tier & Protocol Codecs                           [COMPLETED]
+   ▼
+Phase 5: Self-Hosting & Full Native Orchestration              [NEXT]
 ```
 
 ---
@@ -117,5 +119,28 @@ Phase 1 establishes the row-typed protocol foundations:
    - 18/18 Hedgehog properties passing 100% across all 4 packages with zero warnings under `-Wall -Werror`.
    - Verification script `scripts/tasks/phase3-surfaces-codeintel-verify.sh` verified end-to-end.
    - Task packet `docs/task_packets/phase3-surfaces-codeintel.yaml` verified via `yamaarashi-exec` using zero-cost native `utai` executor.
+
+---
+
+## 7. Phase 4 Data Tier & Protocol Codecs Acceptance [COMPLETED]
+
+1. **Row-Typed Relational Query AST (`hashigakari-core`):** **VERIFIED**
+   - Typed relational query AST (`Select`, `Projection`, `Where`, `Join`, `Table`, `Filter`, `OrderBy`, `Limit`, `Offset`), column descriptors, and RFC 7396 TriState patch algebra with round-trip diff/apply properties.
+   - 4 Hedgehog properties passing 100%.
+2. **Dialect-Indexed SQL Compilation (`hashigakari-syntax`):** **VERIFIED**
+   - Dialect compilation for PostgreSQL, SQLite, and MySQL targets; compile-time capability ceilings via `Supports` type family; minimal TriState UPDATE statement generation.
+   - 5 Hedgehog properties passing 100%.
+3. **Scaled Multi-Worker PostgreSQL Streaming (`hashigakari-hasql`):** **VERIFIED**
+   - Thread-safe connection pool with bracketed leases (`withHasqlPool`), existential `Stepper IO (Record Identity r)` query streams, `HasqlEffect` GADT, and `MonadHasql` capability class.
+   - 4 Hedgehog properties passing 100%.
+4. **Row-Typed Dhall Configuration Bridge (`sarutahiko-format-dhall`):** **VERIFIED**
+   - Total, dependency-light Dhall record parser and evaluator bridging typed Dhall records directly into `large-anon` rows (`evalDhallRow`) without intermediate Aeson ASTs.
+   - 4 Hedgehog properties passing 100%.
+5. **Verification & Audit Gate:** **VERIFIED**
+   - 17/17 Hedgehog properties passing 100% across all 4 packages with zero warnings under `-Wall -Werror`.
+   - Strict Zero-Aeson compliance and zero partial functions verified across all Phase 4 packages.
+   - Verification script `scripts/tasks/phase4-data-protocol-verify.sh` verified end-to-end.
+   - Task packet `docs/task_packets/phase4-data-protocol.yaml` executed and verified via `yamaarashi-exec` using zero-cost native `utai` executor.
+
 
 
