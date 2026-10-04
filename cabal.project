@@ -25,6 +25,10 @@ packages:
     packages/sarutahiko/sarutahiko-hooks
     packages/sarutahiko/sarutahiko-plugins
     packages/sarutahiko/sarutahiko-agent
+    packages/sarutahiko/sarutahiko-tui
+    packages/sarutahiko/sarutahiko-gateway
+    packages/sarutahiko/sarutahiko-acp
+    packages/sarutahiko/sarutahiko-tags
 
 -- Pinned fork of the large-records ecosystem (large-anon, large-generics,
 -- large-records, typelet, beam-large-anon) per REUSE_REGISTER §2.1.

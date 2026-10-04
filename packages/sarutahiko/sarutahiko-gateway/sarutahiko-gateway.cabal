@@ -1,0 +1,76 @@
+cabal-version:      3.14
+name:               sarutahiko-gateway
+version:            0.1.0.0
+synopsis:           Multi-platform chat gateway adapter (Telegram, Discord, Slack, Webhooks) via GatewayEffect
+description:
+    Multi-platform chat gateway providing protocol adaptation, incoming message
+    polling, broadcast routing, and resource-bracketed streaming over algebraic effects.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and architectural synthesis of concepts
+    pioneered by:
+    * Kuroko / Keiro (Nadeem Bitar) — multi-surface gateway routing and algebraic effects
+    * Conduit (Michael Snoyman) — bracketed resource streaming and socket lifecycles
+    * Hermes Agent (Nous Research) — multi-client conversational surfaces
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Network, Gateway, AI
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -Werror
+
+library
+    import:           commons
+    exposed-modules:
+        Sarutahiko.Gateway
+        Sarutahiko.Gateway.Types
+        Sarutahiko.Gateway.Effect
+        Sarutahiko.Gateway.Interpreters
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
+        effectful-core >= 2.3,
+        large-anon,
+        kogaki-core,
+        kogaki-wire,
+        sarutahiko-fields,
+        sarutahiko-records,
+        sarutahiko-effect-signatures,
+        yamaarashi,
+        yamaarashi-conduit
+    hs-source-dirs:   src
+
+test-suite test-sarutahiko-gateway
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        effectful-core >= 2.3,
+        sarutahiko-gateway,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

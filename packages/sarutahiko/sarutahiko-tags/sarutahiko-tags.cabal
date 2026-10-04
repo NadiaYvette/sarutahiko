@@ -1,0 +1,86 @@
+cabal-version:      3.14
+name:               sarutahiko-tags
+version:            0.1.0.0
+synopsis:           Fast ctags-compatible scope-stack tag extractor
+description:
+    Incremental code intelligence and symbol extraction engine producing
+    ctags-compatible index records and JSON Lines format for universal-ctags interoperability.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and architectural synthesis of concepts
+    pioneered by:
+    * Universal Ctags (Darren Hiebert, Masatake Yamato et al.) — tag format, kinds, and scope tracking
+    * Tree-sitter & ctags AST extractors — incremental symbol navigation
+    * Smirk (Nadia Yvette Chambers) — deterministic regex and lexical matching patterns
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Development, CodeIntel, Tools
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -Werror
+
+library
+    import:           commons
+    exposed-modules:
+        Sarutahiko.Tags
+        Sarutahiko.Tags.Types
+        Sarutahiko.Tags.Extractor
+        Sarutahiko.Tags.Format
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        directory >= 1.3,
+        filepath >= 1.4,
+        text >= 2.1,
+        large-anon,
+        kogaki-core,
+        kogaki-wire,
+        sarutahiko-fields,
+        sarutahiko-records
+    hs-source-dirs:   src
+
+executable sarutahiko-tags
+    import:           commons
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        directory >= 1.3,
+        filepath >= 1.4,
+        sarutahiko-tags
+    ghc-options:      -threaded -rtsopts
+
+test-suite test-sarutahiko-tags
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        sarutahiko-tags,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

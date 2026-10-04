@@ -1,0 +1,74 @@
+cabal-version:      3.14
+name:               sarutahiko-tui
+version:            0.1.0.0
+synopsis:           Rich terminal user interface speaking JSON-RPC to the agent core
+description:
+    Terminal user interface with extensible record session state, streaming token
+    rendering, keypress cancellation, and JSON-RPC 2.0 communication with the agent core.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and architectural synthesis of concepts
+    pioneered by:
+    * Hermes Agent (Nous Research) — terminal user experience and session display
+    * Brick & Vty (Jonathan Daugherty) — declarative widget trees and terminal event loops
+    * Kuroko / Keiro (Nadeem Bitar) — row-typed UI state projections over algebraic effects
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           User Interfaces, Terminal, AI
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -Werror
+
+library
+    import:           commons
+    exposed-modules:
+        Sarutahiko.TUI
+        Sarutahiko.TUI.Types
+        Sarutahiko.TUI.Render
+        Sarutahiko.TUI.Loop
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
+        large-anon,
+        kogaki-core,
+        kogaki-wire,
+        sarutahiko-fields,
+        sarutahiko-records,
+        sarutahiko-jsonrpc,
+        sarutahiko-agent
+    hs-source-dirs:   src
+
+test-suite test-sarutahiko-tui
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        sarutahiko-tui,
+        sarutahiko-jsonrpc,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

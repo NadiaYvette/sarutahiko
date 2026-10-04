@@ -19,6 +19,10 @@ packages:
   - sarutahiko-acp
   - sarutahiko-tags
 
+executor: utai
+model: mistral/codestral-latest
+run_budget: 600
+
 steps:
   - id: create-surface-skeletons
     name: Create surface package skeletons
