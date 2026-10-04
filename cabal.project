@@ -26,36 +26,18 @@ packages:
     packages/sarutahiko/sarutahiko-plugins
     packages/sarutahiko/sarutahiko-agent
 
-optional-packages:
-    ../large-records-interfaces/large-anon
-    ../large-records-interfaces/large-generics
-    ../large-records-interfaces/large-records
-    ../large-records-interfaces/typelet
-    ../effectful/effectful-core
-    ../effectful/effectful
-    ../polysemy
-    -- Optional external worktrees (uncomment as needed):
-    -- ../beam/beam-backend-bench/beam-backend-bench.cabal
-    -- ../beam/beam-core/beam-core.cabal
-    -- ../beam/beam-duckdb/beam-duckdb.cabal
-    -- ../beam/beam-migrate/beam-migrate.cabal
-    -- ../beam/beam-postgres/beam-postgres.cabal
-    -- ../beam/beam-sqlite/beam-sqlite.cabal
-    -- ../porcupine/docrecords
-    -- ../porcupine/porcupine-core
-    -- ../porcupine/porcupine-http
-    -- ../porcupine/porcupine-s3
-    -- ../porcupine/reader-soup
-    -- ../IDA/projects/effectful/servant
-    -- ../IDA/projects/effectful/wai
-    -- ../IDA/projects/effectful/warp
-    -- ../IDA/projects/effectful/http-client
-    -- ../servant/servant
-    -- ../servant/servant-server
-    -- ../servant/servant-client
-    -- ../servant/servant-client-core
-    -- ../servant/servant-openapi3
-    -- ../smirk/smirk.cabal
+-- Pinned fork of the large-records ecosystem (large-anon, large-generics,
+-- large-records, typelet, beam-large-anon) per REUSE_REGISTER §2.1.
+-- For local multi-repo co-development, override via gitignored cabal.project.local.
+source-repository-package
+    type: git
+    location: https://github.com/NadiaYvette/large-records.git
+    tag: v0.4.0-nadia
+    subdir:
+        large-anon
+        large-generics
+        large-records
+        typelet
 
 with-compiler: ghc-9.12.2
 

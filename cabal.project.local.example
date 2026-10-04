@@ -1,0 +1,11 @@
+-- cabal.project.local.example
+--
+-- Copy this file to `cabal.project.local` (which is gitignored) whenever you want
+-- to develop Sarutahiko against local sibling checkouts of the large-records
+-- ecosystem instead of pulling from the pinned GitHub remote repository.
+--
+-- packages:
+--     ../large-records-interfaces/large-anon
+--     ../large-records-interfaces/large-generics
+--     ../large-records-interfaces/large-records
+--     ../large-records-interfaces/typelet

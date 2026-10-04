@@ -1,6 +1,9 @@
 # cabal build artifacts
 dist/
 dist-newstyle/
+cabal.project.local
+cabal.project.local*
+!cabal.project.local.example
 
 # GHC artifacts
 *.hi

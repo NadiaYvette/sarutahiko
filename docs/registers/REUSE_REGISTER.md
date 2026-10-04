@@ -61,14 +61,16 @@ recorded 2026-09-24 (pre-deciding the Tier-0 note's structural questions):**
    note's two-representation question is resolved at the root: conversions happen at
    seams; `SomeRow` and all internal rows are large-anon.
 2. **The foundation is the maintainer's fork.** Forking the large-records ecosystem
-   (the `large-records-interfaces` monorepo) was the necessary mechanism to build new
-   package analogues atop private large-anon/large-generics interfaces — the beam
-   bridges exist this way already, and docrecords-equivalents land there too. The
-   fork is canonical *for the program*; its public-surface improvements are
-   selectively upstreamed as PRs where they don't depend on private interfaces, and
-   upstream releases are merged as convenient. The exact split of what large-anon
-   provides natively vs what the fork's analogues build atop it is backlog item 1's
-   functor-family survey.
+   was the necessary mechanism to build new package analogues atop private
+   large-anon/large-generics interfaces — the beam bridges exist this way already,
+   and docrecords-equivalents land there too. The fork is canonical *for the program*.
+   **Dependency management decision (2026-10-04):** To eliminate fragile local sibling
+   assumptions (`../large-records-interfaces`) for prospective collaborators and CI,
+   `cabal.project` pins the fork declaratively via `source-repository-package`
+   (`https://github.com/NadiaYvette/large-records.git`, tag `v0.4.0-nadia`).
+   In-tree local co-development overlays sibling paths via gitignored
+   `cabal.project.local` without polluting version control.
+
 
 ### 2.2 effectful + polysemy (effect runtimes) — REUSE, with dual-interface rule
 Our executables run effectful; every library ships neutral signature packages with both
