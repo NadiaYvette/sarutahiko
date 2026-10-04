@@ -1,0 +1,77 @@
+---
+id: phase6-production-hardening-ecosystem
+title: Production Hardening & Full Ecosystem Integration
+description: |
+  Complete end-to-end integration and production hardening across all subsystems:
+  * Multi-dialect database query compilation and capability ceilings in `hashigakari-syntax`
+    and `hashigakari-hasql` (PostgreSQL JSONB/window functions, SQLite UPSERT/CTEs, MySQL backticks/UPSERT).
+  * Direct integration of interactive Terminal UI (`sarutahiko-tui`) and multi-platform chat
+    gateway (`sarutahiko-gateway`) with the live `sarutahiko-agent` turn loop and `Utai` streaming client.
+  * Hardened autonomous workflow execution in `yamaarashi-flow` with token/time budget tracking,
+    SQLite ledger inspection (`yamaarashi-exec kanban`), and worktree sandbox invariant verification.
+  * Whole-repository integration test and verification gate proving zero warnings (`-Wall -Werror`, `GHC2024`),
+    strict Zero-Aeson compliance, and zero partial functions across the entire ecosystem.
+
+dependencies:
+  - phase5-self-hosting-orchestration
+
+packages:
+  - sarutahiko-agent
+  - sarutahiko-tui
+  - sarutahiko-gateway
+  - yamaarashi-flow
+  - hashigakari-syntax
+  - hashigakari-hasql
+
+executor: utai
+model: mistral/codestral-latest
+run_budget: 600
+
+steps:
+  - id: dialect-ceiling-expansion
+    name: Expand multi-dialect database syntax compilers and capability ceilings
+    action: |
+      In packages/hashigakari/hashigakari-syntax and packages/hashigakari/hashigakari-hasql:
+      - Expand `compileSelect` and `compilePatch` with dialect-specific feature guards:
+        * PostgreSQL: `JSONB` containment (`@>`), window partitions (`OVER (PARTITION BY ...)`), positional parameter bindings (`$1`, `$2`).
+        * SQLite: UPSERT syntax (`ON CONFLICT (...) DO UPDATE SET ...`), indexed parameter bindings (`?1`, `?2`).
+        * MySQL: backtick identifier quoting (`` `col` ``) and `ON DUPLICATE KEY UPDATE`.
+      - Implement connection pool drain and health-check primitives in `hashigakari-hasql`.
+      - Add property tests verifying cross-dialect SQL AST compilation and dialect capability ceilings.
+    duration: "45m"
+
+  - id: wire-surfaces-to-agent-core
+    name: Wire TUI and Chat Gateway to live agent core and session runner
+    action: |
+      In packages/sarutahiko/sarutahiko-tui and packages/sarutahiko/sarutahiko-gateway:
+      - Connect `Sarutahiko.TUI.Loop` to `Sarutahiko.Agent.stepTurn` and `runAgentSession`, streaming tokens and tool status directly into `TuiState`.
+      - Implement live chat adapter loop in `sarutahiko-gateway` routing inbound channel messages into agent turns and dispatching streaming response text back to chat platforms (Telegram, Discord, Slack, Webhook).
+      - Add property tests verifying TUI event-to-agent dispatch and gateway message roundtripping.
+    duration: "45m"
+
+  - id: workflow-engine-hardening
+    name: Harden workflow engine with budget tracking and Kanban inspection
+    action: |
+      In packages/yamaarashi/yamaarashi-flow:
+      - Add token budget and wall-clock execution deadline monitoring to task packet runner.
+      - Implement `yamaarashi-exec kanban` CLI subcommand rendering pure ASCII Kanban boards from SQLite task ledgers (`projectKanban`).
+      - Ensure automated post-run sandbox cleanup, dangling worktree pruning, and temporary database vacuuming.
+    duration: "45m"
+
+  - id: verify-ecosystem-integration
+    name: Full ecosystem verification gate and invariant audit
+    action: |
+      In scripts/tasks and across target test suites:
+      - Author `scripts/tasks/phase6-production-hardening-ecosystem-verify.sh`.
+      - Run compilation and test suites across all Phase 6 target packages with zero warnings under `-Wall -Werror`.
+      - Audit strict Zero-Aeson compliance and zero partial functions (`-Wx-partial`).
+      - Verify end-to-end execution of TUI mock driver, gateway loop, and Kanban CLI.
+    duration: "30m"
+
+success_criteria:
+  - All target packages compile warning-free under `-Wall -Werror` (`GHC2024`).
+  - All property test suites pass via `cabal v2-test sarutahiko-agent sarutahiko-tui sarutahiko-gateway yamaarashi-flow hashigakari-syntax hashigakari-hasql`.
+  - TUI and Gateway surfaces wired to agent session runner with streaming token observation.
+  - `yamaarashi-exec kanban` renders lifecycle projection cleanly from SQLite task ledgers.
+  - Zero-Aeson invariant maintained strictly across all target modules.
+  - Zero partial functions across all source modules (`-Wx-partial`).
