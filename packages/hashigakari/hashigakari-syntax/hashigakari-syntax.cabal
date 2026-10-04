@@ -1,0 +1,71 @@
+cabal-version:      3.14
+name:               hashigakari-syntax
+version:            0.1.0.0
+synopsis:           Dialect-indexed SQL compilation and capability ceilings
+description:
+    Dialect-indexed compilation from hashigakari relational AST to SQL,
+    enforcing type-level portability ceilings across PostgreSQL, SQLite,
+    and MySQL.
+    .
+    Conceptual Lineage and Attribution:
+    This package synthesizes SQL compilation principles pioneered by:
+    * 'beam' (Travis Whitaker) — dialect syntax engines and type-level backends
+    * 'hasql' (Nikita Volkov) — parameterized query templates and binary decoders
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Database, Syntax
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -Werror
+
+library
+    import:           commons
+    exposed-modules:
+        Hashigakari.Syntax
+        Hashigakari.Syntax.Dialect
+        Hashigakari.Syntax.Render
+        Hashigakari.Syntax.Compile
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        sarutahiko-records,
+        hashigakari-core
+    hs-source-dirs:   src
+
+test-suite test-hashigakari-syntax
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        sarutahiko-records,
+        hashigakari-core,
+        hashigakari-syntax,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

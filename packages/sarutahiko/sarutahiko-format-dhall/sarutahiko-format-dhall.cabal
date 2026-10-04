@@ -1,0 +1,71 @@
+cabal-version:      3.14
+name:               sarutahiko-format-dhall
+version:            0.1.0.0
+synopsis:           Row-typed Dhall configuration bridge to large-anon extensible records
+description:
+    Row-typed Dhall configuration bridge mapping Dhall's typed records
+    directly to large-anon anonymous rows without rewriting the upstream evaluator
+    per HASHIGAKARI_DESIGN.md and DECISION-004.
+    .
+    Conceptual Lineage and Attribution:
+    This package synthesizes configuration evaluation principles pioneered by:
+    * 'dhall' (Gabriel Gonzalez) — statically typed, non-Turing-complete configuration language
+    * 'large-anon' (Edsko de Vries / Well-Typed) — extensible anonymous records
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Configuration, Records
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -Werror
+
+library
+    import:           commons
+    exposed-modules:
+        Sarutahiko.Format.Dhall
+        Sarutahiko.Format.Dhall.Types
+        Sarutahiko.Format.Dhall.Parser
+        Sarutahiko.Format.Dhall.Render
+        Sarutahiko.Format.Dhall.Bridge
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        sarutahiko-records,
+        kogaki-core
+    hs-source-dirs:   src
+
+test-suite test-sarutahiko-format-dhall
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        sarutahiko-records,
+        sarutahiko-format-dhall,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

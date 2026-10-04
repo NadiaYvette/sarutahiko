@@ -130,7 +130,7 @@ below. Retained upstream licenses and notices are cataloged in the `LICENSES/` d
     `sarutahiko-records` synthesize record-soup row operations with RFC 7396 merge patches.
   - *Terms:* [LICENSES/MIT.txt](LICENSES/MIT.txt).
 
-### 2.5 Relational Databases & Event Sourcing (`hashigakari-sqlite`, `hashigakari-beam`)
+### 2.5 Relational Databases & Event Sourcing (`hashigakari-core`, `hashigakari-syntax`, `hashigakari-hasql`, `hashigakari-sqlite`, `hashigakari-beam`)
 
 - **Direct-SQLite** (Irene Knittel, Jan Snajder; BSD-3-Clause) & **SQLite** (Public Domain / Blessing)
   - *Ancestral Role:* Low-level C FFI statement preparation and stepping mechanics wrap
@@ -140,11 +140,13 @@ below. Retained upstream licenses and notices are cataloged in the `LICENSES/` d
 - **Hasql** (Nikita Volkov; MIT)
   - *Ancestral Role:* Hasql's explicit applicative row encoders and decoders (avoiding
     typeclass-directed magic) represent the golden standard of database access in Haskell,
-    directly inspiring Hashigakari's row-decoding design.
+    directly inspiring Hashigakari's row-decoding design, connection pool management, and
+    existential stepper query streams in `hashigakari-hasql`.
   - *Terms:* [LICENSES/MIT.txt](LICENSES/MIT.txt).
-- **Beam** (Travis Whitaker; Apache-2.0)
+- **Beam** (Travis Whitaker; Apache-2.0) & **Rel8** (Ollie Charles; BSD-3-Clause)
   - *Ancestral Role:* Statically typed schema and table combinators informed the design of
-    `beam-large-anon` and Hashigakari's relational query projections.
+    `beam-large-anon` and Hashigakari's relational query AST (`Select`, `Projection`, `Join`,
+    `Where`, `Filter`) and dialect-indexed SQL compilers (`hashigakari-core`, `hashigakari-syntax`).
   - *Retained Notice:* See [LICENSES/NOTICE-beam.txt](LICENSES/NOTICE-beam.txt) and
     [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
 
@@ -206,6 +208,15 @@ below. Retained upstream licenses and notices are cataloged in the `LICENSES/` d
 - **Contextful** (Inferensys; Apache-2.0 / MIT)
   - *Ancestral Role:* Local FTS5 context engine and code search CLI.
   - *Terms:* [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt) and [LICENSES/MIT.txt](LICENSES/MIT.txt).
+
+### 2.10 Formats & Configuration Bridges (`sarutahiko-format-dhall`)
+
+- **Dhall** (Gabriel Gonzalez; BSD-3-Clause)
+  - *Ancestral Role:* The Dhall programmable configuration language's typed records, total
+    evaluation, and hermetic guarantees directly informed `sarutahiko-format-dhall`'s total
+    parser and record bridge, evaluating typed Dhall configuration files directly into
+    `large-anon` anonymous row structures without intermediate Aeson ASTs.
+  - *Terms:* [LICENSES/BSD-3-Clause.txt](LICENSES/BSD-3-Clause.txt).
 
 ---
 

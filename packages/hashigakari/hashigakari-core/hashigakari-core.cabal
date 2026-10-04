@@ -1,0 +1,75 @@
+cabal-version:      3.14
+name:               hashigakari-core
+version:            0.1.0.0
+synopsis:           Row-typed relational query AST, column descriptors, and TriState patches
+description:
+    Row-polymorphic relational query AST over large-anon extensible records,
+    providing type-level relational algebra (Select, Projection, Where, Join)
+    and RFC 7396 TriState patch compilation without intermediate DTOs.
+    .
+    Conceptual Lineage and Attribution:
+    This package synthesizes database query principles pioneered by:
+    * 'beam' (Travis Whitaker) — relational schema and query composition (see LICENSES/NOTICE-beam.txt)
+    * 'hasql' (Nikita Volkov) — applicative row decoding directly into strongly-typed structures
+    * 'large-anon' (Edsko de Vries / Well-Typed) — O(1) compile-time extensible anonymous records
+    * RFC 7396 — TriState merge patch algebra
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Database, Records
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -Werror
+
+library
+    import:           commons
+    exposed-modules:
+        Hashigakari.Core
+        Hashigakari.Core.Column
+        Hashigakari.Core.Expr
+        Hashigakari.Core.AST
+        Hashigakari.Core.Patch
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        sarutahiko-fields,
+        sarutahiko-records,
+        sarutahiko-effect-signatures >= 0.1
+    hs-source-dirs:   src
+
+test-suite test-hashigakari-core
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        large-anon,
+        sarutahiko-fields,
+        sarutahiko-records,
+        hashigakari-core,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

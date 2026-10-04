@@ -1,0 +1,85 @@
+cabal-version:      3.14
+name:               hashigakari-hasql
+version:            0.1.0.0
+synopsis:           PostgreSQL execution backend, connection pooling, and existential row steppers
+description:
+    PostgreSQL execution engine implementing HasqlEffect, bracketed connection
+    pooling, and existential Stepper streaming of extensible records
+    per HASHIGAKARI_DESIGN.md §3.4.
+    .
+    Conceptual Lineage and Attribution:
+    This package synthesizes database execution principles pioneered by:
+    * 'hasql' (Nikita Volkov) — high-performance PostgreSQL binary protocol and applicative decoders
+    * 'beam' (Travis Whitaker) — relational execution
+    * 'yamaarashi' — canonical existential Stepper streaming
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Database, Effects, Streaming
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+        -Werror
+
+library
+    import:           commons
+    exposed-modules:
+        Hashigakari.Hasql
+        Hashigakari.Hasql.Types
+        Hashigakari.Hasql.Pool
+        Hashigakari.Hasql.Stepper
+        Hashigakari.Hasql.Effect
+        Hashigakari.Hasql.Interpreters
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
+        stm >= 2.5,
+        large-anon,
+        sarutahiko-records,
+        sarutahiko-effect-signatures >= 0.1,
+        hashigakari-core,
+        hashigakari-syntax,
+        yamaarashi,
+        yamaarashi-streamly
+    hs-source-dirs:   src
+
+test-suite test-hashigakari-hasql
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+    build-depends:
+        base >= 4.20 && < 5,
+        bytestring >= 0.12,
+        containers >= 0.6,
+        text >= 2.1,
+        time >= 1.12,
+        stm >= 2.5,
+        large-anon,
+        sarutahiko-records,
+        sarutahiko-effect-signatures,
+        hashigakari-core,
+        hashigakari-syntax,
+        hashigakari-hasql,
+        yamaarashi,
+        tasty,
+        hedgehog,
+        tasty-hedgehog

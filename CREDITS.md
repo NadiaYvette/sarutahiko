@@ -108,6 +108,16 @@ ecosystem.
 - **Contribution:** Pioneered functional task workflow engines and content-addressed
   task execution graphs.
 
+### Ollie Charles
+- **Project:** *Rel8*
+- **Contribution:** Advanced higher-kinded data relational mappings over Hasql in Haskell,
+  informing Hashigakari's typed relational AST and schema combinators.
+
+### Gabriel Gonzalez
+- **Project:** *Dhall*
+- **Contribution:** Authored the Dhall programmable configuration language and its total,
+  typed record semantics, inspiring `sarutahiko-format-dhall`'s direct row-typed bridge.
+
 ### Alexander Vieth, Duncan Coutts, Neil Davies (IOHK)
 - **Project:** *Typed-Protocols*
 - **Contribution:** Formulated agency-indexed state machines and session type proofs

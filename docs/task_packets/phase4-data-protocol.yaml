@@ -21,6 +21,10 @@ packages:
   - hashigakari-hasql
   - sarutahiko-format-dhall
 
+executor: utai
+model: mistral/codestral-latest
+run_budget: 600
+
 steps:
   - id: create-data-skeletons
     name: Create package skeletons and cabal definitions
