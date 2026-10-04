@@ -2,6 +2,17 @@ cabal-version:      3.14
 name:               sarutahiko-hooks
 version:            0.1.0.0
 synopsis:           Shell-hook supervisor, consent allowlists, and safe execution for the Sarutahiko agent ecosystem
+description:
+    Subprocess hook supervisor with fail-closed sigKILL hard deadline enforcement,
+    consent allowlists, and safe command execution across tool execution phases.
+    .
+    Conceptual Lineage and Attribution:
+    This package adapts and refines the shell-hook architecture of:
+    * Hermes Agent (Nous Research) — shell-hook conventions and consent allowlists
+    * 'typed-process' (Michael Snoyman) — safe process supervision
+    .
+    See NOTICE.md and LICENSES/NOTICE-hermes.txt at the repository root for
+    complete intellectual provenance, conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

@@ -2,7 +2,20 @@ cabal-version:      3.14
 name:               sarutahiko-jsonrpc
 version:            0.1.0.0
 synopsis:           Spec-conformant row-directed JSON-RPC 2.0 engine
+description:
+    Spec-conformant JSON-RPC 2.0 protocol core where requests, notifications,
+    and responses are represented as extensible records over shared field schemas.
+    .
+    Conceptual Lineage and Attribution:
+    This package implements the JSON-RPC 2.0 specification, drawing architectural
+    inspiration from:
+    * 'haskell-lsp' (Alan Zimmerman et al.) — protocol message routing
+    * 'mono-traversable' (Michael Snoyman) — NonNull non-emptiness guarantees on batch envelopes
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
+license-file:       LICENSE
 author:             Nadia Yvette Chambers
 maintainer:         nadia.yvette.chambers@ik.me
 category:           Network, Protocol

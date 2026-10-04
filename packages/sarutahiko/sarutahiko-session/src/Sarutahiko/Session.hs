@@ -6,6 +6,13 @@
 --
 -- Connects 'hashigakari-sqlite' event storage to the conversation-tail reducer
 -- providing prompt-cache-safe session persistence per MEMORY_ENGINE_DESIGN.md.
+--
+-- === Intellectual Lineage & Attribution
+-- This module is an intellectual derivation and synthesis of:
+-- * Hermes Agent session persistence (Nous Research) — state preservation and prompt-cache safety
+-- * 'shikumi' (Nadeem Bitar) — context window compaction algorithms (reserveTokens, compactTail)
+-- * 'keiki' (Nadeem Bitar) — pure event-sourcing transducers for session hydration
+-- See @NOTICE.md@ and @LICENSES/NOTICE-hermes.txt@ at the repository root.
 module Sarutahiko.Session
   ( -- * High-Level Session API
     openSession

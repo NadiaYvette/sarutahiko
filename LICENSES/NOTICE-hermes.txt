@@ -1,0 +1,11 @@
+Hermes Agent
+Copyright (c) 2024-2026 Nous Research Inc. and Hermes contributors
+
+This product includes architectural designs, turn loop specifications,
+and plugin/hook lifecycle concepts originally designed for Hermes Agent
+(https://hermes-agent.nousresearch.com/).
+
+Hermes Agent's prompt-cache preservation, fail-closed shell hooks,
+and dynamic plugin discovery architectures served as direct donors
+and blueprints for sarutahiko-agent, sarutahiko-session,
+sarutahiko-hooks, and sarutahiko-plugins.

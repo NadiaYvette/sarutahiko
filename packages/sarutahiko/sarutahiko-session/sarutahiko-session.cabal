@@ -2,6 +2,18 @@ cabal-version:      3.14
 name:               sarutahiko-session
 version:            0.1.0.0
 synopsis:           Session persistence and conversation-tail reducer for the Sarutahiko agent ecosystem
+description:
+    Conversation persistence (utaibon), SQLite event-sourced message history,
+    and tail compaction guaranteeing strict prompt-cache prefix preservation.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and synthesis of concepts pioneered by:
+    * Hermes Agent session persistence (Nous Research) — state preservation and prompt-cache safety
+    * 'shikumi' (Nadeem Bitar) — context window compaction algorithms (reserveTokens, compactTail)
+    * 'keiki' (Nadeem Bitar) — pure event-sourcing transducers for session hydration
+    .
+    See NOTICE.md and LICENSES/NOTICE-hermes.txt at the repository root for
+    complete intellectual provenance, conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

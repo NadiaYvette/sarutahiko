@@ -1,0 +1,10 @@
+Beam
+Copyright (c) 2016-2024 Travis Whitaker and Beam contributors
+
+This product includes architectural patterns and schema concepts
+developed by Travis Whitaker and contributors to the Beam project
+(https://github.com/haskell-beam/beam).
+
+Concepts from Beam's statically-typed relational expressions and
+database schema representations informed the design of hashigakari
+and beam-large-anon.

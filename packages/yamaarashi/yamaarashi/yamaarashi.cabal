@@ -2,6 +2,21 @@ cabal-version:      3.14
 name:               yamaarashi
 version:            0.1.0.0
 synopsis:           Church-encoded CPS free-monad element streaming kernel
+description:
+    Pure, dependency-free element streaming kernel implementing O(1) left-associated
+    monadic binds via Codensity and Church-encoded CPS free monads. Unrolls existential
+    Steppers into element streams at the consumer edge with typed concurrency strategies.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and architectural synthesis of concepts
+    pioneered by:
+    * 'streaming' (Michael Thompson) — Church-encoded CPS free monad stream representation
+    * 'streamly' (Harendra Kumar / Composewell Technologies) — sequential streaming pipelines
+      and concurrency execution models (see LICENSES/NOTICE-streamly.txt)
+    * 'conduit' (Michael Snoyman) — bracketed resource cleanup and push/pull streaming
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

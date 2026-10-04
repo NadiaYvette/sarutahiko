@@ -2,6 +2,20 @@ cabal-version:      3.14
 name:               sarutahiko-agent
 version:            0.1.0.0
 synopsis:           Full Hermes-style autonomous agent core (turn loop, tool registry, session persistence, hooks)
+description:
+    Autonomous agent core orchestrating bounded ReAct cognitive stepping,
+    extensible record tool registries, session persistence, and subprocess hooks.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and architectural synthesis of concepts
+    pioneered by:
+    * Hermes Agent (Nous Research) — core turn loop, prompt-cache preservation,
+      and narrow-waist tool execution architecture
+    * ReAct paradigm (Shunyu Yao et al.) — interleaved Thought/Action/Observation cycles
+    * The Keiro ecosystem (Nadeem Bitar) — foundational agent design patterns
+    .
+    See NOTICE.md and LICENSES/NOTICE-hermes.txt at the repository root for
+    complete intellectual provenance, conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

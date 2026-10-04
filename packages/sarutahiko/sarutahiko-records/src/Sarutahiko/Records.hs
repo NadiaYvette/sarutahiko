@@ -8,6 +8,13 @@
 -- Top-level entry point for 'sarutahiko-records', defining the blessed
 -- 'TriState' absence functor (CA1–CA3), 'WireEnvelope' with unknown-field
 -- preservation (E3–E4), and the right-biased override operator '(⊕)' (L1–L6).
+--
+-- === Intellectual Lineage & Attribution
+-- This module is an intellectual derivation and synthesis of:
+-- * 'large-anon' (Edsko de Vries / Well-Typed) — $O(1)$ compile-time wide records
+-- * 'record-soup' & 'docrecords' (Yves Parès, Faura et al.) — record combinators and projections
+-- * RFC 7396 (JSON Merge Patch) — TriState HKD update algebra
+-- See @NOTICE.md@ at the repository root.
 module Sarutahiko.Records
   ( -- * HKD Functors
     module Sarutahiko.Records.HKD.TriState

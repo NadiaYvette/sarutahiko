@@ -2,6 +2,16 @@ cabal-version:      3.14
 name:               sarutahiko-plugins
 version:            0.1.0.0
 synopsis:           Plugin manifest loader, capability grants, and kill-lists for the Sarutahiko agent ecosystem
+description:
+    Safe plugin discovery, manifest validation against capability allowlists,
+    and kill-list enforcement at install and load time.
+    .
+    Conceptual Lineage and Attribution:
+    This package adapts the plugin architecture and capability grant model of:
+    * Hermes Agent (Nous Research) — plugin discovery, capability grants, and kill-lists
+    .
+    See NOTICE.md and LICENSES/NOTICE-hermes.txt at the repository root for
+    complete intellectual provenance, conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

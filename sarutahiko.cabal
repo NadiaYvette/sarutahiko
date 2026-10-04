@@ -24,31 +24,34 @@ version:            0.1.0.0
 
 -- A short (one-line) description of the package.
 synopsis:           AI assistance ecosystem
-
--- A longer description of the package.
--- description:
-
--- The license under which the package is released.
+description:
+    Sarutahiko is an AI assistance ecosystem reimplementing agent cores,
+    protocols, code intelligence, and execution substrates on extensible records
+    (large-anon), row-typed algebraic effects (effectful/polysemy), and streaming kernels (yamaarashi).
+    .
+    Conceptual Lineage and Attribution:
+    Per DOC_STRATEGY.md §9 and NOTICE.md, Sarutahiko explicitly acknowledges its
+    intellectual debts to the pioneering work of:
+    * The Keiro ecosystem (Nadeem Bitar) — baikai, keiro, kiroku, shibuya, kioku, shikumi, keiki
+    * Hermes Agent (Nous Research Inc.) — turn loops, tool registries, plugin security, hooks
+    * large-records & large-anon (Edsko de Vries / Well-Typed) — extensible records bedrock
+    * Selective Applicative Functors & Algebraic Graphs (Andrey Mokhov) — workflow DAGs
+    * Streamly (Harendra Kumar) & Conduit (Michael Snoyman) — streaming architectures
+    * Hasql (Nikita Volkov), Beam (Travis Whitaker), and Direct-SQLite — database abstractions
+    * Effectful (Ertugrul Söylemez) & Polysemy (Sandy Maguire) — algebraic effect runtimes
+    .
+    See NOTICE.md and CREDITS.md at the repository root for full details.
 license:            BSD-3-Clause
-
--- The file containing the license text.
 license-file:       LICENSE
-
--- The package author(s).
 author:             Nadia Yvette Chambers
-
--- An email address to which users can send suggestions, bug reports, and patches.
 maintainer:         nadia.yvette.chambers@ik.me
-
--- A copyright notice.
--- copyright:
 category:           Development
 build-type:         Simple
-
--- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-doc-files:
     CHANGELOG.md
     README.md
+    NOTICE.md
+    CREDITS.md
 
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
 -- extra-source-files:

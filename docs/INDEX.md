@@ -34,6 +34,7 @@ and are checked by the script net (§5).
 | `plans/PHASE_1_PLAN.md` | plan | draft | wire (implementation phase 1) | — |
 | `plans/PHASE_1.5_PLAN.md` | plan | draft | cross-cutting (vertical slice phase 1.5) | — |
 | `registers/REUSE_REGISTER.md` | register | living | cross-cutting | — |
+| `registers/ATTRIBUTION_REGISTER.md` | register (lineage) | living | cross-cutting | — |
 | `registers/CODEC_QUIRKS.md` | register (living) | living | model | — |
 | `registers/GLOSSARY.md` | register (term index) | living | cross-cutting | — |
 | `imports/HERMES_DESIGN.md` | import | static | cross-cutting | — |

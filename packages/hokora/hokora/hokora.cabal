@@ -2,6 +2,17 @@ cabal-version:      3.14
 name:               hokora
 version:            0.1.0.0
 synopsis:           Phase 1.5 Hokora vertical slice proving the skinny spine protocol
+description:
+    Phase 1.5 Hokora vertical slice implementing an autonomous single-turn ReAct
+    agent with SQLite event sourcing, session hydration, and in-process MCP tools.
+    .
+    Conceptual Lineage and Attribution:
+    This package proves the skinny spine protocol, drawing architectural lineage from:
+    * The Keiro ecosystem (Nadeem Bitar) — event-sourced replay and state machines
+    * SQLite (Public Domain) — embedded transactional persistence
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

@@ -2,6 +2,16 @@ cabal-version:      3.14
 name:               yamaarashi-streamly
 version:            0.1.0.0
 synopsis:           Fused in-process hot loops and element transforms
+description:
+    High-performance in-process streaming backend connecting Yamaarashi
+    existential Steppers to Streamly SerialT streams for fused hot loops.
+    .
+    Conceptual Lineage and Attribution:
+    This package adapts and bridges Harendra Kumar's 'streamly' framework
+    (Composewell Technologies, Apache-2.0 / BSD-3-Clause).
+    .
+    See LICENSES/NOTICE-streamly.txt and NOTICE.md at the repository root
+    for complete intellectual provenance and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

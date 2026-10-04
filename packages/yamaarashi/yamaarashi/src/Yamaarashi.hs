@@ -21,6 +21,13 @@
 -- Unrolls existential Steppers from 'Sarutahiko.Effect.Stepper' into streams at the
 -- consumer edge, and supports typed concurrency execution strategies ('Serial',
 -- 'Async', 'Interleaved', 'Parallel').
+--
+-- === Intellectual Lineage & Attribution
+-- This module is an intellectual derivation and architectural synthesis of concepts from:
+-- * 'streaming' (Michael Thompson) — Church-encoded CPS free monad transformer ('Stream (Of a) m r')
+-- * 'streamly' (Harendra Kumar / Composewell Technologies, Apache-2.0 / BSD-3) — sequential stream fusion and concurrency models
+-- * 'conduit' (Michael Snoyman) — bracketed resource reclamation and push/pull stream composition
+-- See @NOTICE.md@ and @LICENSES/NOTICE-streamly.txt@ at the repository root.
 module Yamaarashi
   ( -- * Pair Producer Shape
     Of (..)

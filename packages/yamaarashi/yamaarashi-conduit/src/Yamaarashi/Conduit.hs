@@ -12,6 +12,11 @@
 -- Provides bidirectional bridging between the neutral 'Stream' kernel and Conduit,
 -- high-performance line framing for stdio JSON-RPC, and deterministic cleanup
 -- via 'MonadResource' per YAMAARASHI_DESIGN.md §3.
+--
+-- === Intellectual Lineage & Attribution
+-- This module bridges the Yamaarashi streaming kernel with Michael Snoyman's
+-- 'conduit' framework (MIT), acknowledging Conduit's bracketed resource model.
+-- See @NOTICE.md@ at the repository root.
 module Yamaarashi.Conduit
   ( -- * Bidirectional Conversion
     streamToConduit

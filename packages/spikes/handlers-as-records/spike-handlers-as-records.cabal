@@ -2,8 +2,21 @@ cabal-version:      3.14
 name:               spike-handlers-as-records
 version:            0.1.0.0
 synopsis:           Empirical spike: Handlers-as-Records dynamic dispatch overhead
+description:
+    Empirical spike measuring dynamic dispatch overhead of extensible record
+    handlers versus direct GADT pattern-matching across effectful and polysemy.
+    .
+    Conceptual Lineage and Attribution:
+    Validates the Handlers-as-Records hypothesis over 'large-anon' (Edsko de Vries / Well-Typed),
+    'effectful' (Ertugrul Söylemez, Dominik Peteler), and 'polysemy' (Sandy Maguire).
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance
+    and licensing acknowledgments.
 license:            BSD-3-Clause
-build-type:         Simple
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Testing, Effects
 
 common commons
     default-language: GHC2024

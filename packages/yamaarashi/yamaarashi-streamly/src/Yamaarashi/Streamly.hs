@@ -10,6 +10,11 @@
 --
 -- Embeds Streamly's fused stream representation for high-throughput in-process
 -- element transformations and tabular row decoding per YAMAARASHI_DESIGN.md §3.
+--
+-- === Intellectual Lineage & Attribution
+-- This module adapts and bridges Harendra Kumar's 'streamly' framework
+-- (Composewell Technologies, Apache-2.0 / BSD-3-Clause).
+-- See @LICENSES/NOTICE-streamly.txt@ and @NOTICE.md@ at the repository root.
 module Yamaarashi.Streamly
   ( -- * Type Synonyms
     SerialT

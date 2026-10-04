@@ -1,0 +1,9 @@
+Streamly
+Copyright (c) 2017-2024 Composewell Technologies
+
+This product includes software developed at
+Composewell Technologies (https://streamly.composewell.com/).
+
+Portions of streamly's sequential streaming core, step fusion model,
+and monadic stream pipelines served as conceptual and algorithmic
+inspiration for the yamaarashi streaming kernel.

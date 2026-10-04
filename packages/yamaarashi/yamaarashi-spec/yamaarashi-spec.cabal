@@ -2,6 +2,19 @@ cabal-version:      3.14
 name:               yamaarashi-spec
 version:            0.1.0.0
 synopsis:           Task specification AST, VirtualTree static over-approximation, and subdivision
+description:
+    Task specification AST, static resource over-approximation via Selective Over,
+    and recursive subdivision of macroscopic project goals into atomic leaf task
+    packets via fixed-point recursion schemes.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and synthesis of:
+    * 'recursion-schemes' (Edward Kmett, Eric Mertens) — catamorphic AST folding
+      and anamorphic/hylomorphic task subdivision
+    * 'selective' (Andrey Mokhov et al.) — static dependency and resource over-approximation
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

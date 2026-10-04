@@ -38,6 +38,7 @@ code implements blessed designs.
 | Hokora slice | `docs/notes/HOKORA_SPEC.md` | Phase 1.5 |
 | Instruments | `docs/notes/INSTRUMENTS_SPEC.md` | cache simulator, replay harness |
 | Reuse decisions | `docs/registers/REUSE_REGISTER.md` | check before adding dependencies |
+| Attribution / provenance | `docs/registers/ATTRIBUTION_REGISTER.md` | `NOTICE.md`, `CREDITS.md`, `LICENSES/` |
 | Infrastructure | `docs/notes/INFRASTRUCTURE.md` | toolchain, warnings, tests, CI, procedure |
 | Codec quirks | `docs/registers/CODEC_QUIRKS.md` | living; fixture-backed rows |
 | Documentation policy | `docs/notes/DOC_STRATEGY.md` | lifecycle, flags, canonicity |

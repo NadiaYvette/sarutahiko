@@ -13,6 +13,12 @@
 -- web servers or framework dependencies.
 -- Enforces type-level non-emptiness constraints via 'Data.NonNull.NonNull'
 -- and domain boundary representation via 'LogicalString'.
+--
+-- === Intellectual Lineage & Attribution
+-- This parser synthesizes SSE chunk slicing and NonNull safety from:
+-- * 'wai-extra' (Michael Snoyman) — EventSource line parsing logic ('event:', 'data:', 'id:')
+-- * 'mono-traversable' (Michael Snoyman) — 'NonNull' type-level non-emptiness guarantees
+-- See @NOTICE.md@ at the repository root.
 module Kogaki.Wire.SSE.Parser
   ( -- * Core Event Type
     SseEvent (..)

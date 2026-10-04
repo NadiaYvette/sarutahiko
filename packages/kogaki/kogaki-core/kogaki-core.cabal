@@ -2,6 +2,19 @@ cabal-version:      3.14
 name:               kogaki-core
 version:            0.1.0.0
 synopsis:           Pervasive Unicode, text normalization, and i18n message catalogs
+description:
+    Pervasive Unicode text operations, zero-copy UTF-8 text slicing, RFC 8259
+    string validation, and unescaping primitives for the Sarutahiko ecosystem.
+    .
+    Conceptual Lineage and Attribution:
+    This package re-expresses low-level text slicing and validation concepts
+    guided by:
+    * 'text' (Bryan O'Sullivan, Jasper Van der Jeugt) — UTF-8 slicing and verification
+    * 'aeson' (Bryan O'Sullivan et al.) — RFC 8259 string escape semantics
+    * 'mono-traversable' (Michael Snoyman) — NonNull non-emptiness guarantees
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

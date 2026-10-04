@@ -8,7 +8,7 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-04T11:36:00+02:00
+* **Timestamp:** 2026-10-04T12:26:00+02:00
 * **Git Branch:** `master`
 * **HEAD Commit:** `70e2574` (*build(cabal): migrate forked large-records dependency to zero-friction source-repository-package*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
@@ -285,6 +285,16 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Dropped obsolete unmodified sibling references (`../effectful`, `../polysemy`).
     - Added gitignored `cabal.project.local` pattern with `cabal.project.local.example` for zero-impact local multi-repo co-development.
     - Verified all test suites, builds, and CLI executions pass 100% cleanly without local sibling dependencies.
+21. **Executed Repository-Wide Intellectual Credit, Derivation & Multi-Licensing Audit:**
+    - Established explicit derivation principle per `DOC_STRATEGY.md` §9: intellectual credit is granted by choice, not mere legal obligation. Even where clean-room re-implementation or absence of patch deltas removes statutory copyleft requirements, synthesis and re-expression of conceptual architectures are treated as genuine intellectual derivations.
+    - Authored canonical root `NOTICE.md` detailing conceptual genealogy across all subsystems (streaming, workflows, parsing, extensible records, databases, effects, agent core, model substrates, and tooling).
+    - Authored root `CREDITS.md` honoring individuals (Nadeem Bitar, Nous Research, Edsko de Vries, Andrey Mokhov, Michael Snoyman, Harendra Kumar, Michael Thompson, Bryan O'Sullivan, Nikita Volkov, Travis Whitaker, Sandy Maguire, Ertugrul Söylemez, Dominik Peteler, Edward Kmett, Anthony Cowley, Yves Parès, Tom Nielsen, Andreas Herrmann, Alexander Vieth) and research lineages.
+    - Populated `LICENSES/` with canonical license texts (`BSD-3-Clause`, `BSD-2-Clause`, `MIT`, `Apache-2.0`, `AGPL-3.0`, `SQLite-Blessing`) and retained Apache-2.0 §4(d) notices (`NOTICE-streamly.txt`, `NOTICE-beam.txt`, `NOTICE-hermes.txt`).
+    - Created living ledger `docs/registers/ATTRIBUTION_REGISTER.md` cataloging package derivations, upstream licenses, URLs, and code touchpoints; registered in `docs/INDEX.md` and `AGENTS.md`.
+    - Added missing `LICENSE` files to `kogaki-wire`, `sarutahiko-process`, `sarutahiko-jsonrpc`, `sarutahiko-schema`, and `spikes/handlers-as-records`.
+    - Enriched all 26 package `.cabal` files with detailed descriptions, intellectual lineage, and pointers to `NOTICE.md`.
+    - Audited top-level module Haddock headers across all core packages with explicit conceptual attribution.
+    - Verified entire repository builds warning-free (`cabal v2-build all`) and all property and conformance test suites pass 100%.
 
 ---
 

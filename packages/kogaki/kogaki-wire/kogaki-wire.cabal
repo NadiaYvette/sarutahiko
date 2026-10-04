@@ -2,7 +2,22 @@ cabal-version:      3.14
 name:               kogaki-wire
 version:            0.1.0.0
 synopsis:           Zero-bloat row-native JSON lexer, decoder, and SSE streaming parser
+description:
+    Zero-Aeson streaming JSON lexer, decoder, and Server-Sent Events (SSE) parser
+    producing tokens and extensible records directly without intermediate nominal ASTs.
+    .
+    Conceptual Lineage and Attribution:
+    While embodying the Zero-Aeson doctrine, this package synthesizes algorithms
+    and scanning techniques pioneered by:
+    * 'aeson' & 'attoparsec' (Bryan O'Sullivan et al.) — fast byte-level whitespace
+      skipping, number scanning, and string tokenization
+    * 'wai-extra' (Michael Snoyman) — Server-Sent Events chunk framing parser
+    * 'mono-traversable' (Michael Snoyman) — NonNull guarantees on wire buffers
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
+license-file:       LICENSE
 author:             Nadia Yvette Chambers
 maintainer:         nadia.yvette.chambers@ik.me
 category:           Data, Parsing, Network

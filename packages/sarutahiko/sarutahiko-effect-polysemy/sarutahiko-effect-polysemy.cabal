@@ -2,6 +2,16 @@ cabal-version:      3.14
 name:               sarutahiko-effect-polysemy
 version:            0.1.0.0
 synopsis:           Polysemy seam compatibility bridge for neutral signatures
+description:
+    Polysemy seam compatibility interpreters for Sarutahiko neutral effect
+    signatures, providing dual-interpreter parity for downstream adopters.
+    .
+    Conceptual Lineage and Attribution:
+    This package adapts and implements interpreters for Sandy Maguire's
+    'polysemy' higher-order effect framework (BSD-3-Clause).
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

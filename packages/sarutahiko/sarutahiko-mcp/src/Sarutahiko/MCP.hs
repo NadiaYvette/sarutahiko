@@ -4,6 +4,13 @@
 --
 -- Re-exports the core types, server implementation with StateGuard enforcement,
 -- and client request/response helpers.
+--
+-- === Intellectual Lineage & Attribution
+-- This module implements the Model Context Protocol specification (Anthropic),
+-- synthesizing ideas from:
+-- * 'typed-protocols' (IOHK) — agency-indexed session state machine invariants
+-- * Hermes Agent MCP tools (Nous Research) — MCP tool exposure and execution
+-- See @NOTICE.md@ at the repository root.
 module Sarutahiko.MCP
   ( -- * Core Types & Codecs
     module Sarutahiko.MCP.Types

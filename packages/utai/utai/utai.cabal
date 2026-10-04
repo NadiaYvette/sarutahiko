@@ -2,6 +2,18 @@ cabal-version:      3.14
 name:               utai
 version:            0.1.0.0
 synopsis:           Canonical LLM substrate, ModelAPI signature, wire codecs, and deterministic mock carrier
+description:
+    Canonical pure LLM substrate (vox calculi), strictly zero-Aeson streaming wire
+    codecs, ModelAPI effect signatures, and deterministic mock carriers enforcing laws L1-L4.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and synthesis of:
+    * 'baikai' (Nadeem Bitar) — provider laws (L1 terminal chunk, L2 usage monoid,
+      L3 option honesty) and provider error categorization
+    * OpenAI and Anthropic API specifications — chat completions and SSE streaming framing
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

@@ -7,6 +7,13 @@
 -- Top-level entry point for 'hashigakari-sqlite' per HASHIGAKARI_DESIGN.md and
 -- DECISION-003. Provides hermetic SQLite persistence for the Phase 1.5 Hokora
 -- vertical slice with zero external daemons.
+--
+-- === Intellectual Lineage & Attribution
+-- This module synthesizes database principles from:
+-- * 'direct-sqlite' (Irene Knittel, Jan Snajder) & SQLite — low-level C FFI statement stepping
+-- * 'hasql' (Nikita Volkov) — applicative row decoding directly into strongly-typed structures
+-- * 'beam' (Travis Whitaker) — relational schema and query composition (see LICENSES/NOTICE-beam.txt)
+-- See @NOTICE.md@ at the repository root.
 module Hashigakari.Sqlite
   ( -- * Database Lifecycle
     openSqliteDatabase

@@ -2,6 +2,23 @@ cabal-version:      3.14
 name:               yamaarashi-flow
 version:            0.1.0.0
 synopsis:           Selective task DAG workflow orchestrator
+description:
+    Free Selective Applicative Functor workflow orchestrator over algebraic graph
+    DAGs, providing static dependency analysis, virtual tree caching, and hermetic
+    subprocess execution under algebraic effects.
+    .
+    Conceptual Lineage and Attribution:
+    This package is an intellectual derivation and architectural synthesis of concepts
+    pioneered by:
+    * 'porcupine' & 'kernmantle' (Yves Parès, Faura et al.) — pipeline task caching
+      and virtual tree sandboxing semantics (superseding arrow notation with Selective)
+    * 'funflow' (Tom Nielsen, Andreas Herrmann / Tweag I/O) — functional workflow graphs
+    * 'selective' (Andrey Mokhov et al.) — Selective Applicative Functors
+    * 'algebraic-graphs' (Andrey Mokhov) — algebraic graph DAG representations
+    * 'typed-process' (Michael Snoyman) — safe typed subprocess supervision
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

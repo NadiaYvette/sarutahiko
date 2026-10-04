@@ -12,6 +12,12 @@
 -- without intermediate heap-allocated abstract syntax trees ('Value').
 -- Commas and colons are consumed as framing delimiters so downstream
 -- row decoders receive clean structural tokens and key-value streams.
+--
+-- === Intellectual Lineage & Attribution
+-- While adhering to the Zero-Aeson doctrine, this lexer synthesizes low-level
+-- byte scanning and number/string parsing techniques pioneered by:
+-- * 'aeson' & 'attoparsec' (Bryan O'Sullivan et al., BSD-3-Clause)
+-- See @NOTICE.md@ at the repository root.
 module Kogaki.Wire.Json.Lexer
   ( -- * Tokens
     JsonToken (..)

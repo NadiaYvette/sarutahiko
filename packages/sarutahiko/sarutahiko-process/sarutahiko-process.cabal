@@ -2,7 +2,19 @@ cabal-version:      3.14
 name:               sarutahiko-process
 version:            0.1.0.0
 synopsis:           Resource-bracketed subprocess supervisor with deadline kills
+description:
+    Resource-bracketed subprocess supervisor providing strongly typed process
+    spawning, streaming pipes, and fail-closed deadline kills under algebraic effects.
+    .
+    Conceptual Lineage and Attribution:
+    This package adapts process execution paradigms from Michael Snoyman's
+    'typed-process' library (MIT), integrating bracketed destruction into the
+    Sarutahiko algebraic effect catalog.
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
+license-file:       LICENSE
 author:             Nadia Yvette Chambers
 maintainer:         nadia.yvette.chambers@ik.me
 category:           System, Process, Effects

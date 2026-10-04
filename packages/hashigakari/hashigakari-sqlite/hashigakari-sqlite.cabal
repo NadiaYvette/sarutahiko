@@ -2,6 +2,19 @@ cabal-version:      3.14
 name:               hashigakari-sqlite
 version:            0.1.0.0
 synopsis:           Embedded SQLite carrier for event store, task queue, and existential row steppers
+description:
+    Embedded SQLite carrier providing existential row stepping, append-only
+    event sourcing, and atomic transaction leases over extensible records and
+    algebraic effects.
+    .
+    Conceptual Lineage and Attribution:
+    This package synthesizes database and streaming principles pioneered by:
+    * 'direct-sqlite' (Irene Knittel, Jan Snajder) & SQLite — low-level C FFI statement stepping
+    * 'hasql' (Nikita Volkov) — applicative row decoding directly into strongly-typed structures
+    * 'beam' (Travis Whitaker) — relational schema and query composition (see LICENSES/NOTICE-beam.txt)
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

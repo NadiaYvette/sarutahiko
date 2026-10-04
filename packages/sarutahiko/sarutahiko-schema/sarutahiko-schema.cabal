@@ -2,7 +2,18 @@ cabal-version:      3.14
 name:               sarutahiko-schema
 version:            0.1.0.0
 synopsis:           Row Descriptors to JSON Schema compiler and offline validator
+description:
+    Translates between MCP inputSchema specifications and internal anonymous
+    row descriptors with offline validation, without runtime remote schema fetches.
+    .
+    Conceptual Lineage and Attribution:
+    This package implements JSON Schema draft-07/2020-12 subset validation,
+    informed by the schema validation requirements of Hermes Agent (Nous Research).
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
+license-file:       LICENSE
 author:             Nadia Yvette Chambers
 maintainer:         nadia.yvette.chambers@ik.me
 category:           Data, Schema

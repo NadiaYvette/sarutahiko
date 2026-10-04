@@ -2,6 +2,18 @@ cabal-version:      3.14
 name:               yamaarashi-conduit
 version:            0.1.0.0
 synopsis:           Conduit boundary framing and process pipe adapters
+description:
+    Bidirectional streaming adapters bridging Yamaarashi existential Steppers
+    and streams with ConduitT pipelines, supporting bracketed resource reclamation
+    and line framing.
+    .
+    Conceptual Lineage and Attribution:
+    This package bridges the Yamaarashi streaming kernel with Michael Snoyman's
+    'conduit' streaming framework, acknowledging Conduit's pioneering bracketed
+    resource cleanup model.
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers

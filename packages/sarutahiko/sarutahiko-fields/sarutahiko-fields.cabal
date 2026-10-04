@@ -2,6 +2,18 @@ cabal-version:      3.14
 name:               sarutahiko-fields
 version:            0.1.0.0
 synopsis:           First-class field datums and field registry
+description:
+    First-class singleton field definitions and registry shared across rows,
+    providing single-point-of-truth field schemas for records and protocols.
+    .
+    Conceptual Lineage and Attribution:
+    This package implements the "define a field exactly once" doctrine, synthesized from:
+    * 'large-records' & 'large-anon' (Edsko de Vries / Well-Typed) — typelet field indexing
+    * 'vinyl' (Anthony Cowley) — extensible universe-polymorphic field tagging
+    * 'docrecords' (Yves Parès, Faura et al.) — field metadata and documentation binding
+    .
+    See NOTICE.md at the repository root for complete intellectual provenance,
+    conceptual lineage, and licensing acknowledgments.
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Nadia Yvette Chambers
