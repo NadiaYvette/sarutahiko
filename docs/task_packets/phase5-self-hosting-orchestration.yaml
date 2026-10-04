@@ -1,0 +1,78 @@
+---
+id: phase5-self-hosting-orchestration
+title: Self-Hosting Agent Engine and Full Native Workflow Orchestration
+description: |
+  Self-host the complete Sarutahiko agent loop within the Yamaarashi workflow engine,
+  replacing ad-hoc scripting and external wrappers with native, row-typed execution:
+  * Wire live `Utai` streaming client into `sarutahiko-agent` with fallback profiles and token accounting.
+  * Expand `ToolRegistry` with core autonomous coding tools (`read_file`, `write_file`, `replace_file_content`, `run_command`, `check_build`).
+  * Replace raw `sqlite3` CLI invocations in `yamaarashi-flow` with `hashigakari-sqlite` typed event persistence.
+  * Implement pure Kanban board state projection (`KanbanBoard`, `projectKanban`) folding task lifecycle events.
+  * Introduce native `executor: sarutahiko` in `yamaarashi-exec` driving worktree task execution directly through the agent core.
+  * Prove self-hosting dogfooding via an automated verification gate.
+
+dependencies:
+  - phase4-data-protocol
+
+packages:
+  - sarutahiko-agent
+  - yamaarashi-flow
+  - hashigakari-core
+  - hashigakari-sqlite
+
+executor: utai
+model: mistral/codestral-latest
+run_budget: 600
+
+steps:
+  - id: wire-live-model-carrier
+    name: Wire live Utai ModelAPI interpreter into sarutahiko-agent
+    action: |
+      In packages/sarutahiko/sarutahiko-agent:
+      - Implement live `ModelAPI` carrier using `Utai.callOpenAIWithFallback` with `omnirouteProfile` and `opencodeProfile`.
+      - Support streaming token accumulation, tool-call chunk aggregation, and usage metrics reporting.
+      - Allow `sarutahiko` executable to toggle between `--mock` and `--live` execution.
+    duration: "45m"
+
+  - id: expand-agent-tools
+    name: Author autonomous coding tools for agent tool registry
+    action: |
+      In packages/sarutahiko/sarutahiko-agent:
+      - Implement self-hosting file and process tools as extensible record operations: `readFileTool`, `writeFileTool`, `replaceFileTool`, `runCommandTool`.
+      - Enforce fail-closed security via `sarutahiko-hooks` allowlists and hard execution deadlines.
+    duration: "45m"
+
+  - id: native-event-store-integration
+    name: Replace raw sqlite3 CLI in yamaarashi-flow with hashigakari-sqlite
+    action: |
+      In packages/yamaarashi/yamaarashi-flow:
+      - Replace raw `sqlite3` process invocation with typed `hashigakari-sqlite` event store (`runEventStoreSqlite`).
+      - Define typed event records for task lifecycle (`TP_CLAIMED`, `TP_STARTED`, `TP_VERIFYING`, `TP_COMPLETED`, `TP_FAILED`).
+      - Implement pure Kanban projection reducer: `projectKanban :: [TaskEvent] -> KanbanBoard`.
+    duration: "45m"
+
+  - id: implement-sarutahiko-executor
+    name: Implement native executor: sarutahiko in yamaarashi-exec
+    action: |
+      In packages/yamaarashi/yamaarashi-flow:
+      - Add `runSarutahikoStep` implementing `executor: sarutahiko`.
+      - Drive autonomous task packet execution directly via `runAgentSession` in the isolated worktree with worktree sandbox enforcement.
+      - Feed compilation/test failures directly into agent context for iterative repair loops ($K \le 3$).
+    duration: "45m"
+
+  - id: verify-self-hosting
+    name: End-to-end self-hosting orchestration verification
+    action: |
+      In packages/sarutahiko/sarutahiko-agent/test, packages/yamaarashi/yamaarashi-flow/test, and scripts/tasks:
+      - Verify live and mock agent turn loops with autonomous tool dispatch.
+      - Verify `yamaarashi-flow` native event store operations and Kanban reducer properties.
+      - Author `scripts/tasks/phase5-self-hosting-orchestration-verify.sh`.
+      - Audit for Zero-Aeson compliance and zero partial functions.
+    duration: "30m"
+
+success_criteria:
+  - All target packages compile with zero warnings under `-Wall -Werror` (`GHC2024`).
+  - All property test suites pass via `cabal v2-test sarutahiko-agent yamaarashi-flow hashigakari-core hashigakari-sqlite`.
+  - Native `executor: sarutahiko` operational in `yamaarashi-exec` without relying on external host wrappers.
+  - Zero-Aeson invariant maintained strictly across all new modules.
+  - Zero partial functions across all source modules (`-Wx-partial`).
