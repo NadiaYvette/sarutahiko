@@ -39,6 +39,8 @@ and are checked by the script net (§5).
 | `registers/GLOSSARY.md` | register (term index) | living | cross-cutting | — |
 | `imports/HERMES_DESIGN.md` | import | static | cross-cutting | — |
 | `imports/hermes_components.*` | import (diagrams) | static | cross-cutting | — |
+| `audits/extensible_record_effects_audit.md` | audit | living | cross-cutting (record + effect candidate modules) | — |
+| `audits/mono_traversable_nonempty_audit.md` | audit | complete | cross-cutting (mono-traversable usage verification) | — |
 | `transcripts/gemini-effect-algebras.md` | transcript | archive | cross-cutting | — |
 | `transcripts/gemini-rows-for-mcp-lsp.md` | transcript | archive | cross-cutting | — |
 | `transcripts/kogaki-i18n-unicode.md` | transcript | archive | cross-cutting (i18n/kogaki recon) | — |
@@ -46,6 +48,7 @@ and are checked by the script net (§5).
 | `transcripts/web-style-guides.md` | transcript | archive | cross-cutting (style survey) | — |
 | `transcripts/treesitter-ctags-incremental-parsing.md` | transcript | archive | cross-cutting (parsing, code intelligence) | — |
 | `transcripts/ai-assistant-tooling-shubham-synthesis.md` | transcript | archive | cross-cutting (assistant tooling, compiler truth) | — |
+| `transcripts/AI-Assisted Codebase Tutoring Strategies.md` | transcript | archive | cross-cutting (GHC arrow desugaring, TC plugins, kernmantle vs large-records) | — |
 | `../.agents/docs/NEWBIE_GUIDE.md` | guide (tooling) | living | cross-cutting (assistant newbie quickstart) | — |
 | `../.agents/docs/MAINTAINER_GUIDE.md` | guide (tooling) | living | cross-cutting (assistant maintainer guide) | — |
 

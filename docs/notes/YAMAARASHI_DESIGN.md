@@ -117,12 +117,69 @@ Once the `VirtualTree` is validated and resources are provisioned:
   - Hierarchical decomposition occurs during Pass 1 via `recursion-schemes` corecursion *before* the static DAG is sealed.
 
 ### 2.4 Why Arrows (Porcupine & Kernmantle) Were Superseded
-- **The Label Collision:** `kernmantle` relies on `OverloadedLabels` (`#task`) to route arrow ports.
-  Sarutahiko's record foundation (`large-anon`, `sarutahiko-fields`) uses `OverloadedLabels` for `#fieldName`.
-  In GHC, sharing `IsLabel` across two foundational paradigms creates insurmountable type inference ambiguities.
-- **Syntactic & Categorical Opacity:** `proc ... -> do` syntax hides execution graphs behind opaque desugared
-  lambdas, preventing static inspection (`Control.Selective.Over`). Selective Applicatives preserve standard
-  applicative syntax (`<*?>`, `branch`, `select`) while exposing inspectable structure.
+
+The decision to supersede arrow-based pipeline orchestration (`kernmantle`, `porcupine`, `ArrowFlow`)
+in favor of Selective Applicative Functors (`selective`) and algebraic graphs (`algebraic-graphs`)
+initially presented as an insurmountable `OverloadedLabels` collision between `kernmantle`'s task/port
+routing and `large-anon`'s record fields. A subsequent compiler audit and tutoring analysis
+(recorded in `docs/transcripts/AI-Assisted Codebase Tutoring Strategies.md`) revealed the exact
+mechanics of this collision and identified concrete coexistence workarounds. However, that retrospective
+investigation also confirmed that deeper architectural, categorical, and ergonomic realities
+conclusively militate against arrows in Sarutahiko regardless of label resolution.
+
+#### 2.4.1 The OverloadedLabels Collision: Mechanics & The Plugin Asymmetry
+Early assumptions posited two competing GHC Typechecker (TC) plugins dueling over `IsLabel`. The actual
+compiler pipeline behaves asymmetrically:
+- **Neither `kernmantle` nor its underlying record substrate (`vinyl`) uses a TC plugin.** Both rely 100%
+  on GHC's native constraint solver to resolve `IsLabel "port" alpha` to dictionary evidence (`fromLabel`).
+- **`large-records` / `large-anon` employs an aggressive TC plugin** (and optional Source plugin) designed
+  to bypass GHC's quadratic typeclass solver by synthesizing $O(1)$ memory-offset dictionaries at compile time.
+- **The proc desugaring collision:** In GHC's pipeline (`GHC.Rename.Arrow`, `GHC.Tc.Gen.Arrow`, `GHC.HsToCore.Arrows`),
+  arrow `proc` notation translates lexical variable scope into deeply nested, polymorphic tuples
+  (`(env1, (env2, env3))`). Unification of these tuple types is deferred. When `IsLabel "port" alpha` is emitted
+  inside a `proc` command, `alpha` remains a fresh, unresolved unification variable.
+- When GHC's solver invokes registered TC plugins, `large-records` inspects `IsLabel "port" alpha`. If the
+  plugin treats stuck constraints as contradictions or fails to yield (`Ok`), compilation aborts before
+  the Arrow typechecker completes its tuple unification and before GHC's native solver can route the label
+  to `vinyl`'s instances.
+
+#### 2.4.2 Retrospective Coexistence Strategies
+The tutoring audit demonstrated that `large-records` and `kernmantle` could technically be forced to coexist
+via several concrete engineering strategies (uncovered retrospectively):
+1. **The Airlock Pattern (External Monomorphic Let-Bindings):** Binding `#port` to an explicit monomorphic
+   `Rope` type in a `let` block outside the `proc` command (`let logTask :: Rope r m String () = #logger in proc ...`).
+   The label resolves immediately, so `proc` only processes fully saturated arrow commands.
+2. **In-Line Type Applications (`TypeApplications`):** Writing `#logger @(Rope r m String ()) -< input` directly
+   in the command line to ground `alpha` before plugin dispatch.
+3. **Symbol Proxy Funnels:** Defining `routeEffect :: IsLabel sym (Rope r m i o) => Proxy sym -> Rope r m i o`
+   and invoking `routeEffect (Proxy @"logger") -< ...`, avoiding the `HsOverLabel` AST node in the arrow command.
+4. **The Polite Plugin Fork (`large-records`):** Patching `large-records`/`large-anon`'s `tcPluginSolve` to inspect
+   `alpha`: if `alpha` is an unresolved type variable or a non-record `Rope` type, explicitly return `Ok` (yield),
+   allowing GHC's native solver to fire once `proc` finishes unifying.
+5. **The Clean Backend Port (`kernmantle` over `large-anon`):** Stripping `vinyl`'s $O(n^2)$ type-level lists
+   from `kernmantle` entirely and porting its open-effect rows directly onto `large-anon`. This converts the conflict
+   into compile-time symbiosis with $O(1)$ dictionary synthesis.
+6. **The GHC Arrow Typechecker Fork:** Modifying `GHC.Tc.Gen.Arrow` for eager type propagation to ground command
+   labels before dispatching to plugins.
+
+#### 2.4.3 Why Arrows Remain Decisively Superseded Beyond OverloadedLabels
+Even though viable coexistence paths exist, other fundamental concerns decisively disqualify arrow workflows
+for Sarutahiko:
+1. **Categorical Opacity vs. Static Over-Approximation:** Arrow notation (`proc -> do`) generates opaque
+   desugared Core lambdas (`arr`, `first`, `app`, `>>>`) that hide computation structure from static graph
+   reflection. Crucially, arrows cannot support static resource over-approximation (`Control.Selective.Over`)
+   required by Pass 1 to compute the `VirtualTree` sandbox and resource closure ahead of execution.
+2. **Fragile Tuple Scoping & Escaping Skolems:** Desugaring `proc` environments into nested tuples is notoriously
+   fragile under polymorphic constraints, rank-N types, or existential effect packages, frequently producing
+   impenetrable escaping-skolem and rigid-variable errors.
+3. **Ergonomic Collapse:** Forcing developers to annotate every port invocation with `@(Rope ...)` or route
+   every effect through an external let-binding airlock completely destroys the concise syntax that was the
+   only motivation for adopting arrow notation over direct applicative/monadic pipelines.
+4. **Clean-Slate Alignment with *Build Systems à la Carte*:** Selective Applicative Functors (`selective`)
+   paired with algebraic graphs (`algebraic-graphs` / `alga`) natively satisfy the *Build Systems à la Carte*
+   principles (Mokhov, Mitchell, Peyton Jones). They provide inspectable static dependencies, dynamic branch
+   selection (`branch`, `<*?>`), early cutoff, and topological scheduling in ~300 lines of clean GHC2024 code—with
+   zero arrow desugaring fragility, zero plugin contention, and seamless integration with `large-anon` records.
 
 ---
 

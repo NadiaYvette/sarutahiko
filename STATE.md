@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-04T12:26:00+02:00
+* **Timestamp:** 2026-10-04T16:15:00+02:00
 * **Git Branch:** `master`
-* **HEAD Commit:** `70e2574` (*build(cabal): migrate forked large-records dependency to zero-friction source-repository-package*)
+* **HEAD Commit:** `0a5b36a` (*docs(audit): incorporate tutoring insights on kernmantle vs large-records and relocate audits*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -295,6 +295,14 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Enriched all 26 package `.cabal` files with detailed descriptions, intellectual lineage, and pointers to `NOTICE.md`.
     - Audited top-level module Haddock headers across all core packages with explicit conceptual attribution.
     - Verified entire repository builds warning-free (`cabal v2-build all`) and all property and conformance test suites pass 100%.
+22. **Incorporated Compiler Audit on Kernmantle vs. Large-Records, Relocated Audits, and Preserved Tutoring Transcript:**
+    - Committed tutoring dialogue archive `docs/transcripts/AI-Assisted Codebase Tutoring Strategies.md` detailing GHC Arrow desugaring (`GHC.Rename.Arrow`, `GHC.Tc.Gen.Arrow`, `GHC.HsToCore.Arrows`), `IsLabel` constraint mechanics, and TC plugin interactions.
+    - Relocated loose audit documents `docs/extensible_record_effects_audit.md` and `docs/mono_traversable_nonempty_audit.md` into `docs/audits/`.
+    - Updated `docs/notes/YAMAARASHI_DESIGN.md` §2.4 and `docs/registers/REUSE_REGISTER.md` §2.12 with findings from the compiler audit:
+      * Clarified the TC plugin collision misconception: neither `kernmantle` nor `vinyl` uses a TC plugin; rather, the collision is asymmetric, caused by `large-records`' TC plugin prematurely intercepting unresolved `alpha` unification variables during GHC's delayed arrow tuple unification (`GHC.Tc.Gen.Arrow`).
+      * Documented the 6 retrospective coexistence strategies (the Airlock let-binding pattern, in-line `TypeApplications`, proxy funneling, polite plugin yield on unresolved variables, porting `kernmantle` onto `large-anon`, and GHC arrow typechecker eager type propagation).
+      * Confirmed that while coexistence answers turned up retrospectively, deeper categorical, architectural, and ergonomic concerns conclusively justify superseding arrows (categorical opacity preventing static over-approximation via `Control.Selective.Over`, escaping skolems in nested tuple environments, ergonomic degradation, and clean alignment of `selective` + `alga` with *Build Systems à la Carte*).
+    - Updated `docs/INDEX.md` inventory table registering the relocated audit reports and new tutoring transcript.
 
 ---
 
