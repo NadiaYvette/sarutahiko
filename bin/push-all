@@ -12,7 +12,7 @@ echo "==> Pushing master to Framagit..."
 git push framagit master --follow-tags || echo "Warning: framagit push failed"
 
 echo "==> Pushing master to GitCode..."
-git push gitcode master --follow-tags || echo "Warning: gitcode push failed (remote repository may not exist yet)"
+git push gitcode master --follow-tags || echo "Warning: gitcode push failed"
 
 echo "==> Pushing master to Radicle..."
 git push rad master || echo "Warning: rad push encountered an issue, check radicle node status"
