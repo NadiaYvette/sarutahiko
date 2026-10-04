@@ -59,7 +59,8 @@ below. Retained upstream licenses and notices are cataloged in the `LICENSES/` d
     and virtual tree resource sandboxing provided the original functional blueprint for
     task pipelines. In `yamaarashi-flow`, the arrow-based architecture was superseded by
     Selective Applicative Functors to resolve `OverloadedLabels` record syntax collisions
-    while preserving Porcupine's resource-caching semantics.
+    while preserving Porcupine's resource-caching semantics. Subprocess tasks persist
+    lifecycle events to direct-SQLite ledgers and project pure Kanban boards.
   - *Terms:* [LICENSES/MIT.txt](LICENSES/MIT.txt).
 - **Funflow** (Tom Nielsen, Andreas Herrmann / Tweag I/O; MIT)
   - *Ancestral Role:* Functional workflow execution graphs and content-addressed task
@@ -169,7 +170,9 @@ below. Retained upstream licenses and notices are cataloged in the `LICENSES/` d
 - **Hermes Agent** (Nous Research Inc., Teknium et al.; MIT / Apache-2.0)
   - *Ancestral Role:* Hermes Agent's operational lifecycle, bounded turn stepping ($N \le 10$),
     prompt-cache-safe conversation persistence, fail-closed subprocess hooks (`sigKILL` deadlines),
-    and dynamic capability plugin discovery serve as direct architectural donors for Tier 2.
+    dynamic capability plugin discovery, and autonomous coding tools (`read_file`, `write_file`,
+    `replace_file_content`, `run_command`, `check_build`) serve as direct architectural donors for Tier 2.
+    `sarutahiko-agent` pairs this with live `Utai` streaming client fallback across OpenAI-compatible endpoints.
   - *Retained Notice:* See [LICENSES/NOTICE-hermes.txt](LICENSES/NOTICE-hermes.txt),
     [LICENSES/MIT.txt](LICENSES/MIT.txt), and [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt).
 - **ReAct: Synergizing Reasoning and Acting in Language Models** (Shunyu Yao et al.)

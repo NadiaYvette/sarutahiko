@@ -19,8 +19,12 @@ import Test.Tasty.Hedgehog
 import Hashigakari.Sqlite (readEventsSqlite, runEventStoreSqlite, withSqliteDatabase)
 import Sarutahiko.Agent
   ( AgentTurnResult (..)
+  , RegisteredTool (..)
+  , codingAgentRegistry
   , defaultAgentRegistry
   , executeAgentTurn
+  , lookupTool
+  , parseFieldString
   , runAgentSessionWithCarrier
   )
 import Sarutahiko.Effect.EventStore (SessionId (..))
@@ -44,6 +48,8 @@ tests = testGroup "Sarutahiko Agent Core Test Suite"
   , testProperty "Agent turn consent denial: blocks unauthorized tools under safe mode" prop_agent_turn_consent_denial
   , testProperty "Agent turn iteration ceiling: fail-closed termination on max iterations" prop_agent_turn_iteration_ceiling
   , testProperty "Multi-turn session persistence: maintains context and prefix stability" prop_agent_multi_turn_session
+  , testProperty "Autonomous coding tools: file lifecycle write, read, replace" prop_coding_tools_file_lifecycle
+  , testProperty "Zero-Aeson parameter parsing: extracts string field cleanly" prop_zero_aeson_parameter_parsing
   ]
 
 withTempSqlite :: (FilePath -> IO a) -> IO a
@@ -198,3 +204,51 @@ prop_agent_multi_turn_session = property $ do
 
   length (scMessages ctx) === 4 -- [user1, assistant1, user2, assistant2]
   assert (not (T.null (scPrefixHash ctx)))
+
+prop_coding_tools_file_lifecycle :: Property
+prop_coding_tools_file_lifecycle = property $ do
+  origText <- forAll $ Gen.text (Range.linear 10 50) Gen.alphaNum
+  replText <- forAll $ Gen.text (Range.linear 5 20) Gen.alphaNum
+
+  let writeTool = lookupTool "write_file" codingAgentRegistry
+      readTool  = lookupTool "read_file" codingAgentRegistry
+      replTool  = lookupTool "replace_file_content" codingAgentRegistry
+
+  case (writeTool, readTool, replTool) of
+    (Just wt, Just rt, Just rpt) -> do
+      (readRes1, readRes2, ok1, ok2, ok3) <- evalIO $ do
+        tmpDir <- getTemporaryDirectory
+        (tmpFile, h) <- openTempFile tmpDir "tool-test-.txt"
+        hClose h
+
+        -- 1. Write file
+        let writePayload = "{\"path\":\"" <> BSC.pack tmpFile <> "\",\"content\":\"" <> BSC.pack (T.unpack origText) <> "\"}"
+        (_, wOk) <- rtHandler wt writePayload
+
+        -- 2. Read file
+        let readPayload = "{\"path\":\"" <> BSC.pack tmpFile <> "\"}"
+        (r1, rOk) <- rtHandler rt readPayload
+
+        -- 3. Replace substring
+        let replPayload = "{\"path\":\"" <> BSC.pack tmpFile <> "\",\"target\":\"" <> BSC.pack (T.unpack origText) <> "\",\"replacement\":\"" <> BSC.pack (T.unpack replText) <> "\"}"
+        (_, rpOk) <- rtHandler rpt replPayload
+
+        -- 4. Read back replaced file
+        (r2, _) <- rtHandler rt readPayload
+        _ <- try @SomeException (removeFile tmpFile)
+        pure (r1, r2, wOk, rOk, rpOk)
+
+      ok1 === True
+      ok2 === True
+      ok3 === True
+      readRes1 === origText
+      readRes2 === replText
+    _ -> failure
+
+prop_zero_aeson_parameter_parsing :: Property
+prop_zero_aeson_parameter_parsing = property $ do
+  val <- forAll $ Gen.text (Range.linear 5 30) Gen.alphaNum
+  let json = "{\"command\":\"" <> BSC.pack (T.unpack val) <> "\",\"other\":42}"
+      extracted = parseFieldString "command" json
+  extracted === Just val
+

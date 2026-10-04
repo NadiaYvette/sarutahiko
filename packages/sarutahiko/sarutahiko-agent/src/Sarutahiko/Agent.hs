@@ -14,8 +14,12 @@ module Sarutahiko.Agent
   ( module Sarutahiko.Agent.Registry
   , module Sarutahiko.Agent.Turn
   , module Sarutahiko.Agent.Loop
+  , module Sarutahiko.Agent.Tools
+  , module Sarutahiko.Agent.Live
   ) where
 
+import Sarutahiko.Agent.Live
 import Sarutahiko.Agent.Loop
 import Sarutahiko.Agent.Registry
+import Sarutahiko.Agent.Tools
 import Sarutahiko.Agent.Turn

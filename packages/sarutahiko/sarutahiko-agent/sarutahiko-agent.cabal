@@ -43,6 +43,8 @@ library
         Sarutahiko.Agent.Registry
         Sarutahiko.Agent.Turn
         Sarutahiko.Agent.Loop
+        Sarutahiko.Agent.Tools
+        Sarutahiko.Agent.Live
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,

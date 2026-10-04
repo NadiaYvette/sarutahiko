@@ -37,6 +37,7 @@ import Utai
   , omnirouteProfile
   , opencodeProfile
   )
+import Yamaarashi.Flow.Ledger (initTaskLedger, logTaskEvent)
 
 -- | Parsed task packet envelope.
 data TaskPacket = TaskPacket
@@ -73,6 +74,7 @@ printHelp = do
   putStrLn "  --help             Show this help message"
   putStrLn ""
   putStrLn "Execution Engines (set in packet via 'executor:'):"
+  putStrLn "  executor: sarutahiko In-tree autonomous agent core (Phase 5 self-hosting)."
   putStrLn "  executor: utai     Direct zero-cost model invocation via Utai native client (reliable, fast)."
   putStrLn "  executor: agy      Delegates turn execution to Antigravity CLI print mode (fast, robust)."
   putStrLn "  executor: hermes   Delegates turn execution to a spawned Hermes leaf worker."
@@ -173,23 +175,11 @@ runTaskPacket path = do
 
 -- | Initialize SQLite event store table.
 initEventDb :: FilePath -> IO ()
-initEventDb dbPath = do
-  let sql = "CREATE TABLE IF NOT EXISTS task_events (\
-            \  id INTEGER PRIMARY KEY AUTOINCREMENT,\
-            \  task_id TEXT NOT NULL,\
-            \  event_type TEXT NOT NULL,\
-            \  payload TEXT NOT NULL,\
-            \  created_at DATETIME DEFAULT CURRENT_TIMESTAMP\
-            \);"
-  runProcess_ (proc "sqlite3" [dbPath, sql])
+initEventDb = initTaskLedger
 
 -- | Record an event into SQLite.
 logEvent :: FilePath -> Text -> Text -> Text -> IO ()
-logEvent dbPath tId evType payload = do
-  let safePayload = T.replace "'" "''" payload
-      sql = "INSERT INTO task_events (task_id, event_type, payload) VALUES ('"
-         <> tId <> "', '" <> evType <> "', '" <> safePayload <> "');"
-  runProcess_ (proc "sqlite3" [dbPath, T.unpack sql])
+logEvent = logTaskEvent
 
 -- | Simple parser for Task Packet YAML adhering to Zero-Aeson invariant.
 parsePacket :: FilePath -> Text -> IO TaskPacket
@@ -274,6 +264,8 @@ executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
           if scriptExists
             then runScriptStep wtDir customScript
             else pure (Left $ "Explicit script executor requested, but script missing: " <> T.pack customScript)
+        "sarutahiko" ->
+          runSarutahikoStep wtDir packet dbPath mRepairPrompt attempt
         "utai" ->
           runUtaiStep wtDir packet dbPath mRepairPrompt attempt
         "hermes" ->
@@ -285,7 +277,46 @@ executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
             then runScriptStep wtDir customScript
             else runUtaiStep wtDir packet dbPath mRepairPrompt attempt
         other ->
-          pure (Left $ "Unknown executor: " <> other <> " (expected 'utai', 'agy', 'hermes', 'script', or 'auto')")
+          pure (Left $ "Unknown executor: " <> other <> " (expected 'sarutahiko', 'utai', 'agy', 'hermes', 'script', or 'auto')")
+
+-- | Delegate task execution directly to in-tree Sarutahiko autonomous agent core.
+runSarutahikoStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
+runSarutahikoStep wtDir packet dbPath mRepairPrompt attempt = do
+  let tId = packetId packet
+      promptContent = case mRepairPrompt of
+        Just rp -> rp
+        Nothing -> buildWorkerPrompt packet
+      targetModel = case packetModel packet of
+        Just m  -> m
+        Nothing -> "mistral/codestral-latest"
+
+  logEvent dbPath tId "SARUTAHIKO_SPAWNED" ("Sarutahiko autonomous agent core starting turn (attempt " <> T.pack (show attempt) <> ")")
+  putStrLn $ "=== [yamaarashi-exec] Launching Sarutahiko autonomous agent core (model: " ++ T.unpack targetModel ++ ", attempt " ++ show attempt ++ ") ==="
+
+  mSarutahiko <- findExecutable "sarutahiko"
+  let cmdProc = case mSarutahiko of
+        Just bin -> proc bin ["run", "--live", T.unpack promptContent]
+        Nothing  -> proc "cabal" ["v2-run", "sarutahiko-agent:exe:sarutahiko", "--", "run", "--live", T.unpack promptContent]
+
+  (code, outBs, errBs) <- readProcess (setWorkingDir wtDir cmdProc)
+  let outTxt = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs]))
+      logDir = takeDirectory dbPath </> "logs"
+      attemptSuffix = if attempt > 1 then "-attempt" ++ show attempt else ""
+      workerLogFile = logDir </> (T.unpack tId ++ "-sarutahiko" ++ attemptSuffix ++ ".log")
+
+  createDirectoryIfMissing True logDir
+  TIO.writeFile workerLogFile outTxt
+
+  case code of
+    ExitSuccess -> do
+      logEvent dbPath tId "SARUTAHIKO_SUCCEEDED" ("Sarutahiko completed turn (" <> T.pack (show (T.length outTxt)) <> " chars output)")
+      putStrLn "=== [yamaarashi-exec] Sarutahiko autonomous agent execution succeeded ==="
+      pure (Right "sarutahiko")
+    ExitFailure c -> do
+      let errMsg = "Sarutahiko execution failed with code " <> T.pack (show c) <> ":\n" <> trimErrorOutput outTxt
+      logEvent dbPath tId "SARUTAHIKO_FAILED" errMsg
+      pure (Left errMsg)
+
 
 -- | Delegate task execution directly to Utai native LLM client.
 runUtaiStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
@@ -612,6 +643,11 @@ createGitCommit wtDir packet actualExecutor = do
   runProcess_ (setWorkingDir wtDir (proc "git" ["add", "-A"]))
 
   let baseAttribution = case actualExecutor of
+        "sarutahiko" ->
+          let m = case packetModel packet of
+                Just mdl -> "Sarutahiko Autonomous Agent (" <> mdl <> ")"
+                Nothing  -> "Sarutahiko Autonomous Agent (sarutahiko-agent)"
+          in "Assisted-by: " <> m <> "\nOrchestrated-by: Yamaarashi Flow Task Runner\n"
         "utai" ->
           let m = case packetModel packet of
                 Just mdl -> "Utai Native (" <> mdl <> ")"

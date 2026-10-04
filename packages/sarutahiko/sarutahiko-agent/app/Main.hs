@@ -12,8 +12,9 @@ import System.IO (hClose, openTempFile)
 
 import Sarutahiko.Agent
   ( AgentTurnResult (..)
-  , defaultAgentRegistry
+  , codingAgentRegistry
   , runAgentSessionWithCarrier
+  , runModelAPILive
   )
 import Sarutahiko.Effect.EventStore (SessionId (..))
 import Sarutahiko.Effect.ModelAPI (Usage (..))
@@ -30,14 +31,21 @@ import Utai.Mock
 main :: IO ()
 main = do
   args <- getArgs
-  case args of
-    ("chat" : promptStrs) -> runAgentMode (if null promptStrs then ["Hello, Sarutahiko agent!"] else map T.pack promptStrs)
-    ("run" : promptStrs)  -> runAgentMode (if null promptStrs then ["call echo: autonomous test"] else [T.unwords (map T.pack promptStrs)])
-    (p:ps)                -> runAgentMode [T.unwords (map T.pack (p:ps))]
-    []                    -> runAgentMode ["call echo: default agent run"]
+  let (isLive, remainingArgs) = parseLiveFlag args
+  case remainingArgs of
+    ("chat" : promptStrs) -> runAgentMode isLive (if null promptStrs then ["Hello, Sarutahiko agent!"] else map T.pack promptStrs)
+    ("run" : promptStrs)  -> runAgentMode isLive (if null promptStrs then ["call echo: autonomous test"] else [T.unwords (map T.pack promptStrs)])
+    (p:ps)                -> runAgentMode isLive [T.unwords (map T.pack (p:ps))]
+    []                    -> runAgentMode isLive ["call echo: default agent run"]
 
-runAgentMode :: [T.Text] -> IO ()
-runAgentMode prompts = do
+parseLiveFlag :: [String] -> (Bool, [String])
+parseLiveFlag [] = (False, [])
+parseLiveFlag ("--live" : rest) = (True, snd (parseLiveFlag rest))
+parseLiveFlag ("--mock" : rest) = (False, snd (parseLiveFlag rest))
+parseLiveFlag (x : rest)        = let (live, rest') = parseLiveFlag rest in (live, x : rest')
+
+runAgentMode :: Bool -> [T.Text] -> IO ()
+runAgentMode isLive prompts = do
   cwd <- getCurrentDirectory
   let sid = SessionId "sarutahiko-session-001"
       model = "mistral/codestral-latest"
@@ -64,24 +72,36 @@ runAgentMode prompts = do
 
   (`finally` cleanup) $ do
     putStrLn "============================================================"
-    putStrLn "  Sarutahiko Autonomous Agent Core (Phase 2)"
+    putStrLn "  Sarutahiko Autonomous Agent Core (Phase 5)"
     putStrLn "============================================================"
     TIO.putStrLn $ "  Session ID : " <> unSessionId sid
     TIO.putStrLn $ "  Prompt     : " <> p1
     TIO.putStrLn $ "  Model      : " <> model
+    putStrLn     $ "  Execution  : " ++ (if isLive then "Live Utai (OmniRoute/OpenCode)" else "Mock (In-Memory)")
     putStrLn     $ "  Cwd        : " ++ cwd
     putStrLn     $ "  Database   : " ++ dbPath
     putStrLn "------------------------------------------------------------"
 
-    (res, ctx) <- runAgentSessionWithCarrier
-      (runEff . runModelAPIMock store)
-      dbPath
-      sid
-      model
-      cwd
-      defaultAgentRegistry
-      defaultAllowlist
-      p1
+    (res, ctx) <-
+      if isLive
+        then runAgentSessionWithCarrier
+               (runEff . runModelAPILive model)
+               dbPath
+               sid
+               model
+               cwd
+               codingAgentRegistry
+               defaultAllowlist
+               p1
+        else runAgentSessionWithCarrier
+               (runEff . runModelAPIMock store)
+               dbPath
+               sid
+               model
+               cwd
+               codingAgentRegistry
+               defaultAllowlist
+               p1
 
     putStrLn "------------------------------------------------------------"
     putStrLn "  Agent Execution Complete"

@@ -17,8 +17,10 @@ module Yamaarashi.Flow
   ( module Yamaarashi.Flow.Types
   , module Yamaarashi.Flow.Scheduler
   , module Yamaarashi.Flow.Capability
+  , module Yamaarashi.Flow.Ledger
   ) where
 
 import Yamaarashi.Flow.Capability
+import Yamaarashi.Flow.Ledger
 import Yamaarashi.Flow.Scheduler
 import Yamaarashi.Flow.Types

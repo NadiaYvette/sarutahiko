@@ -2,11 +2,17 @@
 
 module Main (main) where
 
+import Control.Exception (SomeException, finally, try)
 import qualified Data.ByteString.Char8 as BSC
 import Data.IORef
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import qualified Data.Text as T
 import Hedgehog
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
+import System.Directory (getTemporaryDirectory, removeFile)
+import System.IO (hClose, openTempFile)
 import Test.Tasty
 import Test.Tasty.Hedgehog
 import Yamaarashi.Flow
@@ -20,6 +26,8 @@ tests = testGroup "Yamaarashi Flow Scheduler"
   , testProperty "Early cutoff: identical output hash prunes downstream nodes" prop_early_cutoff
   , testProperty "Dependency change: changed output forces downstream re-execution" prop_dependency_change
   , testProperty "Cycle detection: cyclic graph rejected before execution" prop_cycle_detection
+  , testProperty "Kanban board: pure projection tracks lifecycle and attempts" prop_kanban_lifecycle_projection
+  , testProperty "Task ledger: direct-sqlite event append and ordered retrieval" prop_task_ledger_direct_sqlite
   ]
 
 -- | 3-step pipeline: nodeA -> nodeB -> nodeC
@@ -145,3 +153,68 @@ prop_cycle_detection = property $ do
   case eResult of
     Left err -> err === "Cycle detected in task graph"
     Right _  -> failure
+
+prop_kanban_lifecycle_projection :: Property
+prop_kanban_lifecycle_projection = property $ do
+  taskId <- forAll $ Gen.text (Range.linear 3 15) Gen.alphaNum
+  attempts <- forAll $ Gen.int (Range.linear 1 5)
+
+  let mkEvents 0 = [ (taskId, "TASK_ENQUEUED", "Enqueued") ]
+      mkEvents n = concat
+        [ [ (taskId, "TASK_ENQUEUED", "Enqueued") ]
+        , concat [ [ (taskId, "STEP_STARTED", "Start attempt " <> T.pack (show i))
+                   , (taskId, "VERIFICATION_STARTED", "Verify " <> T.pack (show i))
+                   , (taskId, "STEP_FAILED", "Failed " <> T.pack (show i))
+                   ]
+                 | i <- [1 .. (n - 1)]
+                 ]
+        , [ (taskId, "STEP_STARTED", "Start attempt " <> T.pack (show n))
+          , (taskId, "VERIFICATION_STARTED", "Verify " <> T.pack (show n))
+          , (taskId, "TASK_COMPLETED", "Success")
+          ]
+        ]
+
+  let events = mkEvents attempts
+      board = projectKanban events
+      mCard = Map.lookup taskId (kbCards board)
+
+  case mCard of
+    Nothing -> failure
+    Just card -> do
+      kcTaskId card === taskId
+      kcColumn card === ColDone
+      kcAttempts card === attempts
+      kcLastEvent card === "TASK_COMPLETED"
+
+prop_task_ledger_direct_sqlite :: Property
+prop_task_ledger_direct_sqlite = property $ do
+  taskId <- forAll $ Gen.text (Range.linear 3 15) Gen.alphaNum
+  payload1 <- forAll $ Gen.text (Range.linear 5 30) Gen.alphaNum
+  payload2 <- forAll $ Gen.text (Range.linear 5 30) Gen.alphaNum
+
+  rows <- evalIO $ do
+    tmpDir <- getTemporaryDirectory
+    (tmpFile, h) <- openTempFile tmpDir "ledger-test-.db"
+    hClose h
+    let cleanup = do
+          _ <- try @SomeException (removeFile tmpFile)
+          _ <- try @SomeException (removeFile (tmpFile <> "-wal"))
+          _ <- try @SomeException (removeFile (tmpFile <> "-shm"))
+          pure ()
+    (`finally` cleanup) $ do
+      initTaskLedger tmpFile
+      logTaskEvent tmpFile taskId "TASK_STARTED" payload1
+      logTaskEvent tmpFile taskId "TASK_COMPLETED" payload2
+      readTaskEvents tmpFile taskId
+
+  length rows === 2
+  case rows of
+    [(_, t1, ev1, p1), (_, t2, ev2, p2)] -> do
+      t1 === taskId
+      ev1 === "TASK_STARTED"
+      p1 === payload1
+      t2 === taskId
+      ev2 === "TASK_COMPLETED"
+      p2 === payload2
+    _ -> failure
+
