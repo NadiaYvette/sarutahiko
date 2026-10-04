@@ -33,6 +33,10 @@ packages:
     packages/hashigakari/hashigakari-syntax
     packages/hashigakari/hashigakari-hasql
     packages/sarutahiko/sarutahiko-format-dhall
+    packages/sarutahiko-observability
+    packages/sarutahiko-metrics
+    packages/sarutahiko-logging
+    packages/sarutahiko-tracing
 
 -- Pinned fork of the large-records ecosystem (large-anon, large-generics,
 -- large-records, typelet, beam-large-anon) per REUSE_REGISTER §2.1.

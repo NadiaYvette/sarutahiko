@@ -1,4 +1,5 @@
 executor: sarutahiko
+id: phase7-observability
 packages:
   - sarutahiko-observability
   - sarutahiko-metrics
