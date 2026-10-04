@@ -34,7 +34,9 @@ Phase 3: Observability & Surfaces (TUI, Gateway, ACP, Tags)    [COMPLETED]
    ▼
 Phase 4: Data Tier & Protocol Codecs                           [COMPLETED]
    ▼
-Phase 5: Self-Hosting & Full Native Orchestration              [NEXT]
+Phase 5: Self-Hosting & Full Native Orchestration              [COMPLETED]
+   ▼
+Phase 6: Production Hardening & Ecosystem Integration          [NEXT]
 ```
 
 ---
@@ -141,6 +143,32 @@ Phase 1 establishes the row-typed protocol foundations:
    - Strict Zero-Aeson compliance and zero partial functions verified across all Phase 4 packages.
    - Verification script `scripts/tasks/phase4-data-protocol-verify.sh` verified end-to-end.
    - Task packet `docs/task_packets/phase4-data-protocol.yaml` executed and verified via `yamaarashi-exec` using zero-cost native `utai` executor.
+
+---
+
+## 8. Phase 5 Self-Hosting & Full Native Orchestration Acceptance [COMPLETED]
+
+1. **Live ModelAPI Carrier & Substrate (`sarutahiko-agent`):** **VERIFIED**
+   - Live streaming client (`Sarutahiko.Agent.Live`) wrapping `Utai.callOpenAIWithFallback` with fallback across OmniRoute (`mistral/codestral-latest` at `http://localhost:20128/v1`) and OpenCode (`http://127.0.0.1:20129/v1`).
+   - Token accounting, streaming response metrics, and prompt-cache prefix preservation.
+   - CLI executable `sarutahiko` supporting `--live` vs `--mock` execution.
+2. **Autonomous Coding Tools & Zero-Aeson Parsing (`sarutahiko-agent`):** **VERIFIED**
+   - Full coding tool suite (`readFileTool`, `writeFileTool`, `replaceFileTool`, `runCommandTool`, `checkBuildTool`) registered in `codingAgentRegistry`.
+   - Pure, zero-allocation parameter parser (`parseFieldString`) built directly on `kogaki-wire` and `large-anon` records without `aeson`.
+   - 7 Hedgehog properties passing 100%.
+3. **Direct-SQLite Task Ledger & Pure Kanban Board (`yamaarashi-flow`):** **VERIFIED**
+   - Direct-sqlite task event store (`initTaskLedger`, `logTaskEvent`, `readTaskEvents`) eliminating external `sqlite3` CLI shell-outs.
+   - Pure state projection reducer (`projectKanban :: [(Text, Text, Text)] -> KanbanBoard`) folding task lifecycle events (`TP_CLAIMED`, `TP_STARTED`, `TP_VERIFYING`, `TP_COMPLETED`, `TP_FAILED`) into typed columns (`ColBacklog`, `ColReady`, `ColInProgress`, `ColVerifying`, `ColDone`, `ColFailed`) with attempt tracking.
+   - 6 Hedgehog properties passing 100%.
+4. **Native Self-Hosting Executor (`yamaarashi-exec`):** **VERIFIED**
+   - Native `executor: sarutahiko` support in `yamaarashi-exec` driving worktree sandbox execution directly through in-tree agent core with iterative repair loops ($K \le 3$).
+   - Git commit creation with standard `Assisted-by` attribution trailers.
+5. **Verification & Audit Gate:** **VERIFIED**
+   - 21/21 Hedgehog properties passing 100% across all 4 target packages (`sarutahiko-agent`, `yamaarashi-flow`, `hashigakari-core`, `hashigakari-sqlite`) with zero warnings under `-Wall -Werror`.
+   - Strict Zero-Aeson compliance and zero partial functions (`-Wx-partial`) verified across all Phase 5 source modules.
+   - Verification script `scripts/tasks/phase5-self-hosting-orchestration-verify.sh` verified end-to-end.
+   - Task packet `docs/task_packets/phase5-self-hosting-orchestration.yaml` executed cleanly via `yamaarashi-exec`, passed all verification gates on attempt 1, and fast-forward merged to `master`.
+
 
 
 

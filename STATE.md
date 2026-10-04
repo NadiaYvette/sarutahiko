@@ -8,9 +8,9 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 1. Operational Metadata
 
-* **Timestamp:** 2026-10-04T17:18:00+02:00
+* **Timestamp:** 2026-10-04T17:42:00+02:00
 * **Git Branch:** `master`
-* **HEAD Commit:** `724309b` (*Build the full hashigakari data tier, protocol-bag codecs, and Dhall row bridge*)
+* **HEAD Commit:** `1a49d93` (*Self-Hosting Agent Engine and Full Native Workflow Orchestration*)
 * **Toolchain:** GHC 9.12.2 / Cabal 3.18.1.0, `GHC2024`, zero warnings (`-Wall -Werror`)
 * **Worktree Health:** Clean
 
@@ -327,19 +327,43 @@ The following sequential decisions must be resolved to reconcile the revised Yam
     - Executed cleanly via `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase4-data-protocol.yaml`.
     - Passed all verification gates (100% PASS), generated commit `724309b` with attribution trailers, and fast-forward merged to `master`.
     - **Phase 4 (Data Protocols) is now COMPLETE!**
+25. **Executed Phase 5 — Self-Hosting Agent Core & Native Workflow Orchestration (`sarutahiko-agent`, `yamaarashi-flow`, `hashigakari-core`, `hashigakari-sqlite`) [TASK-018] (`f1642c0` / `1a49d93`):**
+    - Implemented live ModelAPI carrier and substrate in `packages/sarutahiko/sarutahiko-agent`:
+      * `Sarutahiko.Agent.Live`: Production OpenAI-compatible streaming carrier with multi-profile fallback across OmniRoute (`mistral/codestral-latest` at `http://localhost:20128/v1`) and OpenCode (`http://127.0.0.1:20129/v1`), token accounting, streaming response metrics, and prefix hash stability.
+      * `Sarutahiko.Agent.Tools`: Autonomous coding tool suite (`readFileTool`, `writeFileTool`, `replaceFileTool`, `runCommandTool`, `checkBuildTool`) registered in `codingAgentRegistry`, with zero-allocation parameter parser (`parseFieldString`) built directly on `kogaki-wire` and `large-anon` without `aeson`.
+      * CLI executable `sarutahiko` updated with `--live` and `--mock` execution flags.
+      * 7 Hedgehog properties passing 100%.
+    - Implemented native task ledger and Kanban state projection in `packages/yamaarashi/yamaarashi-flow`:
+      * `Yamaarashi.Flow.Ledger`: Typed SQLite task event store (`initTaskLedger`, `logTaskEvent`, `readTaskEvents`) using prepared statements and parameterized bindings, completely eliminating external `sqlite3` CLI shell-outs.
+      * Pure Kanban board state projection (`projectKanban`) folding task lifecycle events into columns (`ColBacklog`, `ColReady`, `ColInProgress`, `ColVerifying`, `ColDone`, `ColFailed`) with attempt tracking.
+      * CLI runner `yamaarashi-exec`: Native support for `executor: sarutahiko` driving worktree sandbox execution directly through in-tree agent core with iterative repair loops ($K \le 3$) and git attribution trailers.
+      * 6 Hedgehog properties passing 100%.
+    - Authored comprehensive verification script `scripts/tasks/phase5-self-hosting-orchestration-verify.sh` auditing all 4 packages, all 21 property tests, CLI execution, strict Zero-Aeson compliance, and zero partial functions.
+    - Updated `docs/registers/ATTRIBUTION_REGISTER.md` and `NOTICE.md` recording intellectual provenance for Hermes coding tools, Utai live streaming client, and direct SQLite task ledgers.
+    - Authored task packet `docs/task_packets/phase5-self-hosting-orchestration.yaml` (`0271fd3`).
+    - Executed cleanly via `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- run docs/task_packets/phase5-self-hosting-orchestration.yaml`.
+    - Passed all verification gates (100% PASS), generated commit `1a49d93` with attribution trailers, and fast-forward merged to `master`.
+    - **Phase 5 (Self-Hosting & Full Native Orchestration) is now COMPLETE!**
 
 ---
 
 ## 6. Immediate Workqueue (The Frontier)
 
-> [!NOTE] Phase 4 COMPLETE & Data Tier / Protocol Codecs Operational
-> All four Phase 4 packages (`hashigakari-core`, `hashigakari-syntax`, `hashigakari-hasql`, `sarutahiko-format-dhall`) are COMPLETE and VERIFIED with 17/17 Hedgehog property tests passing.
-> Operational frontier is advanced to Phase 5 (`phase5-self-hosting-orchestration`).
+> [!NOTE] Phase 5 COMPLETE & Self-Hosting Agent Engine Operational
+> All four Phase 5 packages (`sarutahiko-agent`, `yamaarashi-flow`, `hashigakari-core`, `hashigakari-sqlite`) are COMPLETE and VERIFIED with 21/21 Hedgehog property tests passing.
+> The autonomous agent core is now capable of self-hosting worktree execution, tool execution, direct-sqlite event persistence, and pure Kanban lifecycle projections.
+> Operational frontier is advanced to Phase 6 (`phase6-production-hardening-ecosystem`).
 
-### [TASK-018] Execute Phase 5: Self-Hosting & Full Native Orchestration
-* **Objective:** Self-host the full Sarutahiko agent loop as the primary task execution engine in `yamaarashi-flow`, wire `hashigakari-sqlite`/`hasql` unified storage, and deploy standalone orchestrator.
+### [TASK-019] Plan and Execute Phase 6: Production Hardening & Ecosystem Integration
+* **Objective:** Complete end-to-end integration across all subsystems:
+  - Wire full multi-dialect database backends in `hashigakari-syntax` and `hashigakari-hasql`.
+  - Connect `sarutahiko-tui` and `sarutahiko-gateway` directly to the live `sarutahiko-agent` core.
+  - Stress-test long-horizon autonomous task loops with worktree cleanup and token budgets.
 * **Target Packages:**
   - `sarutahiko-agent`
+  - `sarutahiko-tui`
+  - `sarutahiko-gateway`
   - `yamaarashi-flow`
-  - `hashigakari-core`
-* **Verification Command:** `cabal v2-run yamaarashi-flow:exe:yamaarashi-exec -- test`
+  - `hashigakari-syntax`
+* **Verification Command:** `cabal v2-test all`
+
