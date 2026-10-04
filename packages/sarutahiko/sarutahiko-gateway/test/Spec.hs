@@ -21,6 +21,7 @@ tests = testGroup "Sarutahiko Gateway Test Suite"
   [ testProperty "Send message records target platform, recipient, and content" prop_send_message
   , testProperty "Inbound event queue drains in FIFO order" prop_poll_events
   , testProperty "Broadcasting emits all-recipient message" prop_broadcast
+  , testProperty "Inbound event turn processing dispatches reply" prop_gateway_turn_processing
   , testProperty "Platform naming matches canonical strings" prop_platform_names
   ]
 
@@ -81,6 +82,35 @@ prop_broadcast = property $ do
       gmRecipientId sent === "all"
       gmPlatform sent === Discord
       gmContent sent === content
+    _ -> failure
+
+-- | Processing an inbound event invokes the handler and dispatches a reply back to the platform.
+prop_gateway_turn_processing :: Property
+prop_gateway_turn_processing = property $ do
+  sender <- forAll $ Gen.text (Range.linear 1 20) Gen.alphaNum
+  prompt <- forAll $ Gen.text (Range.linear 1 40) Gen.alphaNum
+  platform <- forAll $ Gen.element [Telegram, Discord, Slack, Webhook]
+  res <- evalIO $ do
+    var <- newMVar emptyGatewayState
+    let inEvent = EvMessageReceived $ GatewayMessage
+          { gmMessageId   = "msg-in-1"
+          , gmPlatform    = platform
+          , gmSenderId    = sender
+          , gmRecipientId = "bot"
+          , gmContent     = prompt
+          }
+    outRes <- runEff $ runGatewayPure var $ do
+      processGatewayMessage inEvent (\p -> pure ("Echo: " <> p))
+    st <- readMVar var
+    pure (outRes, gsSentMessages st)
+
+  let (turnResult, sentMessages) = res
+  case (turnResult, sentMessages) of
+    (Just (Right msgId), [sent]) -> do
+      gmMessageId sent === msgId
+      gmPlatform sent === platform
+      gmRecipientId sent === sender
+      gmContent sent === ("Echo: " <> prompt)
     _ -> failure
 
 -- | Platform naming matches expected protocol strings.

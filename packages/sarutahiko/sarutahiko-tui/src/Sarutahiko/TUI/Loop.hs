@@ -9,6 +9,7 @@
 -- cancellation requests, and turn finalization.
 module Sarutahiko.TUI.Loop
   ( stepTui
+  , feedTuiStream
   , formatTurnRequest
   , formatCancelNotification
   ) where
@@ -81,6 +82,13 @@ stepTui ev st = case ev of
           , tsActiveResponse = ""
           }
     in (st', ActRedraw)
+
+-- | Feed a sequence of streaming token chunks into the TUI state, transitioning
+-- it through streaming and marking the turn complete at the end.
+feedTuiStream :: [Text] -> TuiState -> TuiState
+feedTuiStream chunks st =
+  let stStreaming = foldl (\s c -> fst (stepTui (EvTokenChunk c) s)) st chunks
+  in fst (stepTui EvTurnCompleted stStreaming)
 
 -- | Construct a JSON-RPC 2.0 request byte string for an agent turn.
 formatTurnRequest :: Int64 -> Text -> Text -> ByteString

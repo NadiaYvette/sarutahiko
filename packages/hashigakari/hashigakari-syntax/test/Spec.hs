@@ -10,6 +10,7 @@
 
 module Main (main) where
 
+import Data.Functor.Identity (Identity (..))
 import Data.Int (Int64)
 import Data.Record.Anon (pattern (:=))
 import Data.Record.Anon.Advanced (Record)
@@ -34,6 +35,7 @@ main = defaultMain $ testGroup "hashigakari-syntax tests"
   , testProperty "SQLite anonymous placeholders (?)" prop_sqlite_placeholders
   , testProperty "MySQL backtick identifier quotation" prop_mysql_quoting
   , testProperty "TriState patch update emits minimal SET clauses" prop_patch_update_minimality
+  , testProperty "Cross-dialect UPSERT compilation" prop_upsert_compilation_cross_dialect
   , testProperty "Dialect capability ceilings verified" prop_dialect_capabilities
   ]
 
@@ -84,6 +86,26 @@ prop_patch_update_minimality = property $ do
   -- id = 42 is in WHERE clause
   assert ("WHERE (\"id\" = $2)" `T.isInfixOf` sqlText compiled)
   length (sqlParams compiled) === 2
+
+prop_upsert_compilation_cross_dialect :: Property
+prop_upsert_compilation_cross_dialect = property $ do
+  uid <- forAll $ Gen.int64 (Range.linear 1 1000)
+  uname <- forAll $ Gen.text (Range.linear 1 20) Gen.alpha
+  let row :: Record Identity UserSchema
+      row = Anon.insert #id (Identity uid) $
+            Anon.insert #name (Identity uname) $
+            Anon.insert #active (Identity True) $
+            Anon.empty
+      pgUpsert = compileUpsert PostgresDialect "users" ["id"] row
+      sqliteUpsert = compileUpsert SqliteDialect "users" ["id"] row
+      mysqlUpsert = compileUpsert MysqlDialect "users" ["id"] row
+
+  assert ("ON CONFLICT (\"id\") DO UPDATE SET" `T.isInfixOf` sqlText pgUpsert)
+  assert ("EXCLUDED." `T.isInfixOf` sqlText pgUpsert)
+  assert ("ON CONFLICT (\"id\") DO UPDATE SET" `T.isInfixOf` sqlText sqliteUpsert)
+  assert ("excluded." `T.isInfixOf` sqlText sqliteUpsert)
+  assert ("ON DUPLICATE KEY UPDATE" `T.isInfixOf` sqlText mysqlUpsert)
+  assert ("VALUES(" `T.isInfixOf` sqlText mysqlUpsert)
 
 prop_dialect_capabilities :: Property
 prop_dialect_capabilities = property $ do

@@ -27,7 +27,9 @@ tests = testGroup "Yamaarashi Flow Scheduler"
   , testProperty "Dependency change: changed output forces downstream re-execution" prop_dependency_change
   , testProperty "Cycle detection: cyclic graph rejected before execution" prop_cycle_detection
   , testProperty "Kanban board: pure projection tracks lifecycle and attempts" prop_kanban_lifecycle_projection
+  , testProperty "Kanban board: ASCII rendering formats columns with cards" prop_kanban_ascii_rendering
   , testProperty "Task ledger: direct-sqlite event append and ordered retrieval" prop_task_ledger_direct_sqlite
+  , testProperty "Task ledger: database vacuum cleans up storage" prop_task_ledger_vacuum
   ]
 
 -- | 3-step pipeline: nodeA -> nodeB -> nodeC
@@ -217,4 +219,39 @@ prop_task_ledger_direct_sqlite = property $ do
       ev2 === "TASK_COMPLETED"
       p2 === payload2
     _ -> failure
+
+prop_kanban_ascii_rendering :: Property
+prop_kanban_ascii_rendering = property $ do
+  taskId <- forAll $ Gen.text (Range.linear 3 15) Gen.alphaNum
+  let events =
+        [ (taskId, "TASK_STARTED", "started")
+        , (taskId, "STEP_STARTED", "attempt 1")
+        , (taskId, "VERIFICATION_PASSED", "verified")
+        , (taskId, "TASK_COMPLETED", "done")
+        ]
+      board = projectKanban events
+      ascii = renderKanbanAscii board
+  assert ("=== DONE" `T.isInfixOf` ascii)
+  assert (taskId `T.isInfixOf` ascii)
+  assert ("[attempts: 1, last: TASK_COMPLETED]" `T.isInfixOf` ascii)
+
+prop_task_ledger_vacuum :: Property
+prop_task_ledger_vacuum = property $ do
+  taskId <- forAll $ Gen.text (Range.linear 3 15) Gen.alphaNum
+  payload <- forAll $ Gen.text (Range.linear 5 30) Gen.alphaNum
+  res <- evalIO $ do
+    tmpDir <- getTemporaryDirectory
+    (tmpFile, h) <- openTempFile tmpDir "ledger-vacuum-test-.db"
+    hClose h
+    let cleanup = do
+          _ <- try @SomeException (removeFile tmpFile)
+          _ <- try @SomeException (removeFile (tmpFile <> "-wal"))
+          _ <- try @SomeException (removeFile (tmpFile <> "-shm"))
+          pure ()
+    (`finally` cleanup) $ do
+      initTaskLedger tmpFile
+      logTaskEvent tmpFile taskId "TASK_STARTED" payload
+      vacuumTaskLedger tmpFile
+      readTaskEvents tmpFile taskId
+  length res === 1
 

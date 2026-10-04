@@ -20,6 +20,7 @@ tests = testGroup "Sarutahiko TUI Test Suite"
   [ testProperty "TUI character input & backspace updates buffer" prop_input_buffer
   , testProperty "TUI enter submits prompt and transitions to streaming" prop_submit_prompt
   , testProperty "TUI streaming tokens accumulate monotonically" prop_streaming_tokens
+  , testProperty "TUI stream feeding accumulates and finalizes" prop_tui_stream_feeding
   , testProperty "TUI cancellation transitions to cancelled and emits action" prop_cancellation
   , testProperty "TUI JSON-RPC request formatting conforms to spec" prop_jsonrpc_format
   , testProperty "TUI view rendering produces structured layout" prop_view_render
@@ -56,6 +57,20 @@ prop_streaming_tokens = property $ do
       stFinal = foldl (\s chunk -> fst (stepTui (EvTokenChunk chunk) s)) st0 chunks
   tsActiveResponse stFinal === T.concat chunks
   tsStatus stFinal === TuiStreaming
+
+-- | Stream feeding accumulates all tokens and completes turn into history.
+prop_tui_stream_feeding :: Property
+prop_tui_stream_feeding = property $ do
+  chunks <- forAll $ Gen.list (Range.linear 1 10) (Gen.text (Range.linear 1 20) Gen.alphaNum)
+  let st0 = (initialTuiState "test-session") { tsStatus = TuiWaitingInput }
+      st1 = feedTuiStream chunks st0
+  tsStatus st1 === TuiWaitingInput
+  tsActiveResponse st1 === ""
+  case reverse (tsHistory st1) of
+    (lastMsg:_) -> do
+      msgRole lastMsg === "Assistant"
+      msgContent lastMsg === T.concat chunks
+    _ -> failure
 
 -- | Cancellation during streaming transitions to cancelled and returns ActSendCancel.
 prop_cancellation :: Property

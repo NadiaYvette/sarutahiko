@@ -37,7 +37,14 @@ import Utai
   , omnirouteProfile
   , opencodeProfile
   )
-import Yamaarashi.Flow.Ledger (initTaskLedger, logTaskEvent)
+import Yamaarashi.Flow.Ledger
+  ( initTaskLedger
+  , logTaskEvent
+  , projectKanban
+  , readAllTaskEvents
+  , renderKanbanAscii
+  , vacuumTaskLedger
+  )
 
 -- | Parsed task packet envelope.
 data TaskPacket = TaskPacket
@@ -59,11 +66,29 @@ main = do
   args <- getArgs
   case args of
     ["run", packetPath] -> runTaskPacket packetPath
+    ["kanban", dbPath]  -> showKanbanBoard dbPath
+    ["kanban"]          -> showKanbanBoard ".yamaarashi/events.sqlite3"
     ["--help"]          -> printHelp >> exitSuccess
     ["-h"]              -> printHelp >> exitSuccess
     _                   -> do
-      putStrLn "Usage: yamaarashi-exec run <path/to/packet.yaml>"
+      putStrLn "Usage: yamaarashi-exec (run <path/to/packet.yaml> | kanban [<db-path>])"
       exitFailure
+
+-- | Display pure ASCII Kanban projection from the SQLite event ledger.
+showKanbanBoard :: FilePath -> IO ()
+showKanbanBoard dbPath = do
+  exists <- doesFileExist dbPath
+  if not exists
+    then putStrLn $ "Error: Task ledger database not found at: " ++ dbPath
+    else do
+      rawRows <- readAllTaskEvents dbPath
+      let events = map (\(_, tId, evType, p) -> (tId, evType, p)) rawRows
+          board = projectKanban events
+      putStrLn "============================================================"
+      putStrLn "  Yamaarashi Flow — Autonomous Task Kanban Projection"
+      putStrLn "============================================================"
+      TIO.putStrLn (renderKanbanAscii board)
+      putStrLn "============================================================"
 
 printHelp :: IO ()
 printHelp = do
@@ -71,6 +96,7 @@ printHelp = do
   putStrLn ""
   putStrLn "Commands:"
   putStrLn "  run <packet.yaml>  Execute a task packet in an isolated worktree"
+  putStrLn "  kanban [<db-path>] Display pure ASCII Kanban projection from task ledger"
   putStrLn "  --help             Show this help message"
   putStrLn ""
   putStrLn "Execution Engines (set in packet via 'executor:'):"
@@ -171,6 +197,8 @@ runTaskPacket path = do
     runProcess_ (setWorkingDir repoRoot (proc "git" ["merge", "--ff-only", branchName]))
 
     logEvent dbPath (packetId packet) "TASK_COMPLETED" ("Merged commit " <> commitHash)
+    vacuumTaskLedger dbPath
+    putStrLn $ "=== [yamaarashi-exec] Compacted task ledger database via VACUUM ==="
     putStrLn $ "=== [yamaarashi-exec] SUCCESS: Task " ++ tId ++ " completed successfully! ==="
 
 -- | Initialize SQLite event store table.

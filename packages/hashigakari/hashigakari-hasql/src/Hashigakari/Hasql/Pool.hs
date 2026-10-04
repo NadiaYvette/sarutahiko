@@ -16,6 +16,8 @@ module Hashigakari.Hasql.Pool
   ( withHasqlPool
   , createPool
   , closePool
+  , drainPool
+  , checkPoolHealth
   , acquireConnection
   , releaseConnection
   , poolActiveCount
@@ -26,6 +28,7 @@ import Control.Concurrent.STM
   , newTVarIO
   , readTVar
   , readTVarIO
+  , retry
   , writeTVar
   )
 import Control.Exception (bracket)
@@ -80,3 +83,20 @@ releaseConnection pool = atomically $ do
 -- | Query the current number of active checked-out connections.
 poolActiveCount :: HasqlPool -> IO Int
 poolActiveCount pool = readTVarIO (poolActive pool)
+
+-- | Drain the pool, closing it and blocking until all checked-out connections are released.
+drainPool :: HasqlPool -> IO ()
+drainPool pool = do
+  atomically $ writeTVar (poolClosed pool) True
+  atomically $ do
+    active <- readTVar (poolActive pool)
+    if active <= 0 then pure () else retry
+
+-- | Perform a health check on the pool.
+-- Returns Right True if the pool is open and healthy, or a HasqlError if closed.
+checkPoolHealth :: HasqlPool -> IO (Either HasqlError Bool)
+checkPoolHealth pool = atomically $ do
+  isClosed <- readTVar (poolClosed pool)
+  if isClosed
+    then pure (Left (ConnectionError "Connection pool is closed"))
+    else pure (Right True)

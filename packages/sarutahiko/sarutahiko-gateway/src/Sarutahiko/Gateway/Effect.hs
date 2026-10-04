@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- |
 -- Module      : Sarutahiko.Gateway.Effect
@@ -16,10 +17,12 @@ module Sarutahiko.Gateway.Effect
     GatewayEffect (..)
     -- * Tagless Final Capability Typeclass
   , MonadGateway (..)
+  , processGatewayMessage
   ) where
 
 import Data.Text (Text)
-import Effectful (Dispatch (..), DispatchOf, Effect)
+import Effectful (Dispatch (..), DispatchOf, Effect, Eff, (:>))
+import Effectful.Dispatch.Dynamic (send)
 
 import Sarutahiko.Gateway.Types
 
@@ -51,3 +54,27 @@ class Monad m => MonadGateway m where
   pollGatewayEvents :: m [GatewayEvent]
   -- | Broadcast a notification across a platform.
   broadcastGatewayMessage :: Platform -> Text -> m [Either Text Text]
+
+-- | Default capability instance for the Eff monad.
+instance GatewayEffect :> es => MonadGateway (Eff es) where
+  sendGatewayMessage platform recipient content =
+    send (SendMessage platform recipient content)
+  pollGatewayEvents =
+    send PollEvents
+  broadcastGatewayMessage platform content =
+    send (BroadcastMessage platform content)
+
+-- | Process an incoming gateway event through an assistant turn handler,
+-- automatically dispatching the resulting response back to the sender channel.
+processGatewayMessage
+  :: MonadGateway m
+  => GatewayEvent
+  -> (Text -> m Text) -- ^ Autonomous turn handler taking prompt and producing response
+  -> m (Maybe (Either Text Text))
+processGatewayMessage ev handler = case ev of
+  EvMessageReceived msg -> do
+    resp <- handler (gmContent msg)
+    res <- sendGatewayMessage (gmPlatform msg) (gmSenderId msg) resp
+    pure (Just res)
+  EvConnectionOpened _ _ -> pure Nothing
+  EvConnectionClosed _ _ -> pure Nothing

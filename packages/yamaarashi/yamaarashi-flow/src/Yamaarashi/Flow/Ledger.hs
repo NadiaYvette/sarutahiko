@@ -19,13 +19,16 @@ module Yamaarashi.Flow.Ledger
     initTaskLedger
   , logTaskEvent
   , readTaskEvents
+  , readAllTaskEvents
   , withTaskDatabase
+  , vacuumTaskLedger
 
     -- * Pure Kanban Projection
   , KanbanColumn (..)
   , KanbanCard (..)
   , KanbanBoard (..)
   , projectKanban
+  , renderKanbanAscii
   ) where
 
 import Control.Exception (bracket)
@@ -116,6 +119,33 @@ readTaskEvents dbPath tId = withTaskDatabase dbPath $ \db -> do
           collectRows stmt ((rowId, taskId, evType, payload) : acc)
         SQLite.Done -> pure (reverse acc)
 
+-- | Read all events across all tasks from SQLite in chronological order.
+readAllTaskEvents :: FilePath -> IO [(Int64, Text, Text, Text)]
+readAllTaskEvents dbPath = withTaskDatabase dbPath $ \db -> do
+  stmt <- SQLite.prepare db "SELECT id, task_id, event_type, payload FROM task_events ORDER BY id ASC;"
+  rows <- collectRows stmt []
+  SQLite.finalize stmt
+  pure rows
+  where
+    collectRows stmt acc = do
+      res <- SQLite.step stmt
+      case res of
+        SQLite.Row -> do
+          rowId <- SQLite.column stmt 0 >>= \case
+            SQLite.SQLInteger n -> pure n
+            _                   -> pure 0
+          taskId <- SQLite.column stmt 1 >>= \case
+            SQLite.SQLText t -> pure t
+            _                -> pure ""
+          evType <- SQLite.column stmt 2 >>= \case
+            SQLite.SQLText t -> pure t
+            _                -> pure ""
+          payload <- SQLite.column stmt 3 >>= \case
+            SQLite.SQLText t -> pure t
+            _                -> pure ""
+          collectRows stmt ((rowId, taskId, evType, payload) : acc)
+        SQLite.Done -> pure (reverse acc)
+
 -- | Project an event stream into a Kanban board state.
 projectKanban :: [(Text, Text, Text)] -> KanbanBoard
 projectKanban events = KanbanBoard (foldl stepEvent Map.empty events)
@@ -138,3 +168,30 @@ projectKanban events = KanbanBoard (foldl stepEvent Map.empty events)
       "STEP_FAILED"          -> card { kcColumn = ColFailed, kcLastEvent = evType }
       "VERIFICATION_FAILED"  -> card { kcColumn = ColFailed, kcLastEvent = evType }
       _                      -> card { kcLastEvent = evType }
+
+-- | Vacuum the SQLite task ledger database to reclaim unused disk space.
+vacuumTaskLedger :: FilePath -> IO ()
+vacuumTaskLedger path =
+  bracket (SQLite.open (T.pack path)) SQLite.close $ \db -> do
+    SQLite.exec db "VACUUM;"
+
+-- | Render a pure Kanban board into human-readable ASCII layout.
+renderKanbanAscii :: KanbanBoard -> Text
+renderKanbanAscii (KanbanBoard cardMap) =
+  let cards = Map.elems cardMap
+      byCol col = filter (\c -> kcColumn c == col) cards
+      renderCol title col =
+        let cs = byCol col
+            hdr = "=== " <> title <> " (" <> T.pack (show (length cs)) <> ") ==="
+            items = if null cs
+                      then ["  (empty)"]
+                      else map (\c -> "  * " <> kcTaskId c <> " [attempts: " <> T.pack (show (kcAttempts c)) <> ", last: " <> kcLastEvent c <> "]") cs
+        in T.unlines (hdr : items)
+  in T.intercalate "\n"
+       [ renderCol "BACKLOG" ColBacklog
+       , renderCol "READY" ColReady
+       , renderCol "IN PROGRESS" ColInProgress
+       , renderCol "VERIFYING" ColVerifying
+       , renderCol "DONE" ColDone
+       , renderCol "FAILED" ColFailed
+       ]

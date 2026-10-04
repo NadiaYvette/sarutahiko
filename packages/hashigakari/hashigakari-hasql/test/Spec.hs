@@ -41,6 +41,7 @@ main :: IO ()
 main = defaultMain $ testGroup "hashigakari-hasql tests"
   [ testProperty "Pool acquire and release tracking" prop_pool_acquire_release
   , testProperty "Pool bounded exhaustion" prop_pool_exhaustion
+  , testProperty "Pool drain and health check" prop_pool_drain_health
   , testProperty "Hasql existential stepper drains all rows in order" prop_stepper_drain
   , testProperty "Mock interpreter executes queries faithfully" prop_mock_query
   ]
@@ -92,3 +93,19 @@ prop_mock_query = property $ do
       Anon.get #id r === Identity uid
       Anon.get #name r === Identity uname
     _ -> failure
+
+prop_pool_drain_health :: Property
+prop_pool_drain_health = property $ do
+  let cfg = defaultHasqlConfig { hcPoolSize = 5 }
+  (hBefore, hAfter, activeFinal) <- evalIO $ do
+    pool <- createPool cfg
+    h1 <- checkPoolHealth pool
+    drainPool pool
+    h2 <- checkPoolHealth pool
+    active <- poolActiveCount pool
+    pure (h1, h2, active)
+  hBefore === Right True
+  case hAfter of
+    Left (ConnectionError _) -> success
+    _                        -> failure
+  activeFinal === 0

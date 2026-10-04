@@ -27,6 +27,7 @@ module Hashigakari.Syntax.Compile
   , compileQuery
   , compilePatchUpdate
   , compileInsert
+  , compileUpsert
   , compileDelete
   ) where
 
@@ -150,6 +151,44 @@ compileInsert d tbl row =
       placeholders = T.intercalate ", " (map (renderPlaceholder d) [1 .. length vals])
       sql = "INSERT INTO " <> quoteIdentifier d tbl <> " (" <> colNames <> ") VALUES (" <> placeholders <> ")"
   in CompiledSql sql vals
+
+-- | Compile an UPSERT (insert-or-update) statement from an extensible record with explicit conflict keys.
+compileUpsert
+  :: forall r. (KnownFields r, AllFields r ToSqlValue)
+  => Dialect
+  -> Text
+  -> [Text] -- ^ Conflict key columns (e.g. ["id"])
+  -> Record Identity r
+  -> CompiledSql
+compileUpsert d tbl conflictKeys row =
+  let namesRecord = reifyKnownFields (Proxy @r)
+      names = map T.pack (collapse namesRecord)
+      valsRecord = Anon.cmap (Proxy @ToSqlValue) (\(Identity v) -> K (toSqlValue v)) row
+      vals = collapse valsRecord
+      colNames = T.intercalate ", " (map (quoteIdentifier d) names)
+      placeholders = T.intercalate ", " (map (renderPlaceholder d) [1 .. length vals])
+      insertSql = "INSERT INTO " <> quoteIdentifier d tbl <> " (" <> colNames <> ") VALUES (" <> placeholders <> ")"
+
+      -- Non-key columns to update on conflict
+      updateCols = filter (`notElem` conflictKeys) names
+      targetCols = if null updateCols then names else updateCols
+
+      upsertSuffix = case d of
+        PostgresDialect ->
+          let keysClause = "(" <> T.intercalate ", " (map (quoteIdentifier d) conflictKeys) <> ")"
+              setClauses = map (\c -> quoteIdentifier d c <> " = EXCLUDED." <> quoteIdentifier d c) targetCols
+          in " ON CONFLICT " <> keysClause <> " DO UPDATE SET " <> T.intercalate ", " setClauses
+        SqliteDialect ->
+          let keysClause = "(" <> T.intercalate ", " (map (quoteIdentifier d) conflictKeys) <> ")"
+              setClauses = map (\c -> quoteIdentifier d c <> " = excluded." <> quoteIdentifier d c) targetCols
+          in " ON CONFLICT " <> keysClause <> " DO UPDATE SET " <> T.intercalate ", " setClauses
+        MysqlDialect ->
+          let setClauses = map (\c -> quoteIdentifier d c <> " = VALUES(" <> quoteIdentifier d c <> ")") targetCols
+          in " ON DUPLICATE KEY UPDATE " <> T.intercalate ", " setClauses
+        _ ->
+          ""
+      fullSql = insertSql <> upsertSuffix
+  in CompiledSql fullSql vals
 
 -- | Internal dynamic insert compiler for Query AST node.
 compileInsertDynamic :: Dialect -> Text -> Record Identity r -> CompiledSql
