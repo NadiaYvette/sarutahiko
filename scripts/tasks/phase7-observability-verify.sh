@@ -15,13 +15,16 @@ cabal v2-build sarutahiko-observability \
                sarutahiko-tracing
 
 echo "[Phase7] Build succeeded. Running stub initialization..."
-# Run the stub init function via cabal exec -- runghc so project-local
-# packages are visible.
-cabal exec -- runghc - <<'EOF'
+# Run the stub init function via a temp file through cabal exec.
+# (runghc does not accept '-' for stdin when invoked via cabal exec.)
+TMPSCRIPT=$(mktemp --suffix=.hs)
+trap 'rm -f "$TMPSCRIPT"' EXIT
+cat > "$TMPSCRIPT" <<'EOF'
 import Sarutahiko.Observability (initObservability)
 main :: IO ()
 main = initObservability
 EOF
+cabal exec -- runghc "$TMPSCRIPT"
 
 # If we had a real metrics endpoint, we would curl it here, e.g.:
 # curl -s http://127.0.0.1:9090/metrics | grep '^model_api_requests_total'
