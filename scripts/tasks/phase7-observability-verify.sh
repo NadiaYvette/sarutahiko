@@ -1,24 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Verification script for Phase 7 Observability & Metrics Integration
+# Verification script for Phase 7 Observability & Metrics Integration
 # Steps:
 # 1. Build all observability related packages.
 # 2. (Placeholder) Run the observability orchestration (currently a stub).
 # 3. Ensure the build succeeded – this is the verification gate.
 
 echo "[Phase7] Building observability packages..."
-# Build the four packages and their dependencies
-cabal v2-build packages/sarutahiko-observability \
-               packages/sarutahiko-metrics \
-               packages/sarutahiko-logging \
-               packages/sarutahiko-tracing
+# Build the four packages by name
+cabal v2-build sarutahiko-observability \
+               sarutahiko-metrics \
+               sarutahiko-logging \
+               sarutahiko-tracing
 
 echo "[Phase7] Build succeeded. Running stub initialization..."
-# Run the stub init function via runghc (or via cabal exec if an executable existed).
-# Here we simply invoke the stub library's initObservability function using runghc.
-# This is a no-op placeholder for future real exporter startup.
-runghc - <<'EOF'
+# Run the stub init function via cabal exec -- runghc so project-local
+# packages are visible.
+cabal exec -- runghc - <<'EOF'
 import Sarutahiko.Observability (initObservability)
 main :: IO ()
 main = initObservability

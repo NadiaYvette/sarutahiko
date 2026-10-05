@@ -15,8 +15,6 @@ library
   exposed-modules:     Sarutahiko.Logging
   hs-source-dirs:      src
   build-depends:       base >=4.17 && <5,
-                       fast-logger,
                        bytestring,
-                       text,
-                       sarutahiko-observability
+                       text
   default-language:    GHC2024

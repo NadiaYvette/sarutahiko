@@ -51,6 +51,14 @@ source-repository-package
         large-records
         typelet
 
+-- Local prometheus-client source package
+source-repository-package
+    type: git
+    location: file:///home/nyc/src/prometheus-haskell
+    tag: master
+    subdir:
+        prometheus-client
+
 with-compiler: ghc-9.12.2
 
 package servant

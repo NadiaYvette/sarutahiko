@@ -1,7 +1,6 @@
 module Sarutahiko.Metrics where
 
 import qualified Data.Text as T
-import qualified System.Metrics.Prometheus as Prom
 
 -- | Effect signature for metrics.
 class MonadMetrics m where
