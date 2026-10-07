@@ -20,6 +20,7 @@ import System.Directory
   , findExecutable
   , removeFile
   )
+import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (takeDirectory, (</>))
@@ -63,6 +64,7 @@ data TaskPacket = TaskPacket
 
 main :: IO ()
 main = do
+  setLocaleEncoding utf8
   args <- getArgs
   case args of
     ["run", packetPath] -> runTaskPacket packetPath
@@ -213,8 +215,14 @@ logEvent = logTaskEvent
 parsePacket :: FilePath -> Text -> IO TaskPacket
 parsePacket path txt = do
   let lns = T.lines txt
+      stripQuotes s =
+        let t = T.strip s
+        in if (T.isPrefixOf "\"" t && T.isSuffixOf "\"" t && T.length t >= 2)
+           || (T.isPrefixOf "'" t && T.isSuffixOf "'" t && T.length t >= 2)
+             then T.drop 1 (T.dropEnd 1 t)
+             else t
       findVal key = case filter (T.isPrefixOf (key <> ":")) lns of
-        (l:_) -> T.strip (T.drop (T.length key + 1) l)
+        (l:_) -> stripQuotes (T.strip (T.drop (T.length key + 1) l))
         []    -> ""
       extractList key =
         let afterKey = drop 1 $ dropWhile (\l -> not (T.isPrefixOf (key <> ":") l)) lns
@@ -421,8 +429,8 @@ runAgyStep wtDir packet dbPath mRepairPrompt attempt = do
       putStrLn $ "=== [yamaarashi-exec] Log destination: " ++ workerLogFile ++ " ==="
 
       let modelArgs = case packetModel packet of
-            Just m  -> ["--model", T.unpack m, "--effort", "high"]
-            Nothing -> []
+            Just m | not (T.null m) -> ["--model", T.unpack m]
+            _ -> []
           cmdArgs =
             [ "-p", T.unpack promptContent
             , "--dangerously-skip-permissions"
