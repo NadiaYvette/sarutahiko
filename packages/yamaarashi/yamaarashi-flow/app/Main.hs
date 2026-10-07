@@ -611,31 +611,37 @@ runVerificationGate wtDir packet = do
                 ExitFailure other ->
                   pure (Left $ "Grep audit exited with code: " <> T.pack (show other))
     _ -> do
-      let pkgs = packetPackages packet
-      pkgRes <- if null pkgs
-        then do
-          putStrLn "  [Gate] Running general cabal v2-build..."
-          runGateCmd wtDir "cabal" ["v2-build"]
+      (diffCode, _, _) <- readProcess (setWorkingDir wtDir (proc "git" ["diff", "--quiet", "HEAD"]))
+      (_, untrackedOut, _) <- readProcess (setWorkingDir wtDir (proc "git" ["status", "--porcelain"]))
+      let hasChanges = diffCode /= ExitSuccess || not (BSL.null (BSL.filter (\w -> w /= 32 && w /= 10) untrackedOut))
+      if not hasChanges
+        then pure (Left "Verification gate failed: No files were modified or created by the worker.")
         else do
-          let checkPkgs [] = pure (Right ())
-              checkPkgs (p:ps) = do
-                putStrLn $ "  [Gate] Building package: " ++ T.unpack p
-                r <- runGateCmd wtDir "cabal" ["v2-build", T.unpack p]
-                case r of
-                  Left err -> pure (Left err)
-                  Right () -> checkPkgs ps
-          checkPkgs pkgs
-
-      case pkgRes of
-        Left err -> pure (Left err)
-        Right () -> do
-          let verifyScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ "-verify.sh"
-          hasVerify <- doesFileExist verifyScript
-          if hasVerify
+          let pkgs = packetPackages packet
+          pkgRes <- if null pkgs
             then do
-              putStrLn $ "  [Gate] Running verification script: " ++ verifyScript
-              runGateCmd wtDir "sh" [verifyScript]
-            else pure (Right ())
+              putStrLn "  [Gate] Running general cabal v2-build..."
+              runGateCmd wtDir "cabal" ["v2-build"]
+            else do
+              let checkPkgs [] = pure (Right ())
+                  checkPkgs (p:ps) = do
+                    putStrLn $ "  [Gate] Building package: " ++ T.unpack p
+                    r <- runGateCmd wtDir "cabal" ["v2-build", T.unpack p]
+                    case r of
+                      Left err -> pure (Left err)
+                      Right () -> checkPkgs ps
+              checkPkgs pkgs
+
+          case pkgRes of
+            Left err -> pure (Left err)
+            Right () -> do
+              let verifyScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ "-verify.sh"
+              hasVerify <- doesFileExist verifyScript
+              if hasVerify
+                then do
+                  putStrLn $ "  [Gate] Running verification script: " ++ verifyScript
+                  runGateCmd wtDir "sh" [verifyScript]
+                else pure (Right ())
 
 -- | Execute a verification command and capture its output on failure with a hard 180s timeout.
 runGateCmd :: FilePath -> String -> [String] -> IO (Either Text ())
