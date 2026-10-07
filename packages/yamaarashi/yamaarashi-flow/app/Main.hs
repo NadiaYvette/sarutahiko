@@ -544,9 +544,13 @@ buildWorkerPrompt packet = T.unlines
   , "   - Use tags to jump to symbol definitions instantly (<15 tokens): `grep -w \"^<Symbol>\" tags`"
   , "   - Use `tricorder status --json` or `status(wait: true)` to get JSON compiler diagnostics in <50 tokens."
   , "   - Never dump whole 500-line source modules; view targeted slices with start/end lines."
-  , "4. Verification Pre-requisite: Before finishing, verify that your implementation builds"
+  , "4. Non-Interactive Execution: You are running non-interactively in batch print mode."
+  , "   Apply required file edits directly using file tools (view_file, replace_file_content, write_to_file)."
+  , "   When running commands with run_command, always set WaitMsBeforeAsync to 10000 so commands execute synchronously."
+  , "   Never idle waiting for notifications."
+  , "5. Verification Pre-requisite: Before finishing, verify that your implementation builds"
   , "   and passes tests via `cabal v2-build` and `cabal v2-test`."
-  , "5. Conclude cleanly: Once code is in place and verified, output your summary and exit."
+  , "6. Conclude cleanly: Once code is in place and verified, output your summary and exit."
   ]
 
 -- | Construct structured prompt markdown for repairing a failed verification attempt.
