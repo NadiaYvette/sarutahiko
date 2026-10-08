@@ -13,12 +13,13 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (hClose, openTempFile)
+import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import Test.Tasty
 import Test.Tasty.Hedgehog
 import Yamaarashi.Flow
 
 main :: IO ()
-main = defaultMain tests
+main = setLocaleEncoding utf8 >> defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Yamaarashi Flow Scheduler"
