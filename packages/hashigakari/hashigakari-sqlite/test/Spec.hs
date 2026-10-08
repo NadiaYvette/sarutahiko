@@ -15,6 +15,7 @@ import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import System.Directory (getTemporaryDirectory, removeFile)
+import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import System.IO (hClose, openTempFile)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testProperty)
@@ -26,7 +27,7 @@ import Sarutahiko.Effect.Testkit.STM
 import qualified Yamaarashi as Y
 
 main :: IO ()
-main = defaultMain tests
+main = setLocaleEncoding utf8 >> defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Hashigakari SQLite Carrier & Parity"

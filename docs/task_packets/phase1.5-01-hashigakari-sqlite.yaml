@@ -13,7 +13,7 @@ description: |
   - Production interpreter for `TaskQueue` GADT with atomic transaction leases
     and status transitions (Pending, Claimed, Completed, Failed).
   - Open tagless capability typeclass instances for `MonadEventStore` and `MonadTaskQueue`
-    under the project-wide Façade Pattern (DECISION-002).
+    under the project-wide Facade Pattern (DECISION-002).
   - Pure in-memory STM carrier in `packages/sarutahiko-effect-testkit` for zero-IO testing.
   - Parity test suite verifying identical behavior between SQLite and STM carriers.
 
@@ -23,7 +23,7 @@ dependencies:
 packages:
   - hashigakari-sqlite
 
-executor: agy
+executor: hermes
 run_budget: 600
 
 steps:
