@@ -4,6 +4,7 @@
 
 module Main (main) where
 
+import Control.Concurrent (threadDelay)
 import Control.Exception (bracket, throwIO)
 import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BSC
@@ -21,7 +22,7 @@ import System.Directory
   , removeFile
   )
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
-import System.Environment (getArgs)
+import System.Environment (getArgs, getEnvironment)
 import System.Exit (exitFailure, exitSuccess)
 import System.FilePath (takeDirectory, (</>))
 import System.Process.Typed
@@ -59,21 +60,54 @@ data TaskPacket = TaskPacket
   , packetMaxTurns          :: !(Maybe Int)
   , packetRunBudget         :: !(Maybe Int)
   , packetMaxRepairAttempts :: !(Maybe Int)
+  , packetAllowMetered      :: !Bool
   , packetRawYaml           :: !Text
   } deriving (Show)
+
+-- | Metered environment variables that must be scrubbed from worker environments
+-- to enforce the quota firewall (TP-META-000).
+meteredEnvKeys :: [String]
+meteredEnvKeys =
+  [ "GEMINI_API_KEY"
+  , "ANTHROPIC_API_KEY"
+  , "OPENAI_API_KEY"
+  , "OPENAI_API_BASE"
+  , "GOOGLE_API_KEY"
+  , "AZURE_OPENAI_API_KEY"
+  , "MISTRAL_API_KEY"
+  , "COHERE_API_KEY"
+  ]
+
+-- | Build a sanitized process environment for worker subprocesses.
+-- When allowMetered is False, all metered API keys are scrubbed and
+-- MCP sampling loopback is explicitly disabled.
+buildWorkerEnv :: Bool -> IO [(String, String)]
+buildWorkerEnv allowMetered = do
+  currEnv <- getEnvironment
+  let scrubbed = if allowMetered
+                   then currEnv
+                   else filter (\(k, _) -> k `notElem` meteredEnvKeys) currEnv
+      firewalled =
+        [ ("YAMAARASHI_AIRGAPPED", if allowMetered then "0" else "1")
+        , ("MCP_DISABLE_SAMPLING", "1")
+        , ("AGY_DISABLE_SAMPLING", "1")
+        , ("AGY_ALLOW_METERED", if allowMetered then "1" else "0")
+        ]
+  pure $ firewalled ++ filter (\(k, _) -> k `notElem` map fst firewalled) scrubbed
 
 main :: IO ()
 main = do
   setLocaleEncoding utf8
   args <- getArgs
   case args of
-    ["run", packetPath] -> runTaskPacket packetPath
-    ["kanban", dbPath]  -> showKanbanBoard dbPath
-    ["kanban"]          -> showKanbanBoard ".yamaarashi/events.sqlite3"
-    ["--help"]          -> printHelp >> exitSuccess
-    ["-h"]              -> printHelp >> exitSuccess
-    _                   -> do
-      putStrLn "Usage: yamaarashi-exec (run <path/to/packet.yaml> | kanban [<db-path>])"
+    ["run", "--allow-metered", packetPath] -> runTaskPacket True packetPath
+    ["run", packetPath]                   -> runTaskPacket False packetPath
+    ["kanban", dbPath]                    -> showKanbanBoard dbPath
+    ["kanban"]                            -> showKanbanBoard ".yamaarashi/events.sqlite3"
+    ["--help"]                            -> printHelp >> exitSuccess
+    ["-h"]                                -> printHelp >> exitSuccess
+    _                                     -> do
+      putStrLn "Usage: yamaarashi-exec (run [--allow-metered] <path/to/packet.yaml> | kanban [<db-path>])"
       exitFailure
 
 -- | Display pure ASCII Kanban projection from the SQLite event ledger.
@@ -97,9 +131,9 @@ printHelp = do
   putStrLn "yamaarashi-exec — Standalone Yamaarashi workflow runner"
   putStrLn ""
   putStrLn "Commands:"
-  putStrLn "  run <packet.yaml>  Execute a task packet in an isolated worktree"
-  putStrLn "  kanban [<db-path>] Display pure ASCII Kanban projection from task ledger"
-  putStrLn "  --help             Show this help message"
+  putStrLn "  run [--allow-metered] <packet.yaml>  Execute a task packet in an isolated worktree (airgapped by default)"
+  putStrLn "  kanban [<db-path>]                   Display pure ASCII Kanban projection from task ledger"
+  putStrLn "  --help                               Show this help message"
   putStrLn ""
   putStrLn "Execution Engines (set in packet via 'executor:'):"
   putStrLn "  executor: sarutahiko In-tree autonomous agent core (Phase 5 self-hosting)."
@@ -110,12 +144,14 @@ printHelp = do
   putStrLn "  executor: auto     Uses script if scripts/tasks/<id>.sh exists, else utai."
 
 -- | Execute a task packet through an isolated worktree with SQLite event tracking.
-runTaskPacket :: FilePath -> IO ()
-runTaskPacket path = do
+runTaskPacket :: Bool -> FilePath -> IO ()
+runTaskPacket cliAllowMetered path = do
   putStrLn $ "=== [yamaarashi-exec] Loading task packet: " ++ path ++ " ==="
   content <- TIO.readFile path
-  packet <- parsePacket path content
-  let tId = T.unpack (packetId packet)
+  rawPacket <- parsePacket path content
+  let effectiveAllowMetered = cliAllowMetered || packetAllowMetered rawPacket
+      packet = rawPacket { packetAllowMetered = effectiveAllowMetered }
+      tId = T.unpack (packetId packet)
 
   -- Get repo root directory
   (rootOut, _) <- readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])
@@ -129,6 +165,13 @@ runTaskPacket path = do
   createDirectoryIfMissing True dbDir
   initEventDb dbPath
   logEvent dbPath (packetId packet) "TASK_STARTED" ("Packet loaded from " <> T.pack path)
+  if effectiveAllowMetered
+    then do
+      putStrLn "=== [yamaarashi-exec] Quota Firewall: BYPASSED (--allow-metered) ==="
+      logEvent dbPath (packetId packet) "QUOTA_FIREWALL_BYPASSED" "Metered API access permitted"
+    else do
+      putStrLn "=== [yamaarashi-exec] Quota Firewall: ACTIVE (airgapped from metered APIs) ==="
+      logEvent dbPath (packetId packet) "QUOTA_FIREWALL_ACTIVE" "Metered API keys scrubbed; MCP sampling disabled"
 
   putStrLn $ "=== [yamaarashi-exec] Task: " ++ T.unpack (packetTitle packet) ++ " (" ++ tId ++ ") ==="
   putStrLn $ "=== [yamaarashi-exec] Provisioning isolated worktree at: " ++ worktreeDir ++ " ==="
@@ -251,7 +294,9 @@ parsePacket path txt = do
       pMaxTurnsRaw = findVal "max_turns"
       pBudgetRaw = findVal "run_budget"
       pMaxRepairRaw = findVal "max_repair_attempts"
+      pAllowMeteredRaw = findVal "allow_metered"
 
+      pAllowMetered = pAllowMeteredRaw == "true" || pAllowMeteredRaw == "True"
       pModel = if T.null pModelRaw then Nothing else Just pModelRaw
       pMaxTurns = case reads (T.unpack pMaxTurnsRaw) of
         [(n, "")] -> Just n
@@ -276,6 +321,7 @@ parsePacket path txt = do
       , packetMaxTurns = pMaxTurns
       , packetRunBudget = pBudget
       , packetMaxRepairAttempts = pMaxRepair
+      , packetAllowMetered = pAllowMetered
       , packetRawYaml = txt
       }
 
@@ -298,7 +344,7 @@ executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
       case execMode of
         "script" ->
           if scriptExists
-            then runScriptStep wtDir customScript
+            then runScriptStep (packetAllowMetered packet) wtDir customScript
             else pure (Left $ "Explicit script executor requested, but script missing: " <> T.pack customScript)
         "sarutahiko" ->
           runSarutahikoStep wtDir packet dbPath mRepairPrompt attempt
@@ -310,7 +356,7 @@ executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
           runAgyStep wtDir packet dbPath mRepairPrompt attempt
         "auto" ->
           if scriptExists
-            then runScriptStep wtDir customScript
+            then runScriptStep (packetAllowMetered packet) wtDir customScript
             else runUtaiStep wtDir packet dbPath mRepairPrompt attempt
         other ->
           pure (Left $ "Unknown executor: " <> other <> " (expected 'sarutahiko', 'utai', 'agy', 'hermes', 'script', or 'auto')")
@@ -326,6 +372,7 @@ runSarutahikoStep wtDir packet dbPath mRepairPrompt attempt = do
         Just m  -> m
         Nothing -> "mistral/codestral-latest"
 
+  workerEnv <- buildWorkerEnv (packetAllowMetered packet)
   logEvent dbPath tId "SARUTAHIKO_SPAWNED" ("Sarutahiko autonomous agent core starting turn (attempt " <> T.pack (show attempt) <> ")")
   putStrLn $ "=== [yamaarashi-exec] Launching Sarutahiko autonomous agent core (model: " ++ T.unpack targetModel ++ ", attempt " ++ show attempt ++ ") ==="
 
@@ -334,7 +381,7 @@ runSarutahikoStep wtDir packet dbPath mRepairPrompt attempt = do
         Just bin -> proc bin ["run", "--live", T.unpack promptContent]
         Nothing  -> proc "cabal" ["v2-run", "sarutahiko-agent:exe:sarutahiko", "--", "run", "--live", T.unpack promptContent]
 
-  (code, outBs, errBs) <- readProcess (setWorkingDir wtDir cmdProc)
+  (code, outBs, errBs) <- readProcess (setEnv workerEnv (setWorkingDir wtDir cmdProc))
   let outTxt = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs]))
       logDir = takeDirectory dbPath </> "logs"
       attemptSuffix = if attempt > 1 then "-attempt" ++ show attempt else ""
@@ -353,6 +400,14 @@ runSarutahikoStep wtDir packet dbPath mRepairPrompt attempt = do
       logEvent dbPath tId "SARUTAHIKO_FAILED" errMsg
       pure (Left errMsg)
 
+-- | Check if an error message represents a rate limit / 429 quota exhaustion.
+isRateLimited :: Text -> Bool
+isRateLimited err =
+  let lower = T.toLower err
+  in "429" `T.isInfixOf` lower
+     || "rate limit" `T.isInfixOf` lower
+     || "quota" `T.isInfixOf` lower
+     || "resource_exhausted" `T.isInfixOf` lower
 
 -- | Delegate task execution directly to Utai native LLM client.
 runUtaiStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
@@ -375,9 +430,23 @@ runUtaiStep _wtDir packet dbPath mRepairPrompt attempt = do
         , reqOptions  = defaultModelOptions
         }
       primaryProfile = omnirouteProfile { profileModels = [targetModel] }
-      fallbackProfiles = [primaryProfile, opencodeProfile]
+      fallbackProfiles = if packetAllowMetered packet
+                           then [primaryProfile, opencodeProfile]
+                           else [primaryProfile]
 
-  mRes <- callOpenAIWithFallback fallbackProfiles req
+      queryWithBackoff backoffAttempt maxBackoffs = do
+        mRes <- callOpenAIWithFallback fallbackProfiles req
+        case mRes of
+          Left err | isRateLimited err && backoffAttempt < maxBackoffs -> do
+            let delaySec = 10 * (2 ^ (backoffAttempt - 1))
+            putStrLn $ "=== [yamaarashi-exec] HTTP 429 / Rate Limit detected. Delayed queue backoff: waiting " ++ show delaySec ++ "s (backoff " ++ show backoffAttempt ++ "/" ++ show maxBackoffs ++ ") ==="
+            logEvent dbPath tId "UTAI_RATE_LIMITED" ("Backoff " <> T.pack (show backoffAttempt) <> ": sleeping " <> T.pack (show delaySec) <> "s without tier escalation")
+            threadDelay (delaySec * 1000000)
+            queryWithBackoff (backoffAttempt + 1) maxBackoffs
+          Left err -> pure (Left err)
+          Right resp -> pure (Right resp)
+
+  mRes <- queryWithBackoff (1 :: Int) (3 :: Int)
   case mRes of
     Left err -> do
       let errMsg = "Utai invocation failed: " <> err
@@ -393,11 +462,12 @@ runUtaiStep _wtDir packet dbPath mRepairPrompt attempt = do
       putStrLn "=== [yamaarashi-exec] Utai native invocation succeeded ==="
       pure (Right "utai")
 
--- | Execute task script in the isolated worktree.
-runScriptStep :: FilePath -> FilePath -> IO (Either Text Text)
-runScriptStep wtDir scriptPath = do
+-- | Execute task script in the isolated worktree with quota firewall env.
+runScriptStep :: Bool -> FilePath -> FilePath -> IO (Either Text Text)
+runScriptStep allowMetered wtDir scriptPath = do
   putStrLn $ "  -> Running task script: " ++ scriptPath
-  (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc "sh" [scriptPath]))
+  workerEnv <- buildWorkerEnv allowMetered
+  (code, outBs, errBs) <- readProcess (setEnv workerEnv (setWorkingDir wtDir (proc "sh" [scriptPath])))
   case code of
     ExitSuccess -> pure (Right "script")
     ExitFailure c -> do
@@ -411,6 +481,7 @@ runAgyStep wtDir packet dbPath mRepairPrompt attempt = do
   case mAgy of
     Nothing -> pure (Left "Agy executor requested, but 'agy' executable was not found in PATH.")
     Just agyBin -> do
+      workerEnv <- buildWorkerEnv (packetAllowMetered packet)
       let tId = packetId packet
           promptFile = wtDir </> ".worker-task-prompt.md"
           promptContent = case mRepairPrompt of
@@ -430,16 +501,16 @@ runAgyStep wtDir packet dbPath mRepairPrompt attempt = do
 
       let modelArgs = case packetModel packet of
             Just m | not (T.null m) -> ["--model", T.unpack m]
-            _ -> []
+            _                       -> ["--model", "flash_lite"]
           cmdArgs =
             [ "-p", T.unpack promptContent
             , "--dangerously-skip-permissions"
             , "--print-timeout", budgetStr
             ] ++ modelArgs
 
-      putStrLn $ "=== [yamaarashi-exec] Running: " ++ agyBin ++ " -p <prompt> --dangerously-skip-permissions --print-timeout " ++ budgetStr ++ " ==="
+      putStrLn $ "=== [yamaarashi-exec] Running: " ++ agyBin ++ " -p <prompt> --dangerously-skip-permissions --print-timeout " ++ budgetStr ++ " " ++ unwords modelArgs ++ " ==="
       mRes <- timeout ((budgetSec + 30) * 1000000) $ do
-        (exitCode, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc agyBin cmdArgs))
+        (exitCode, outBs, errBs) <- readProcess (setEnv workerEnv (setWorkingDir wtDir (proc agyBin cmdArgs)))
         BSL.writeFile workerLogFile (BSL.concat [outBs, "\n--- STDERR ---\n", errBs])
         pure exitCode
 
@@ -464,6 +535,7 @@ runHermesStep wtDir packet dbPath mRepairPrompt attempt = do
   case mHermes of
     Nothing -> pure (Left "Hermes executor requested, but 'hermes' executable was not found in PATH.")
     Just hermesBin -> do
+      workerEnv <- buildWorkerEnv (packetAllowMetered packet)
       let tId = packetId packet
           promptFile = wtDir </> ".worker-task-prompt.md"
           promptContent = case mRepairPrompt of
@@ -496,7 +568,7 @@ runHermesStep wtDir packet dbPath mRepairPrompt attempt = do
 
       putStrLn $ "=== [yamaarashi-exec] Command: " ++ hermesBin ++ " --in " ++ wtDir ++ " -z <prompt> --yolo --accept-hooks ==="
       mRes <- timeout ((budgetSec + 30) * 1000000) $ do
-        (exitCode, outBs, errBs) <- readProcess (proc hermesBin cmdArgs)
+        (exitCode, outBs, errBs) <- readProcess (setEnv workerEnv (proc hermesBin cmdArgs))
         BSL.writeFile workerLogFile (BSL.concat [outBs, "\n--- STDERR ---\n", errBs])
         pure exitCode
 
