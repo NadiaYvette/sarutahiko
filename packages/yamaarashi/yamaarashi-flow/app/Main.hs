@@ -771,6 +771,8 @@ createGitCommit wtDir packet actualExecutor = do
   hermesPromptExists <- doesFileExist hermesPromptFile
   when hermesPromptExists $ removeFile hermesPromptFile
 
+  _ <- runProcess (proc "rm" ["-rf", wtDir </> "dist-newstyle"])
+
   runProcess_ (setWorkingDir wtDir (proc "git" ["add", "-A"]))
 
   let baseAttribution = case actualExecutor of
