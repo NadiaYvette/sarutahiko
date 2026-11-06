@@ -499,9 +499,12 @@ runAgyStep wtDir packet dbPath mRepairPrompt attempt = do
       putStrLn $ "=== [yamaarashi-exec] Spawning Agy leaf worker (attempt " ++ show attempt ++ ") in: " ++ wtDir ++ " ==="
       putStrLn $ "=== [yamaarashi-exec] Log destination: " ++ workerLogFile ++ " ==="
 
-      let modelArgs = case packetModel packet of
-            Just m | not (T.null m) -> ["--model", T.unpack m]
-            _                       -> ["--model", "flash_lite"]
+      let normalizeAgyModel "flash_lite" = "gemini-3.8-flash-low"
+          normalizeAgyModel "flash"      = "gemini-3.8-flash-medium"
+          normalizeAgyModel m            = T.unpack m
+          modelArgs = case packetModel packet of
+            Just m | not (T.null m) -> ["--model", normalizeAgyModel m]
+            _                       -> ["--model", "gemini-3.8-flash-low"]
           cmdArgs =
             [ "-p", T.unpack promptContent
             , "--dangerously-skip-permissions"
