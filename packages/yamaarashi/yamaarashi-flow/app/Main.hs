@@ -17,6 +17,7 @@ import qualified Data.Text.IO as TIO
 import System.Directory
   ( copyFile
   , createDirectoryIfMissing
+  , doesDirectoryExist
   , doesFileExist
   , findExecutable
   , removeFile
@@ -190,11 +191,16 @@ runTaskPacket cliAllowMetered path = do
         when hasCabalLocal $ do
           copyFile (repoRoot </> "cabal.project.local") (worktreeDir </> "cabal.project.local")
           putStrLn "=== [yamaarashi-exec] Seeded cabal.project.local into isolated worktree ==="
+        hasDistNewstyle <- doesDirectoryExist (repoRoot </> "dist-newstyle")
+        when hasDistNewstyle $ do
+          _ <- runProcess (proc "ln" ["-s", repoRoot </> "dist-newstyle", worktreeDir </> "dist-newstyle"])
+          putStrLn "=== [yamaarashi-exec] Shared dist-newstyle into isolated worktree ==="
         logEvent dbPath (packetId packet) "WORKTREE_PROVISIONED" (T.pack worktreeDir)
         pure worktreeDir
 
       teardown wtDir = do
         putStrLn $ "=== [yamaarashi-exec] Tearing down worktree: " ++ wtDir ++ " ==="
+        _ <- runProcess (proc "rm" ["-f", wtDir </> "dist-newstyle"])
         _ <- runProcess (proc "git" ["worktree", "remove", "--force", wtDir])
         _ <- runProcess (proc "git" ["branch", "-D", branchName])
         logEvent dbPath (packetId packet) "WORKTREE_TEARDOWN" (T.pack wtDir)
