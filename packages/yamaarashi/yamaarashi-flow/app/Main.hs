@@ -186,6 +186,10 @@ runTaskPacket cliAllowMetered path = do
         when hasTags $ do
           copyFile (repoRoot </> "tags") (worktreeDir </> "tags")
           putStrLn "=== [yamaarashi-exec] Seeded ./tags into isolated worktree ==="
+        hasCabalLocal <- doesFileExist (repoRoot </> "cabal.project.local")
+        when hasCabalLocal $ do
+          copyFile (repoRoot </> "cabal.project.local") (worktreeDir </> "cabal.project.local")
+          putStrLn "=== [yamaarashi-exec] Seeded cabal.project.local into isolated worktree ==="
         logEvent dbPath (packetId packet) "WORKTREE_PROVISIONED" (T.pack worktreeDir)
         pure worktreeDir
 
