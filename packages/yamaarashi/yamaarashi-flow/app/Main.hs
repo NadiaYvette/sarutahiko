@@ -203,6 +203,10 @@ runTaskPacket cliAllowMetered path = do
         when hasOkDir $ do
           _ <- runProcess (proc "ln" ["-s", repoRoot </> ".ok", worktreeDir </> ".ok"])
           putStrLn "=== [yamaarashi-exec] Shared .ok memory index into isolated worktree ==="
+        hasContextful <- doesDirectoryExist (repoRoot </> ".contextful")
+        when hasContextful $ do
+          _ <- runProcess (proc "ln" ["-s", repoRoot </> ".contextful", worktreeDir </> ".contextful"])
+          putStrLn "=== [yamaarashi-exec] Shared .contextful index into isolated worktree ==="
         logEvent dbPath (packetId packet) "WORKTREE_PROVISIONED" (T.pack worktreeDir)
         pure worktreeDir
 
@@ -210,6 +214,7 @@ runTaskPacket cliAllowMetered path = do
         putStrLn $ "=== [yamaarashi-exec] Tearing down worktree: " ++ wtDir ++ " ==="
         _ <- runProcess (proc "rm" ["-rf", wtDir </> ".ok"])
         _ <- runProcess (proc "rm" ["-f", wtDir </> "ok.toml"])
+        _ <- runProcess (proc "rm" ["-rf", wtDir </> ".contextful"])
         _ <- runProcess (proc "rm" ["-f", wtDir </> "dist-newstyle"])
         _ <- runProcess (proc "git" ["worktree", "remove", "--force", wtDir])
         _ <- runProcess (proc "git" ["branch", "-D", branchName])
@@ -643,6 +648,8 @@ buildWorkerPrompt packet = T.unlines
   , "3. Zero-Token Progressive Code Navigation:"
   , "   - Use tags to jump to symbol definitions instantly (<15 tokens): `grep -w \"^<Symbol>\" tags`"
   , "   - Use `ok memory search <query>` to retrieve institutional facts, constraints, and past bug remedies in <50 tokens."
+  , "   - Use `kioku recall <query> --namespace-wide yamaarashi` to query cross-session architectural memory."
+  , "   - Use `cxf search <query>` to query local SQLite FTS5 BM25 ranked context packs from Contextful."
   , "   - Use `tricorder status --json` or `status(wait: true)` to get JSON compiler diagnostics in <50 tokens."
   , "   - Never dump whole 500-line source modules; view targeted slices with start/end lines."
   , "4. Non-Interactive Execution: You are running non-interactively in batch print mode."
@@ -650,7 +657,7 @@ buildWorkerPrompt packet = T.unlines
   , "   When running commands with run_command, always set WaitMsBeforeAsync to 10000 so commands execute synchronously."
   , "   Never idle waiting for notifications."
   , "5. Verification Pre-requisite: Before finishing, verify that your implementation builds"
-  , "   and passes tests via `cabal v2-build` and `cabal v2-test`."
+  , "   and passes tests via `cabal v2-build -j20 --semaphore` and `cabal v2-test`."
   , "6. Institutional Learning: If you discover an invariant or non-obvious bug fix, record it with `ok memory remember \"<lesson>\"` so future workers inherit the knowledge."
   , "7. Conclude cleanly: Once code is in place and verified, output your summary and exit."
   ]
@@ -751,7 +758,10 @@ runVerificationGate wtDir packet = do
 
 -- | Execute a verification command and capture its output on failure with a hard 180s timeout.
 runGateCmd :: FilePath -> String -> [String] -> IO (Either Text ())
-runGateCmd workDir cmd args = do
+runGateCmd workDir cmd rawArgs = do
+  let args = if cmd == "cabal" && not (any (`elem` rawArgs) ["-j", "--jobs"])
+               then rawArgs ++ ["-j20", "--semaphore"]
+               else rawArgs
   mRes <- timeout (180 * 1000000) $ readProcess (setWorkingDir workDir (proc cmd args))
   case mRes of
     Nothing -> do
@@ -790,6 +800,7 @@ createGitCommit wtDir packet actualExecutor = do
 
   _ <- runProcess (proc "rm" ["-rf", wtDir </> ".ok"])
   _ <- runProcess (proc "rm" ["-f", wtDir </> "ok.toml"])
+  _ <- runProcess (proc "rm" ["-rf", wtDir </> ".contextful"])
   _ <- runProcess (proc "rm" ["-rf", wtDir </> "dist-newstyle"])
 
   runProcess_ (setWorkingDir wtDir (proc "git" ["add", "-A"]))
