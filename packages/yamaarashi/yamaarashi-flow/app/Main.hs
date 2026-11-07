@@ -195,11 +195,21 @@ runTaskPacket cliAllowMetered path = do
         when hasDistNewstyle $ do
           _ <- runProcess (proc "ln" ["-s", repoRoot </> "dist-newstyle", worktreeDir </> "dist-newstyle"])
           putStrLn "=== [yamaarashi-exec] Shared dist-newstyle into isolated worktree ==="
+        hasOkToml <- doesFileExist (repoRoot </> "ok.toml")
+        when hasOkToml $ do
+          copyFile (repoRoot </> "ok.toml") (worktreeDir </> "ok.toml")
+          putStrLn "=== [yamaarashi-exec] Seeded ok.toml into isolated worktree ==="
+        hasOkDir <- doesDirectoryExist (repoRoot </> ".ok")
+        when hasOkDir $ do
+          _ <- runProcess (proc "ln" ["-s", repoRoot </> ".ok", worktreeDir </> ".ok"])
+          putStrLn "=== [yamaarashi-exec] Shared .ok memory index into isolated worktree ==="
         logEvent dbPath (packetId packet) "WORKTREE_PROVISIONED" (T.pack worktreeDir)
         pure worktreeDir
 
       teardown wtDir = do
         putStrLn $ "=== [yamaarashi-exec] Tearing down worktree: " ++ wtDir ++ " ==="
+        _ <- runProcess (proc "rm" ["-rf", wtDir </> ".ok"])
+        _ <- runProcess (proc "rm" ["-f", wtDir </> "ok.toml"])
         _ <- runProcess (proc "rm" ["-f", wtDir </> "dist-newstyle"])
         _ <- runProcess (proc "git" ["worktree", "remove", "--force", wtDir])
         _ <- runProcess (proc "git" ["branch", "-D", branchName])
@@ -254,6 +264,11 @@ runTaskPacket cliAllowMetered path = do
     logEvent dbPath (packetId packet) "TASK_COMPLETED" ("Merged commit " <> commitHash)
     vacuumTaskLedger dbPath
     putStrLn $ "=== [yamaarashi-exec] Compacted task ledger database via VACUUM ==="
+
+    -- Record institutional memory in ok memory
+    let memText = "Task " ++ tId ++ " (" ++ T.unpack (packetTitle packet) ++ "): Completed successfully. Merged commit " ++ T.unpack commitHash ++ "."
+    _ <- runProcess (setWorkingDir repoRoot (proc "ok" ["memory", "remember", "--confidence", "high", "--source", "yamaarashi", memText]))
+    putStrLn $ "=== [yamaarashi-exec] Recorded task completion into institutional memory (ok memory) ==="
     putStrLn $ "=== [yamaarashi-exec] SUCCESS: Task " ++ tId ++ " completed successfully! ==="
 
 -- | Initialize SQLite event store table.
@@ -627,6 +642,7 @@ buildWorkerPrompt packet = T.unlines
   , "   Avoid unused imports, incomplete patterns, or partial functions (no head, tail, fromJust, !!)."
   , "3. Zero-Token Progressive Code Navigation:"
   , "   - Use tags to jump to symbol definitions instantly (<15 tokens): `grep -w \"^<Symbol>\" tags`"
+  , "   - Use `ok memory search <query>` to retrieve institutional facts, constraints, and past bug remedies in <50 tokens."
   , "   - Use `tricorder status --json` or `status(wait: true)` to get JSON compiler diagnostics in <50 tokens."
   , "   - Never dump whole 500-line source modules; view targeted slices with start/end lines."
   , "4. Non-Interactive Execution: You are running non-interactively in batch print mode."
@@ -635,7 +651,8 @@ buildWorkerPrompt packet = T.unlines
   , "   Never idle waiting for notifications."
   , "5. Verification Pre-requisite: Before finishing, verify that your implementation builds"
   , "   and passes tests via `cabal v2-build` and `cabal v2-test`."
-  , "6. Conclude cleanly: Once code is in place and verified, output your summary and exit."
+  , "6. Institutional Learning: If you discover an invariant or non-obvious bug fix, record it with `ok memory remember \"<lesson>\"` so future workers inherit the knowledge."
+  , "7. Conclude cleanly: Once code is in place and verified, output your summary and exit."
   ]
 
 -- | Construct structured prompt markdown for repairing a failed verification attempt.
@@ -771,6 +788,8 @@ createGitCommit wtDir packet actualExecutor = do
   hermesPromptExists <- doesFileExist hermesPromptFile
   when hermesPromptExists $ removeFile hermesPromptFile
 
+  _ <- runProcess (proc "rm" ["-rf", wtDir </> ".ok"])
+  _ <- runProcess (proc "rm" ["-f", wtDir </> "ok.toml"])
   _ <- runProcess (proc "rm" ["-rf", wtDir </> "dist-newstyle"])
 
   runProcess_ (setWorkingDir wtDir (proc "git" ["add", "-A"]))
