@@ -40,8 +40,15 @@ library
     import:           commons
     exposed-modules:
         Yamaarashi
+        Yamaarashi.Synthesis.Synquid
     build-depends:
         base >= 4.20 && < 5,
+        containers,
+        text,
+        mtl,
+        polytropos-core,
+        gargamelle-core,
+        gargamelle-fol,
         sarutahiko-effect-signatures >= 0.1
     hs-source-dirs:   src
 
@@ -52,9 +59,13 @@ test-suite yamaarashi-test
     hs-source-dirs:   test
     build-depends:
         base >= 4.20 && < 5,
+        containers,
+        text,
         yamaarashi,
+        polytropos-core,
+        gargamelle-core,
+        gargamelle-fol,
         sarutahiko-effect-signatures >= 0.1,
         tasty,
         hedgehog,
         tasty-hedgehog
-
