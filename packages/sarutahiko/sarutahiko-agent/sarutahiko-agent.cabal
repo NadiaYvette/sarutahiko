@@ -46,6 +46,7 @@ library
         Sarutahiko.Agent.Tools
         Sarutahiko.Agent.Live
         Sarutahiko.Controller.TheoryDriver
+        Sarutahiko.Orchestrator.CoEvolutionLoop
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,
@@ -77,7 +78,9 @@ library
         gargamelle-core,
         gargamelle-fol,
         gargamelle-equational,
-        gargamelle-sheaf
+        gargamelle-sheaf,
+        gargamelle-model,
+        gargamelle-persistence
     hs-source-dirs:   src
 
 executable sarutahiko
@@ -131,6 +134,8 @@ test-suite test-sarutahiko-agent
         gargamelle-fol,
         gargamelle-equational,
         gargamelle-sheaf,
+        gargamelle-model,
+        gargamelle-persistence,
         tasty,
         hedgehog,
         tasty-hedgehog

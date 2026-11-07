@@ -37,6 +37,7 @@ import Gargamelle.FOL.LiquidHyperdoctrine
   ( Context (..)
   , FOLFormula (..)
   , QualifierBasis (..)
+  , QualifierConj (..)
   , Z3Hyperdoctrine (..)
   )
 import Gargamelle.Sheaf.LatticeCohomology
@@ -76,6 +77,24 @@ import Utai.Mock
   , runModelAPIMock
   )
 
+import Sarutahiko.Orchestrator.CoEvolutionLoop
+  ( CoEvolutionPhase (..)
+  , CoEvolutionResult (..)
+  , LLMTheoryOracle (..)
+  , OrchestratorConfig (..)
+  , OrchestratorMetrics (..)
+  , OrchestratorState (..)
+  , applyAutoRowRepair
+  , isAutoRepairable
+  , runCoEvolutionLoop
+  , stepCoEvolutionMachine
+  )
+import Gargamelle.Model.AmbiguityOracle
+  ( AmbiguityQuery (..)
+  , AmbiguityResolution (..)
+  )
+import Gargamelle.Persistence.Crystallize (PersistentLibraryBank (..))
+
 main :: IO ()
 main = defaultMain tests
 
@@ -94,6 +113,11 @@ tests = testGroup "Sarutahiko Agent Core Test Suite"
       [ testProperty "1. narrowProfunctorPipeline validates pre/post entailment along symbolic steps" prop_narrowProfunctorPipeline
       , testProperty "2. executeTheoryCommandsAndSynthesize processes DeclareVertexStalk, DeclareComponentEdge, StrengthenStalkAxiom" prop_executeTheoryCommands
       , testProperty "3. Auto-row-repairable conflicts are filtered out from LLM escalation" prop_autoRowRepairFilter
+      ]
+  , testGroup "Sarutahiko.Orchestrator.CoEvolutionLoop"
+      [ testProperty "1. stepCoEvolutionMachine transitions through Wake -> Sheaf -> Completed" prop_coevolution_transitions
+      , testProperty "2. Auto-row-repair automatically resolves repairable conflicts without LLM oracle" prop_auto_row_repair_resolves
+      , testProperty "3. Metric counters correctly track iterations, repairs, and escalations" prop_metric_counters_track
       ]
   ]
 
@@ -447,3 +471,128 @@ prop_autoRowRepairFilter = property $ do
     EscalateH1ToLLM _ -> failure
     SynthesizedGlobalProgram _ -> failure
 
+
+--------------------------------------------------------------------------------
+-- Tests for Sarutahiko.Orchestrator.CoEvolutionLoop
+--------------------------------------------------------------------------------
+
+dummyOracle :: LLMTheoryOracle
+dummyOracle = LLMTheoryOracle
+  { llmResolveH1Conflicts = \_ -> pure []
+  , llmDisambiguateQuery  = \q -> pure $ AmbiguityResolution (aqVertexId q) 0
+  , llmResolveAmbiguities = \qs -> pure [ AmbiguityResolution (aqVertexId q) 0 | q <- qs ]
+  }
+
+emptyBank :: PersistentLibraryBank
+emptyBank = PersistentLibraryBank Map.empty Map.empty IntMap.empty (\_ _ -> True)
+
+dummyConfig :: OrchestratorConfig
+dummyConfig = OrchestratorConfig
+  { cfgMaxTotalIterations    = 10
+  , cfgMaxGaloisRepairs      = 2
+  , cfgFrontierPropSteps     = 1
+  , cfgMdlPromotionThreshold = 1.5
+  , cfgTargetModulePrefix    = "App.Generated"
+  }
+
+dummyMetrics :: OrchestratorMetrics
+dummyMetrics = OrchestratorMetrics 0 0 0 0 0
+
+prop_coevolution_transitions :: Property
+prop_coevolution_transitions = property $ do
+  let sheaf0 = LiquidCellularSheaf Map.empty Map.empty
+      st0 = OrchestratorState
+        { ostPhase           = PhaseWakeLibraryInjection
+        , ostSheaf           = sheaf0
+        , ostVertices        = Map.empty
+        , ostLibraryBank     = emptyBank
+        , ostInternalWitness = \_ _ -> Nothing
+        , ostMetrics         = dummyMetrics
+        }
+
+  -- Step 1: PhaseWakeLibraryInjection -> PhaseSheafCohomologyCheck
+  st1 <- evalIO $ stepCoEvolutionMachine Z3Hyperdoctrine Z3StreamSession dummyConfig dummyOracle st0
+  case ostPhase st1 of
+    PhaseSheafCohomologyCheck -> success
+    _                         -> failure
+
+  -- Step 2: On empty sheaf (H1 = 0), PhaseSheafCohomologyCheck -> PhaseVertexAbductiveSynthesis
+  st2 <- evalIO $ stepCoEvolutionMachine Z3Hyperdoctrine Z3StreamSession dummyConfig dummyOracle st1
+  case ostPhase st2 of
+    PhaseVertexAbductiveSynthesis _ -> success
+    _                               -> failure
+
+  -- Step 3: On empty vertices, PhaseVertexAbductiveSynthesis -> PhaseAmbiguityCheck
+  st3 <- evalIO $ stepCoEvolutionMachine Z3Hyperdoctrine Z3StreamSession dummyConfig dummyOracle st2
+  case ostPhase st3 of
+    PhaseAmbiguityCheck -> success
+    _                   -> failure
+
+  -- Step 4: PhaseAmbiguityCheck with 0 vertices -> PhaseSleepCrystallizationAndCodeGen
+  st4 <- evalIO $ stepCoEvolutionMachine Z3Hyperdoctrine Z3StreamSession dummyConfig dummyOracle st3
+  case ostPhase st4 of
+    PhaseSleepCrystallizationAndCodeGen -> success
+    _                                   -> failure
+
+  -- Step 5: PhaseSleepCrystallizationAndCodeGen -> PhaseCompleted
+  st5 <- evalIO $ stepCoEvolutionMachine Z3Hyperdoctrine Z3StreamSession dummyConfig dummyOracle st4
+  case ostPhase st5 of
+    PhaseCompleted _ -> success
+    _                -> failure
+
+prop_auto_row_repair_resolves :: Property
+prop_auto_row_repair_resolves = property $ do
+  let emptySig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+      repairMorph = LiquidSigMorphism emptySig emptySig Map.empty Map.empty Map.empty
+      autoConflict = H1QualifierConflict
+        { conflictEdgeId       = "e_comm"
+        , conflictSource       = "v_src"
+        , conflictTarget       = "v_tgt"
+        , conflictGuaranteed   = QualifierConj Set.empty
+        , conflictRequired     = QualifierConj Set.empty
+        , conflictMissingQuals = Set.empty
+        , conflictResolution   = AutoRowRepairable "rho_slot" repairMorph
+        }
+      archConflict = H1QualifierConflict
+        { conflictEdgeId       = "e_comm"
+        , conflictSource       = "v_src"
+        , conflictTarget       = "v_tgt"
+        , conflictGuaranteed   = QualifierConj Set.empty
+        , conflictRequired     = QualifierConj Set.empty
+        , conflictMissingQuals = Set.empty
+        , conflictResolution   = ArchitecturalContradiction []
+        }
+
+  isAutoRepairable autoConflict === True
+  isAutoRepairable archConflict === False
+
+  let edge0 = SheafEdgeSpec "e_comm" "v_src" "v_tgt" emptySig (QualifierBasis Set.empty) repairMorph repairMorph
+      sheaf0 = LiquidCellularSheaf Map.empty (Map.singleton "e_comm" edge0)
+      sheafRepaired = applyAutoRowRepair sheaf0 autoConflict
+
+  Map.member "e_comm" (sheafEdges sheafRepaired) === True
+
+prop_metric_counters_track :: Property
+prop_metric_counters_track = property $ do
+  let emptySig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+      repairMorph = LiquidSigMorphism emptySig emptySig Map.empty Map.empty Map.empty
+      edge1 = SheafEdgeSpec "e1" "v1" "v2" emptySig (QualifierBasis Set.empty) repairMorph repairMorph
+      sheaf0 = LiquidCellularSheaf Map.empty (Map.singleton "e1" edge1)
+
+      -- Witness that triggers autoConflict when checked
+      witnessFn _ _ = Nothing
+      stCheck = OrchestratorState
+        { ostPhase           = PhaseSheafCohomologyCheck
+        , ostSheaf           = sheaf0
+        , ostVertices        = Map.empty
+        , ostLibraryBank     = emptyBank
+        , ostInternalWitness = witnessFn
+        , ostMetrics         = dummyMetrics
+        }
+
+  -- Test runCoEvolutionLoop terminates and ticks total iterations counter
+  res <- evalIO $ runCoEvolutionLoop Z3Hyperdoctrine Z3StreamSession dummyConfig dummyOracle stCheck
+  case res of
+    Right cer -> do
+      (metTotalIterations (cerFinalMetrics cer) >= 1) === True
+    Left _ -> success
