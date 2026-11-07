@@ -47,8 +47,11 @@ library
         Sarutahiko.Agent.Live
         Sarutahiko.Controller.TheoryDriver
         Sarutahiko.Orchestrator.CoEvolutionLoop
+        Yamaarashi.Scheduler.ConcurrentZ3Pool
     build-depends:
         base >= 4.20 && < 5,
+        async >= 2.2,
+        stm >= 2.5,
         bytestring >= 0.12,
         containers >= 0.6,
         text >= 2.1,
@@ -121,6 +124,8 @@ test-suite test-sarutahiko-agent
         direct-sqlite >= 2.3,
         effectful-core >= 2.3,
         large-anon,
+        async >= 2.2,
+        stm >= 2.5,
         sarutahiko-effect-signatures,
         hashigakari-sqlite,
         utai,

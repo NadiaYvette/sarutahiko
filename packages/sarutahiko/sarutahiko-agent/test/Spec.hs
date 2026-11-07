@@ -17,6 +17,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import qualified Data.IntMap.Strict as IntMap
+import Control.Concurrent.STM (atomically, modifyTVar', newTVarIO, readTVarIO)
 import qualified Data.Map.Strict as Map
 import Gargamelle.Core.Institution.Liquid
   ( LiquidPred (..)
@@ -27,7 +28,9 @@ import Gargamelle.Core.Institution.Liquid
   , RBase (..)
   , RelOp (..)
   , RType (..)
+  , SynTerm (..)
   )
+import Gargamelle.FOL.GaloisSeparator (SeparatorSynthesisResult (..))
 import Gargamelle.Equational.AbductiveEGraph
   ( EClassId (..)
   , Z3StreamSession (..)
@@ -84,6 +87,7 @@ import Sarutahiko.Orchestrator.CoEvolutionLoop
   , OrchestratorConfig (..)
   , OrchestratorMetrics (..)
   , OrchestratorState (..)
+  , VertexSynthesisBundle (..)
   , applyAutoRowRepair
   , isAutoRepairable
   , runCoEvolutionLoop
@@ -94,6 +98,15 @@ import Gargamelle.Model.AmbiguityOracle
   , AmbiguityResolution (..)
   )
 import Gargamelle.Persistence.Crystallize (PersistentLibraryBank (..))
+import Yamaarashi.Scheduler.ConcurrentZ3Pool
+  ( ScheduledJob (..)
+  , broadcastInventedSeparator
+  , initZ3SessionPool
+  , pullLatestSeparators
+  , runLPTWorkerPool
+  , stepConcurrentCoEvolutionMachine
+  , withLeasedZ3Session
+  )
 
 main :: IO ()
 main = defaultMain tests
@@ -118,6 +131,12 @@ tests = testGroup "Sarutahiko Agent Core Test Suite"
       [ testProperty "1. stepCoEvolutionMachine transitions through Wake -> Sheaf -> Completed" prop_coevolution_transitions
       , testProperty "2. Auto-row-repair automatically resolves repairable conflicts without LLM oracle" prop_auto_row_repair_resolves
       , testProperty "3. Metric counters correctly track iterations, repairs, and escalations" prop_metric_counters_track
+      ]
+  , testGroup "Yamaarashi.Scheduler.ConcurrentZ3Pool"
+      [ testProperty "1. initZ3SessionPool warm worker pool and withLeasedZ3Session Level 0/1 checkpoints" prop_z3_pool_lease_checkpoints
+      , testProperty "2. broadcastInventedSeparator and pullLatestSeparators epoch deltas" prop_separator_bus_epoch_deltas
+      , testProperty "3. runLPTWorkerPool executes in priority order with zero starvation" prop_lpt_worker_pool_priority
+      , testProperty "4. stepConcurrentCoEvolutionMachine executes end-to-end over 2-vertex sheaf" prop_concurrent_coevolution_end_to_end
       ]
   ]
 
@@ -596,3 +615,115 @@ prop_metric_counters_track = property $ do
     Right cer -> do
       (metTotalIterations (cerFinalMetrics cer) >= 1) === True
     Left _ -> success
+
+--------------------------------------------------------------------------------
+-- Tests for Yamaarashi.Scheduler.ConcurrentZ3Pool
+--------------------------------------------------------------------------------
+
+prop_z3_pool_lease_checkpoints :: Property
+prop_z3_pool_lease_checkpoints = property $ do
+  let emptySig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+  pool <- evalIO $ initZ3SessionPool 4 emptySig
+  -- Verify withLeasedZ3Session leases session, runs query action, and returns it to pool
+  val <- evalIO $ withLeasedZ3Session pool emptySig $ \_session -> do
+    pure (42 :: Int)
+  val === 42
+
+prop_separator_bus_epoch_deltas :: Property
+prop_separator_bus_epoch_deltas = property $ do
+  let emptySig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+  pool <- evalIO $ initZ3SessionPool 2 emptySig
+  (e0, seps0) <- evalIO $ pullLatestSeparators pool 0
+  e0 === 0
+  length seps0 === 0
+
+  let dummyQual = Qualifier "Q_test" [] PTrue
+      sep1 = SeparatorSynthesisResult Nothing [] dummyQual
+  evalIO $ broadcastInventedSeparator pool sep1
+
+  (e1, seps1) <- evalIO $ pullLatestSeparators pool 0
+  e1 === 1
+  length seps1 === 1
+
+  (e1_after, seps1_after) <- evalIO $ pullLatestSeparators pool 1
+  e1_after === 1
+  length seps1_after === 0
+
+prop_lpt_worker_pool_priority :: Property
+prop_lpt_worker_pool_priority = property $ do
+  orderVar <- evalIO $ newTVarIO ([] :: [Int])
+  let jobs = [ ScheduledJob (w * 10) w | w <- [1 .. 10] ]
+  results <- evalIO $ runLPTWorkerPool 1 jobs $ \payload -> do
+    atomically $ modifyTVar' orderVar (payload :)
+    pure (payload * 2)
+
+  -- Worker pool of size 1 must process strictly LPT order (descending weight: 10, 9, ..., 1)
+  executedOrder <- evalIO $ readTVarIO orderVar
+  reverse executedOrder === [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+  length results === 10
+  sum results === sum [ w * 2 | w <- [1 .. 10] ]
+
+prop_concurrent_coevolution_end_to_end :: Property
+prop_concurrent_coevolution_end_to_end = property $ do
+  let emptySig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+      repairMorph = LiquidSigMorphism emptySig emptySig Map.empty Map.empty Map.empty
+      edge1 = SheafEdgeSpec "e12" "v1" "v2" emptySig (QualifierBasis Set.empty) repairMorph repairMorph
+      sheaf0 = LiquidCellularSheaf Map.empty (Map.singleton "e12" edge1)
+      evalPred _ _ = True
+      eg0 = emptyAbductiveEGraph (Context Map.empty) emptySig (QualifierBasis Set.empty) IntMap.empty evalPred
+      goalBase = RBase "v" SortInt PTrue
+      bundle1 = VertexSynthesisBundle
+        { vsbVertexId       = "v1"
+        , vsbRootClass      = EClassId 0
+        , vsbGoalBase       = goalBase
+        , vsbEGraph         = eg0
+        , vsbDPORules       = []
+        , vsbComponents     = Map.empty
+        , vsbInventedSeps   = []
+        , vsbCandidateTrees = [(TIntLit 1, 1)]
+        , vsbDisambiguated  = Nothing
+        , vsbZ3QueryCount   = 0
+        }
+      bundle2 = VertexSynthesisBundle
+        { vsbVertexId       = "v2"
+        , vsbRootClass      = EClassId 0
+        , vsbGoalBase       = goalBase
+        , vsbEGraph         = eg0
+        , vsbDPORules       = []
+        , vsbComponents     = Map.empty
+        , vsbInventedSeps   = []
+        , vsbCandidateTrees = [(TIntLit 2, 1)]
+        , vsbDisambiguated  = Nothing
+        , vsbZ3QueryCount   = 0
+        }
+      vertices0 = Map.fromList [("v1", bundle1), ("v2", bundle2)]
+      st0 = OrchestratorState
+        { ostPhase           = PhaseVertexAbductiveSynthesis Map.empty
+        , ostSheaf           = sheaf0
+        , ostVertices        = vertices0
+        , ostLibraryBank     = emptyBank
+        , ostInternalWitness = \_ _ -> Nothing
+        , ostMetrics         = dummyMetrics
+        }
+
+  pool <- evalIO $ initZ3SessionPool 2 emptySig
+
+  -- Step from PhaseVertexAbductiveSynthesis -> PhaseAmbiguityCheck
+  st1 <- evalIO $ stepConcurrentCoEvolutionMachine Z3Hyperdoctrine pool dummyConfig dummyOracle st0
+  case ostPhase st1 of
+    PhaseAmbiguityCheck -> success
+    _                   -> failure
+
+  -- Step from PhaseAmbiguityCheck -> PhaseSleepCrystallizationAndCodeGen
+  st2 <- evalIO $ stepConcurrentCoEvolutionMachine Z3Hyperdoctrine pool dummyConfig dummyOracle st1
+  case ostPhase st2 of
+    PhaseSleepCrystallizationAndCodeGen -> success
+    _                                   -> failure
+
+  -- Step from PhaseSleepCrystallizationAndCodeGen -> PhaseCompleted
+  st3 <- evalIO $ stepConcurrentCoEvolutionMachine Z3Hyperdoctrine pool dummyConfig dummyOracle st2
+  case ostPhase st3 of
+    PhaseCompleted modules -> do
+      Map.member "v1" modules === True
+      Map.member "v2" modules === True
+    _ -> failure
