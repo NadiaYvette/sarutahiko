@@ -18,7 +18,14 @@ Reset Rule: Fresh sessions read `PLAN.md` for roadmap invariants and this file f
 
 ## 2. Recent Completed Actions
 
-1. **Executed Wave 2 Autonomous Synthesis Packets (`TP-META-005`: `TP-005A`..`TP-005D`):**
+1. **Implemented Kagami-Ita (鏡板) Token Accounting Substrate & Parallelised Test Suites (`638f705`):**
+   - Implemented `Sarutahiko.Observability.TokenLedger`: turn token breakdown, cumulative counters, cache hit ratio calculation, and budget alarms.
+   - Implemented `Sarutahiko.Observability.Transcript`: JSONL streaming ingestion from `transcript.jsonl` logs.
+   - Implemented `Sarutahiko.Observability.KagamiIta`: operational health diagnosis and circuit breaker state evaluation (`BreakerClosed` vs `BreakerTripped`).
+   - Added comprehensive Tasty/Hedgehog test suite (`test-sarutahiko-observability`) passing 100% (9/9 tests).
+   - Added `docs/notes/KAGAMI_ITA_TOKEN_LEDGER_DESIGN.md` documenting forensic token audit and quota remediation rules.
+   - Added `-threaded -rtsopts -with-rtsopts=-N` across all test suites in `sarutahiko`, `kogaki`, and `yamaarashi`.
+2. **Executed Wave 2 Autonomous Synthesis Packets (`TP-META-005`: `TP-005A`..`TP-005D`):**
    - **`TP-005A` (`5d8c826`):** Implemented `Yamaarashi.Synthesis.Synquid` bidirectional liquid synthesis engine polymorphic over Polytropos rows and Penelope algebraic effects. Top-down goal-directed synthesis (`synthesizeGoal`, `synthesizeScalarGoal`, `synthesizeSpineApp`), abductive branch generation with institutional morphisms, variant exhaustion via `absurdVariantF`, and Penelope effect bind. Verified with 13 Hedgehog unit tests passing 100% in `yamaarashi-test`.
    - **`TP-005B` (`fd8e9d6`):** Implemented `Sarutahiko.Controller.TheoryDriver` DSL and bidirectional Liquid profunctor pipeline (`narrowProfunctorPipeline`, `executeTheoryCommandsAndSynthesize`). Verified with unit tests passing 100% in `test-sarutahiko-agent`.
    - **`TP-005C` (`3b3d316`):** Implemented `Sarutahiko.Orchestrator.CoEvolutionLoop` 7-phase Mealy state machine (`stepCoEvolutionMachine`, `runCoEvolutionLoop`) mediating between deductive Gargamelle cycles, H1 sheaf conflict escalations, Active Ambiguity Oracle queries, and Wake-Sleep library crystallization. Auto-row-repair automatically resolves repairable conflicts without invoking LLM oracle. Verified with unit tests passing 100% in `test-sarutahiko-agent`.
