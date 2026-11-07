@@ -66,6 +66,7 @@ test-suite yamaarashi-flow-test
     type:             exitcode-stdio-1.0
     main-is:          Spec.hs
     hs-source-dirs:   test
+    ghc-options:      -threaded -rtsopts -with-rtsopts=-N
     build-depends:
         base >= 4.20 && < 5,
         containers >= 0.6,

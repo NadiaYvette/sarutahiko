@@ -1,10 +1,12 @@
-module Sarutahiko.Observability where
+-- | Module: Sarutahiko.Observability
+-- Description: Top-level Kagami-Ita (鏡板) observability and token accounting re-exports
+module Sarutahiko.Observability
+  ( -- * Re-exports
+    module Sarutahiko.Observability.TokenLedger
+  , module Sarutahiko.Observability.Transcript
+  , module Sarutahiko.Observability.KagamiIta
+  ) where
 
--- | Top‑level orchestration placeholder for observability.
---   In Phase 7 this will spin up the Prometheus exporter,
---   the Jaeger/OTLP trace exporter, and the replay CLI support.
---   For now we expose a dummy initializer that can be linked
---   by other packages.
-
-initObservability :: IO ()
-initObservability = putStrLn "[sarutahiko-observability] initialized (stub)"
+import Sarutahiko.Observability.KagamiIta
+import Sarutahiko.Observability.TokenLedger
+import Sarutahiko.Observability.Transcript
