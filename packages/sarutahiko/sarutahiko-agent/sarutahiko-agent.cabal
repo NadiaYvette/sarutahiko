@@ -45,6 +45,7 @@ library
         Sarutahiko.Agent.Loop
         Sarutahiko.Agent.Tools
         Sarutahiko.Agent.Live
+        Sarutahiko.Controller.TheoryDriver
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,
@@ -70,7 +71,13 @@ library
         sarutahiko-plugins,
         hashigakari-sqlite,
         utai,
-        yamaarashi-flow
+        yamaarashi,
+        yamaarashi-flow,
+        polytropos-core,
+        gargamelle-core,
+        gargamelle-fol,
+        gargamelle-equational,
+        gargamelle-sheaf
     hs-source-dirs:   src
 
 executable sarutahiko
@@ -118,6 +125,12 @@ test-suite test-sarutahiko-agent
         sarutahiko-hooks,
         sarutahiko-plugins,
         sarutahiko-agent,
+        yamaarashi,
+        polytropos-core,
+        gargamelle-core,
+        gargamelle-fol,
+        gargamelle-equational,
+        gargamelle-sheaf,
         tasty,
         hedgehog,
         tasty-hedgehog
