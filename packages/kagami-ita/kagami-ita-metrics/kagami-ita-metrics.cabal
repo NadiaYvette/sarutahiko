@@ -1,0 +1,33 @@
+cabal-version:       3.14
+name:                kagami-ita-metrics
+version:             0.1.0.0
+synopsis:            Metrics effect and Prometheus exporter for Kagami-Ita (鏡板)
+description:         Provides MonadMetrics effect signature and Prometheus exporter implementation.
+license:             BSD-3-Clause
+license-file:        LICENSE
+author:              Nadia Yvette Chambers
+maintainer:          nadia.yvette.chambers@ik.me
+category:            Development, Observability
+build-type:          Simple
+extra-source-files:  README.md
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:              commons
+    exposed-modules:     KagamiIta.Metrics
+                         Sarutahiko.Metrics
+    hs-source-dirs:      src
+    build-depends:       base >=4.20 && <5,
+                         bytestring >= 0.12,
+                         text >= 2.1
