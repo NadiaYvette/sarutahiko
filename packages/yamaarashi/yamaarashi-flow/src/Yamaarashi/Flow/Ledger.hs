@@ -20,6 +20,8 @@ module Yamaarashi.Flow.Ledger
   , logTaskEvent
   , readTaskEvents
   , readAllTaskEvents
+  , readTaskEventsWithTime
+  , readAllTaskIds
   , withTaskDatabase
   , vacuumTaskLedger
 
@@ -144,6 +146,55 @@ readAllTaskEvents dbPath = withTaskDatabase dbPath $ \db -> do
             SQLite.SQLText t -> pure t
             _                -> pure ""
           collectRows stmt ((rowId, taskId, evType, payload) : acc)
+        SQLite.Done -> pure (reverse acc)
+
+-- | Read all events for a given task from SQLite with timestamp.
+readTaskEventsWithTime :: FilePath -> Text -> IO [(Int64, Text, Text, Text, Text)]
+readTaskEventsWithTime dbPath tId = withTaskDatabase dbPath $ \db -> do
+  stmt <- SQLite.prepare db "SELECT id, task_id, event_type, payload, COALESCE(created_at, '') FROM task_events WHERE task_id = ? ORDER BY id ASC;"
+  SQLite.bind stmt [SQLite.SQLText tId]
+  rows <- collectRows stmt []
+  SQLite.finalize stmt
+  pure rows
+  where
+    collectRows stmt acc = do
+      res <- SQLite.step stmt
+      case res of
+        SQLite.Row -> do
+          rowId <- SQLite.column stmt 0 >>= \case
+            SQLite.SQLInteger n -> pure n
+            _                   -> pure 0
+          taskId <- SQLite.column stmt 1 >>= \case
+            SQLite.SQLText t -> pure t
+            _                -> pure ""
+          evType <- SQLite.column stmt 2 >>= \case
+            SQLite.SQLText t -> pure t
+            _                -> pure ""
+          payload <- SQLite.column stmt 3 >>= \case
+            SQLite.SQLText t -> pure t
+            _                -> pure ""
+          createdAt <- SQLite.column stmt 4 >>= \case
+            SQLite.SQLText t -> pure t
+            _                -> pure ""
+          collectRows stmt ((rowId, taskId, evType, payload, createdAt) : acc)
+        SQLite.Done -> pure (reverse acc)
+
+-- | Read all distinct task IDs recorded in the ledger.
+readAllTaskIds :: FilePath -> IO [Text]
+readAllTaskIds dbPath = withTaskDatabase dbPath $ \db -> do
+  stmt <- SQLite.prepare db "SELECT DISTINCT task_id FROM task_events ORDER BY id ASC;"
+  rows <- collectRows stmt []
+  SQLite.finalize stmt
+  pure rows
+  where
+    collectRows stmt acc = do
+      res <- SQLite.step stmt
+      case res of
+        SQLite.Row -> do
+          tId <- SQLite.column stmt 0 >>= \case
+            SQLite.SQLText t -> pure t
+            _                -> pure ""
+          collectRows stmt (tId : acc)
         SQLite.Done -> pure (reverse acc)
 
 -- | Project an event stream into a Kanban board state.

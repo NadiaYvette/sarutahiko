@@ -6,9 +6,10 @@ module Main (main) where
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (bracket, throwIO)
-import Control.Monad (when)
+import Control.Monad (filterM, when)
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as BSL
+import Data.List (isPrefixOf)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -20,12 +21,13 @@ import System.Directory
   , doesDirectoryExist
   , doesFileExist
   , findExecutable
+  , listDirectory
   , removeFile
   )
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import System.Environment (getArgs, getEnvironment)
 import System.Exit (exitFailure, exitSuccess)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (takeBaseName, takeDirectory, (</>))
 import System.Process.Typed
 import System.Timeout (timeout)
 
@@ -45,6 +47,8 @@ import Yamaarashi.Flow.Ledger
   , logTaskEvent
   , projectKanban
   , readAllTaskEvents
+  , readAllTaskIds
+  , readTaskEventsWithTime
   , renderKanbanAscii
   , vacuumTaskLedger
   )
@@ -103,12 +107,15 @@ main = do
   case args of
     ["run", "--allow-metered", packetPath] -> runTaskPacket True packetPath
     ["run", packetPath]                   -> runTaskPacket False packetPath
+    ("snapshot" : snapArgs)               -> handleSnapshot snapArgs
+    ["telemetry", tId]                    -> showTelemetry (Just (T.pack tId))
+    ["telemetry"]                         -> showTelemetry Nothing
     ["kanban", dbPath]                    -> showKanbanBoard dbPath
     ["kanban"]                            -> showKanbanBoard ".yamaarashi/events.sqlite3"
     ["--help"]                            -> printHelp >> exitSuccess
     ["-h"]                                -> printHelp >> exitSuccess
     _                                     -> do
-      putStrLn "Usage: yamaarashi-exec (run [--allow-metered] <path/to/packet.yaml> | kanban [<db-path>])"
+      putStrLn "Usage: yamaarashi-exec (run [--allow-metered] <path/to/packet.yaml> | snapshot <id> [...] | telemetry [<id>] | kanban [<db-path>])"
       exitFailure
 
 -- | Display pure ASCII Kanban projection from the SQLite event ledger.
@@ -133,16 +140,223 @@ printHelp = do
   putStrLn ""
   putStrLn "Commands:"
   putStrLn "  run [--allow-metered] <packet.yaml>  Execute a task packet in an isolated worktree (airgapped by default)"
+  putStrLn "  snapshot <id> [--title \"...\"] [--verify \"...\"] [--packages \"p1,p2\"]"
+  putStrLn "                                       Snapshot workspace diff into a deterministic task packet & runner script"
+  putStrLn "  telemetry [<id>]                     Display timing intervals and execution telemetry from the event ledger"
   putStrLn "  kanban [<db-path>]                   Display pure ASCII Kanban projection from task ledger"
   putStrLn "  --help                               Show this help message"
   putStrLn ""
   putStrLn "Execution Engines (set in packet via 'executor:'):"
   putStrLn "  executor: sarutahiko In-tree autonomous agent core (Phase 5 self-hosting)."
-  putStrLn "  executor: utai     Direct zero-cost model invocation via Utai native client (reliable, fast)."
-  putStrLn "  executor: agy      Delegates turn execution to Antigravity CLI print mode (fast, robust)."
-  putStrLn "  executor: hermes   Delegates turn execution to a spawned Hermes leaf worker."
-  putStrLn "  executor: script   Runs scripts/tasks/<id>.sh in the isolated worktree."
-  putStrLn "  executor: auto     Uses script if scripts/tasks/<id>.sh exists, else utai."
+  putStrLn "  executor: utai       Direct zero-cost model invocation via Utai native client (reliable, fast)."
+  putStrLn "  executor: agy        Delegates turn execution to Antigravity CLI print mode (fast, robust)."
+  putStrLn "  executor: hermes     Delegates turn execution to a spawned Hermes leaf worker."
+  putStrLn "  executor: yaegi      Runs scripts/tasks/<id>.go via Yaegi Go interpreter (type-safe, zero build)."
+  putStrLn "  executor: go         Alias for yaegi executor."
+  putStrLn "  executor: script     Runs scripts/tasks/<id>.sh in the isolated worktree."
+  putStrLn "  executor: auto       Prefers .go (yaegi) or .sh (script) if present, else utai."
+
+-- | Parse command line arguments for the snapshot command.
+-- Syntax: snapshot <packet-id> [--title <title>] [--verify <cmd>] [--packages <p1,p2...>]
+data SnapshotOptions = SnapshotOptions
+  { snapId       :: !Text
+  , snapTitle    :: !(Maybe Text)
+  , snapVerify   :: !(Maybe Text)
+  , snapPackages :: ![Text]
+  }
+
+parseSnapshotOptions :: [String] -> Either String SnapshotOptions
+parseSnapshotOptions [] = Left "Missing required <packet-id> argument for snapshot command."
+parseSnapshotOptions (rawId : rest)
+  | "-" `isPrefixOf` rawId = Left $ "First argument must be <packet-id>, got flag: " ++ rawId
+  | otherwise = go rest (SnapshotOptions (T.pack rawId) Nothing Nothing [])
+  where
+    go [] opts = Right opts
+    go ("--title" : val : xs) opts = go xs (opts { snapTitle = Just (T.pack val) })
+    go ("-t" : val : xs) opts = go xs (opts { snapTitle = Just (T.pack val) })
+    go ("--verify" : val : xs) opts = go xs (opts { snapVerify = Just (T.pack val) })
+    go ("-v" : val : xs) opts = go xs (opts { snapVerify = Just (T.pack val) })
+    go ("--packages" : val : xs) opts =
+      let pkgs = filter (not . T.null) (map T.strip (T.splitOn "," (T.pack val)))
+      in go xs (opts { snapPackages = pkgs })
+    go ("-p" : val : xs) opts =
+      let pkgs = filter (not . T.null) (map T.strip (T.splitOn "," (T.pack val)))
+      in go xs (opts { snapPackages = pkgs })
+    go (unknown : _) _ = Left $ "Unrecognized flag for snapshot: " ++ unknown
+
+-- | Capture the current working directory diff and produce a deterministic task packet.
+handleSnapshot :: [String] -> IO ()
+handleSnapshot args = case parseSnapshotOptions args of
+  Left err -> do
+    putStrLn $ "Error: " ++ err
+    putStrLn "Usage: yamaarashi-exec snapshot <packet-id> [--title <title>] [--verify <cmd>] [--packages <pkg1,pkg2>]"
+    exitFailure
+  Right opts -> do
+    let tId = snapId opts
+    putStrLn $ "=== [yamaarashi-exec] Snapshotting workspace into task packet: " ++ T.unpack tId ++ " ==="
+
+    (rootOut, _) <- readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])
+    let repoRoot = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
+        repoName = takeBaseName repoRoot
+        scriptsDir = repoRoot </> "scripts" </> "tasks"
+        plansDir = repoRoot </> "plans" </> "task_packets"
+        pendingQueueDir = "/home/nyc/src/plans/tier2-yamaarashi/pending"
+
+    createDirectoryIfMissing True scriptsDir
+    createDirectoryIfMissing True plansDir
+
+    -- Stage untracked files intent-to-add so git diff HEAD captures both modifications and new files
+    _ <- runProcess (setWorkingDir repoRoot (proc "git" ["add", "-N", "."]))
+    (diffCode, diffBs, _) <- readProcess (setWorkingDir repoRoot (proc "git" ["diff", "HEAD"]))
+    _ <- runProcess (setWorkingDir repoRoot (proc "git" ["reset"]))
+
+    let diffStrict = BSL.toStrict diffBs
+    if diffCode /= ExitSuccess || BSC.null (BSC.filter (\c -> c /= ' ' && c /= '\n') diffStrict)
+      then do
+        putStrLn "Error: No modified or untracked files detected in workspace. Nothing to snapshot!"
+        exitFailure
+      else do
+        let patchFile  = scriptsDir </> (T.unpack tId ++ ".patch")
+            shFile     = scriptsDir </> (T.unpack tId ++ ".sh")
+            verifyFile = scriptsDir </> (T.unpack tId ++ "-verify.sh")
+            yamlFile   = plansDir </> (T.unpack tId ++ ".yaml")
+            titleText  = case snapTitle opts of
+              Just t  -> t
+              Nothing -> tId
+
+        -- 1. Write .patch file
+        BSL.writeFile patchFile diffBs
+        putStrLn $ "  [1/4] Created deterministic patch: " ++ patchFile
+
+        -- 2. Write .sh replay script
+        let shContent = T.unlines
+              [ "#!/usr/bin/env bash"
+              , "set -euo pipefail"
+              , ""
+              , "SCRIPT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\""
+              , "PATCH_FILE=\"${SCRIPT_DIR}/" <> tId <> ".patch\""
+              , ""
+              , "if [ -f \"${PATCH_FILE}\" ]; then"
+              , "  echo \"=== [yamaarashi-task] Applying snapshot patch: ${PATCH_FILE} ===\""
+              , "  git apply --whitespace=nowarn \"${PATCH_FILE}\""
+              , "fi"
+              ]
+        TIO.writeFile shFile shContent
+        _ <- runProcess (proc "chmod" ["+x", shFile])
+        putStrLn $ "  [2/4] Created task runner script:  " ++ shFile
+
+        -- 3. Write -verify.sh script
+        defaultVerifyCmd <- case snapVerify opts of
+          Just vCmd -> pure vCmd
+          Nothing -> do
+            let defaultBinVerify = repoRoot </> "bin" </> (repoName ++ "-verify")
+            hasBinVerify <- doesFileExist defaultBinVerify
+            if hasBinVerify
+              then pure (T.pack ("./bin/" ++ repoName ++ "-verify"))
+              else pure "cabal v2-build -j20 --semaphore && cabal v2-test"
+
+        let verifyContent = T.unlines
+              [ "#!/usr/bin/env bash"
+              , "set -euo pipefail"
+              , ""
+              , "echo \"=== [yamaarashi-verify] Running verification gate for " <> tId <> " ===\""
+              , defaultVerifyCmd
+              ]
+        TIO.writeFile verifyFile verifyContent
+        _ <- runProcess (proc "chmod" ["+x", verifyFile])
+        putStrLn $ "  [3/4] Created verification script: " ++ verifyFile
+
+        -- 4. Detect packages
+        effectivePkgs <- if not (null (snapPackages opts))
+          then pure (snapPackages opts)
+          else do
+            let pkgsDir = repoRoot </> "packages"
+            hasPkgsDir <- doesDirectoryExist pkgsDir
+            if hasPkgsDir
+              then do
+                entries <- listDirectory pkgsDir
+                let isPkgDir d = doesFileExist (pkgsDir </> d </> (d ++ ".cabal"))
+                validPkgs <- filterM isPkgDir entries
+                if null validPkgs
+                  then pure [T.pack repoName]
+                  else pure (map T.pack validPkgs)
+              else pure [T.pack repoName]
+
+        -- 5. Write .yaml task packet
+        let yamlContent = T.unlines $
+              [ "id: " <> tId
+              , "title: \"" <> titleText <> "\""
+              , "description: |"
+              , "  " <> titleText
+              , "packages:"
+              ] ++ map (\p -> "  - " <> p) effectivePkgs ++
+              [ "executor: script"
+              , "max_repair_attempts: 3"
+              , "allow_metered: false"
+              ]
+        TIO.writeFile yamlFile yamlContent
+        putStrLn $ "  [4/4] Created task packet YAML:    " ++ yamlFile
+
+        -- 6. Copy to pending queue if directory exists
+        hasPendingDir <- doesDirectoryExist pendingQueueDir
+        when hasPendingDir $ do
+          let pendingTarget = pendingQueueDir </> (T.unpack tId ++ ".yaml")
+          copyFile yamlFile pendingTarget
+          putStrLn $ "  -> Seeded into pending queue:     " ++ pendingTarget
+
+        putStrLn "============================================================"
+        putStrLn $ "=== [yamaarashi-exec] SUCCESS: Task " ++ T.unpack tId ++ " snapshot created! ==="
+        putStrLn "To execute in an isolated worktree:"
+        putStrLn $ "  yamaarashi-exec run " ++ yamlFile
+        putStrLn "============================================================"
+
+-- | Display execution telemetry and timing breakdown from the task ledger.
+showTelemetry :: Maybe Text -> IO ()
+showTelemetry mTargetId = do
+  (rootOut, _) <- readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])
+  let repoRoot = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
+      dbPath   = repoRoot </> ".yamaarashi" </> "events.sqlite3"
+  exists <- doesFileExist dbPath
+  if not exists
+    then putStrLn $ "Error: Task ledger database not found at: " ++ dbPath
+    else case mTargetId of
+      Just tId -> showSingleTaskTelemetry dbPath tId
+      Nothing  -> do
+        allIds <- readAllTaskIds dbPath
+        if null allIds
+          then putStrLn "No task executions recorded in ledger yet."
+          else do
+            putStrLn "============================================================"
+            putStrLn "  Yamaarashi Flow — Task Execution Telemetry"
+            putStrLn "============================================================"
+            mapM_ (showSingleTaskTelemetry dbPath) allIds
+
+showSingleTaskTelemetry :: FilePath -> Text -> IO ()
+showSingleTaskTelemetry dbPath tId = do
+  events <- readTaskEventsWithTime dbPath tId
+  if null events
+    then putStrLn $ "No events recorded for task: " ++ T.unpack tId
+    else do
+      putStrLn $ "\n--- Task Telemetry: " ++ T.unpack tId ++ " ---"
+      putStrLn "Timeline Events:"
+      let formatEvent (_, _, evType, payload, createdAt) =
+            let timeStr = if T.null createdAt then "----:--:-- --:--:--" else T.unpack createdAt
+                shortPayload = if T.length payload > 60 then T.take 57 payload <> "..." else payload
+            in "  [" ++ timeStr ++ "] " ++ take 22 (T.unpack evType ++ repeat ' ') ++ ": " ++ T.unpack shortPayload
+      mapM_ (putStrLn . formatEvent) events
+
+      let completedEvents = filter (\(_, _, evType, _, _) -> evType == "TASK_COMPLETED") events
+          failedEvents    = filter (\(_, _, evType, _, _) -> evType == "TASK_FAILED") events
+          statusStr = if not (null completedEvents)
+                        then "COMPLETED"
+                        else if not (null failedEvents)
+                          then "FAILED"
+                          else "IN_PROGRESS"
+          stepEvents = filter (\(_, _, evType, _, _) -> evType `elem` ["STEP_EXECUTED", "STEP_FAILED"]) events
+          cycleCount = length stepEvents
+
+      putStrLn $ "Status:        " ++ statusStr
+      putStrLn $ "Cycles Run:    " ++ show (max 1 cycleCount)
 
 -- | Execute a task packet through an isolated worktree with SQLite event tracking.
 runTaskPacket :: Bool -> FilePath -> IO ()
@@ -368,14 +582,26 @@ executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
       TIO.writeFile targetFile fixedLexerContent
       pure (Right "inline")
     _ -> do
-      let customScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ ".sh"
-      scriptExists <- doesFileExist customScript
+      let customShScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ ".sh"
+          customGoScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ ".go"
+      shExists <- doesFileExist customShScript
+      goExists <- doesFileExist customGoScript
       let execMode = packetExecutor packet
       case execMode of
         "script" ->
-          if scriptExists
-            then runScriptStep (packetAllowMetered packet) wtDir customScript
-            else pure (Left $ "Explicit script executor requested, but script missing: " <> T.pack customScript)
+          if shExists
+            then runScriptStep (packetAllowMetered packet) wtDir customShScript
+            else if goExists
+              then runYaegiStep (packetAllowMetered packet) wtDir customGoScript
+              else pure (Left $ "Explicit script executor requested, but script missing: " <> T.pack customShScript)
+        "yaegi" ->
+          if goExists
+            then runYaegiStep (packetAllowMetered packet) wtDir customGoScript
+            else pure (Left $ "Explicit yaegi executor requested, but script missing: " <> T.pack customGoScript)
+        "go" ->
+          if goExists
+            then runYaegiStep (packetAllowMetered packet) wtDir customGoScript
+            else pure (Left $ "Explicit go executor requested, but script missing: " <> T.pack customGoScript)
         "sarutahiko" ->
           runSarutahikoStep wtDir packet dbPath mRepairPrompt attempt
         "utai" ->
@@ -385,11 +611,13 @@ executeTaskStep wtDir packet dbPath mRepairPrompt attempt = do
         "agy" ->
           runAgyStep wtDir packet dbPath mRepairPrompt attempt
         "auto" ->
-          if scriptExists
-            then runScriptStep (packetAllowMetered packet) wtDir customScript
-            else runUtaiStep wtDir packet dbPath mRepairPrompt attempt
+          if goExists
+            then runYaegiStep (packetAllowMetered packet) wtDir customGoScript
+            else if shExists
+              then runScriptStep (packetAllowMetered packet) wtDir customShScript
+              else runUtaiStep wtDir packet dbPath mRepairPrompt attempt
         other ->
-          pure (Left $ "Unknown executor: " <> other <> " (expected 'sarutahiko', 'utai', 'agy', 'hermes', 'script', or 'auto')")
+          pure (Left $ "Unknown executor: " <> other <> " (expected 'sarutahiko', 'utai', 'agy', 'hermes', 'script', 'yaegi', 'go', or 'auto')")
 
 -- | Delegate task execution directly to in-tree Sarutahiko autonomous agent core.
 runSarutahikoStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
@@ -503,6 +731,22 @@ runScriptStep allowMetered wtDir scriptPath = do
     ExitFailure c -> do
       let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
       pure (Left $ "Task script " <> T.pack scriptPath <> " failed with code " <> T.pack (show c) <> ":\n" <> errText)
+
+-- | Execute task Go script via Yaegi interpreter with quota firewall env.
+runYaegiStep :: Bool -> FilePath -> FilePath -> IO (Either Text Text)
+runYaegiStep allowMetered wtDir scriptPath = do
+  putStrLn $ "  -> Running task Go script via Yaegi: " ++ scriptPath
+  mYaegi <- findExecutable "yaegi"
+  case mYaegi of
+    Nothing -> pure (Left "Yaegi executor requested, but 'yaegi' executable was not found in PATH.")
+    Just yaegiBin -> do
+      workerEnv <- buildWorkerEnv allowMetered
+      (code, outBs, errBs) <- readProcess (setEnv workerEnv (setWorkingDir wtDir (proc yaegiBin ["run", scriptPath])))
+      case code of
+        ExitSuccess -> pure (Right "yaegi")
+        ExitFailure c -> do
+          let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
+          pure (Left $ "Yaegi script " <> T.pack scriptPath <> " failed with code " <> T.pack (show c) <> ":\n" <> errText)
 
 -- | Delegate task execution to Antigravity CLI in non-interactive print mode.
 runAgyStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
@@ -645,21 +889,26 @@ buildWorkerPrompt packet = T.unlines
   , "   Do NOT attempt to cd outside this directory or modify parent repos."
   , "2. GHC2024 & Zero Warnings: All Haskell code MUST compile cleanly with -Wall -Werror."
   , "   Avoid unused imports, incomplete patterns, or partial functions (no head, tail, fromJust, !!)."
-  , "3. Zero-Token Progressive Code Navigation:"
+  , "3. Strict Quality Gates (Zero Hints / Zero Breakages):"
+  , "   - HLint: Must pass with 0 hints/warnings (avoid redundant lambdas, un-eta-reduced wrappers, unused pragmas)."
+  , "   - Tagref: Must pass 100% resolve. Every [ref:<name>] must match an existing anchor; DO NOT duplicate [tag:<name>] anchors."
+  , "   - Comment Density: CLOC comments must remain >= 25.0%. Include comprehensive Haddock headers on all exposed modules."
+  , "   - Total Functions: Strictly total. Use pattern-matching, Data.Maybe, or uncons rather than partial operations."
+  , "4. Zero-Token Progressive Code Navigation:"
   , "   - Use tags to jump to symbol definitions instantly (<15 tokens): `grep -w \"^<Symbol>\" tags`"
   , "   - Use `ok memory search <query>` to retrieve institutional facts, constraints, and past bug remedies in <50 tokens."
   , "   - Use `kioku recall <query> --namespace-wide yamaarashi` to query cross-session architectural memory."
   , "   - Use `cxf search <query>` to query local SQLite FTS5 BM25 ranked context packs from Contextful."
   , "   - Use `tricorder status --json` or `status(wait: true)` to get JSON compiler diagnostics in <50 tokens."
   , "   - Never dump whole 500-line source modules; view targeted slices with start/end lines."
-  , "4. Non-Interactive Execution: You are running non-interactively in batch print mode."
+  , "5. Non-Interactive Execution: You are running non-interactively in batch print mode."
   , "   Apply required file edits directly using file tools (view_file, replace_file_content, write_to_file)."
   , "   When running commands with run_command, always set WaitMsBeforeAsync to 10000 so commands execute synchronously."
   , "   Never idle waiting for notifications."
-  , "5. Verification Pre-requisite: Before finishing, verify that your implementation builds"
-  , "   and passes tests via `cabal v2-build -j20 --semaphore` and `cabal v2-test`."
-  , "6. Institutional Learning: If you discover an invariant or non-obvious bug fix, record it with `ok memory remember \"<lesson>\"` so future workers inherit the knowledge."
-  , "7. Conclude cleanly: Once code is in place and verified, output your summary and exit."
+  , "6. Verification Pre-requisite: Before finishing, verify that your implementation builds"
+  , "   and passes tests via `cabal v2-build -j20 --semaphore` and verification scripts."
+  , "7. Institutional Learning: If you discover an invariant or non-obvious bug fix, record it with `ok memory remember \"<lesson>\"` so future workers inherit the knowledge."
+  , "8. Conclude cleanly: Once code is in place and verified, output your summary and exit."
   ]
 
 -- | Construct structured prompt markdown for repairing a failed verification attempt.
@@ -682,12 +931,13 @@ buildRepairPrompt packet errorOutput attempt maxAtt = T.unlines
   , "## Repair Directives"
   , "1. Diagnose and fix the specific compilation, type mismatch, import, or test failure errors shown above."
   , "2. DO NOT delete or recreate files from scratch unless necessary — apply targeted edits to the existing codebase."
-  , "3. Zero-Token Progressive Code Navigation:"
+  , "3. Strict Quality Gates:"
+  , "   - Fix HLint suggestions (eta-reduction, redundant lambdas, unused language extensions)."
+  , "   - Tagref: Ensure anchor [tag:name] is unique; citations in source must use [ref:name]."
+  , "   - Comment Density: Maintain CLOC comments >= 25%."
+  , "4. Zero-Token Progressive Code Navigation:"
   , "   - Use tags to check definitions: `grep -w \"^<Symbol>\" tags`"
   , "   - Test compilation directly via `cabal v2-build`."
-  , "4. Operational Invariants & Ground Rules:"
-  , "   - GHC2024 & Zero Warnings: All Haskell code MUST compile cleanly with -Wall -Werror."
-  , "   - Avoid unused imports, incomplete patterns, or partial functions (no head, tail, fromJust, !!)."
   , "5. Verification Pre-requisite: Before finishing, verify that your implementation builds"
   , "   and passes tests via `cabal v2-build` and `cabal v2-test`."
   , "6. Conclude cleanly: Once code is in place and verified, output your summary and exit."
