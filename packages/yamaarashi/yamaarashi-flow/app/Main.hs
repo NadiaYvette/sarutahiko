@@ -108,6 +108,7 @@ main = do
     ["run", "--allow-metered", packetPath] -> runTaskPacket True packetPath
     ["run", packetPath]                   -> runTaskPacket False packetPath
     ("snapshot" : snapArgs)               -> handleSnapshot snapArgs
+    ("autoheal" : autoArgs)               -> handleAutoHeal autoArgs
     ["telemetry", tId]                    -> showTelemetry (Just (T.pack tId))
     ["telemetry"]                         -> showTelemetry Nothing
     ["kanban", dbPath]                    -> showKanbanBoard dbPath
@@ -115,7 +116,7 @@ main = do
     ["--help"]                            -> printHelp >> exitSuccess
     ["-h"]                                -> printHelp >> exitSuccess
     _                                     -> do
-      putStrLn "Usage: yamaarashi-exec (run [--allow-metered] <path/to/packet.yaml> | snapshot <id> [...] | telemetry [<id>] | kanban [<db-path>])"
+      putStrLn "Usage: yamaarashi-exec (run [--allow-metered] <path/to/packet.yaml> | snapshot <id> [...] | autoheal [<args>] | telemetry [<id>] | kanban [<db-path>])"
       exitFailure
 
 -- | Display pure ASCII Kanban projection from the SQLite event ledger.
@@ -362,6 +363,39 @@ showSingleTaskTelemetry dbPath tId = do
       putStrLn $ "Status:        " ++ statusStr
       putStrLn $ "Cycles Run:    " ++ show (max 1 cycleCount)
 
+-- | Invoke the standalone hls-autoheal tool from the CLI.
+handleAutoHeal :: [String] -> IO ()
+handleAutoHeal args = do
+  hasAutoHeal <- doesFileExist "/home/nyc/.local/bin/hls-autoheal"
+  if not hasAutoHeal
+    then putStrLn "Error: /home/nyc/.local/bin/hls-autoheal not found" >> exitFailure
+    else do
+      let effectiveArgs = if null args then ["--hls"] else args
+      (code, outBs, errBs) <- readProcess (proc "/home/nyc/.local/bin/hls-autoheal" effectiveArgs)
+      let outText = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict outBs)
+          errText = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict errBs)
+      TIO.putStr outText
+      when (not (T.null errText)) (TIO.putStr errText)
+      if code == ExitSuccess then exitSuccess else exitFailure
+
+-- | Attempt automated mechanical repair of compiler and HLS diagnostics
+-- inside an isolated worktree using the standalone hls-autoheal utility.
+runAutoHeal :: FilePath -> Text -> IO Bool
+runAutoHeal wtDir errOutput = do
+  hasAutoHeal <- doesFileExist "/home/nyc/.local/bin/hls-autoheal"
+  if not hasAutoHeal
+    then pure False
+    else do
+      putStrLn "=== [yamaarashi-exec] Attempting automated HLS/GHC auto-heal pass ==="
+      let autohealProc = setWorkingDir wtDir
+                       $ setStdin (byteStringInput (BSL.fromStrict (TE.encodeUtf8 errOutput)))
+                       $ proc "/home/nyc/.local/bin/hls-autoheal" ["--stdin"]
+      (exitCode, outBs, _) <- readProcess autohealProc
+      let outText = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict outBs)
+      TIO.putStr outText
+      let healed = exitCode == ExitSuccess && not (T.isInfixOf "Applied 0 automated repairs" outText)
+      pure healed
+
 -- | Execute a task packet through an isolated worktree with SQLite event tracking.
 runTaskPacket :: Bool -> FilePath -> IO ()
 runTaskPacket cliAllowMetered path = do
@@ -468,9 +502,25 @@ runTaskPacket cliAllowMetered path = do
                   logEvent dbPath (packetId packet) "VERIFICATION_FAILED" verifyErr
                   if attempt < maxAttempts
                     then do
-                      putStrLn $ "=== [yamaarashi-exec] Initiating repair cycle (" ++ show (attempt + 1) ++ "/" ++ show maxAttempts ++ ") ==="
-                      let nextPrompt = buildRepairPrompt packet verifyErr (attempt + 1) maxAttempts
-                      loop (attempt + 1) (Just nextPrompt)
+                      healed <- runAutoHeal wtDir verifyErr
+                      if healed
+                        then do
+                          putStrLn "=== [yamaarashi-exec] Auto-heal applied fixes! Re-verifying gate... ==="
+                          logEvent dbPath (packetId packet) "AUTOHEAL_APPLIED" "Applied mechanical fixes via hls-autoheal"
+                          vRes2 <- runVerificationGate wtDir packet
+                          case vRes2 of
+                            Right () -> do
+                              putStrLn "=== [yamaarashi-exec] Auto-healed verification gate PASSED! ==="
+                              logEvent dbPath (packetId packet) "AUTOHEAL_PASSED" ("Verification succeeded after auto-heal on attempt " <> T.pack (show attempt))
+                              pure actualExec
+                            Left verifyErr2 -> do
+                              putStrLn $ "=== [yamaarashi-exec] Verification still failed after auto-heal. Initiating repair cycle (" ++ show (attempt + 1) ++ "/" ++ show maxAttempts ++ ") ==="
+                              let nextPrompt = buildRepairPrompt packet verifyErr2 (attempt + 1) maxAttempts
+                              loop (attempt + 1) (Just nextPrompt)
+                        else do
+                          putStrLn $ "=== [yamaarashi-exec] Initiating repair cycle (" ++ show (attempt + 1) ++ "/" ++ show maxAttempts ++ ") ==="
+                          let nextPrompt = buildRepairPrompt packet verifyErr (attempt + 1) maxAttempts
+                          loop (attempt + 1) (Just nextPrompt)
                     else throwIO (userError $ "Task failed verification after " ++ show maxAttempts ++ " attempts:\n" ++ T.unpack verifyErr)
 
     actualExec <- loop 1 Nothing
