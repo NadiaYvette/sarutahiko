@@ -795,7 +795,11 @@ sanityDiff txt = T.unlines (go (T.lines txt))
     go [] = []
     go (l:ls)
       | "@@" `T.isPrefixOf` T.strip l =
-          let (body, rest) = span (\x -> not (isSectionHead x)) ls
+          let (rawBody, rest) = span (\x -> not (isSectionHead x)) ls
+              -- Models emit truly-empty lines where unified diff requires a
+              -- single-space context prefix; a bare empty line truncates
+              -- git's hunk parser and desyncs every subsequent section.
+              body = map (\x -> if T.null x then " " else x) rawBody
               isPlus x = T.isPrefixOf "+" x && not (T.isPrefixOf "+++" x)
               isMinus x = T.isPrefixOf "-" x && not (T.isPrefixOf "---" x)
               isCtx x = T.isPrefixOf " " x || T.null x
