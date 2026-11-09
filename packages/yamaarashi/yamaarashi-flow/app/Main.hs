@@ -1363,16 +1363,17 @@ buildRepairPrompt packet errorOutput attempt maxAtt =
 -- Returns Right () on success, or Left errorOutput on failure.
 runVerificationGate :: FilePath -> TaskPacket -> IO (Either Text ())
 runVerificationGate wtDir packet = do
+  let gateSec = maybe 900 id (packetRunBudget packet)
   let tId = packetId packet
   case tId of
     "fix-kogaki-wire-lexer-nonempty" -> do
       putStrLn "  [Gate 1/3] Building kogaki-wire..."
-      res1 <- runGateCmd wtDir "cabal" ["v2-build", "kogaki-wire"]
+      res1 <- runGateCmd wtDir gateSec "cabal" ["v2-build", "kogaki-wire"]
       case res1 of
         Left err -> pure (Left err)
         Right () -> do
           putStrLn "  [Gate 2/3] Running test-kogaki-wire..."
-          res2 <- runGateCmd wtDir "cabal" ["v2-test", "kogaki-wire"]
+          res2 <- runGateCmd wtDir gateSec "cabal" ["v2-test", "kogaki-wire"]
           case res2 of
             Left err -> pure (Left err)
             Right () -> do
@@ -1400,12 +1401,12 @@ runVerificationGate wtDir packet = do
           pkgRes <- if null pkgs
             then do
               putStrLn "  [Gate] Running general cabal v2-build..."
-              runGateCmd wtDir "cabal" ["v2-build"]
+              runGateCmd wtDir gateSec "cabal" ["v2-build"]
             else do
               let checkPkgs [] = pure (Right ())
                   checkPkgs (p:ps) = do
                     putStrLn $ "  [Gate] Building package: " ++ T.unpack p
-                    r <- runGateCmd wtDir "cabal" ["v2-build", T.unpack p]
+                    r <- runGateCmd wtDir gateSec "cabal" ["v2-build", T.unpack p]
                     case r of
                       Left err -> pure (Left err)
                       Right () -> checkPkgs ps
@@ -1419,21 +1420,21 @@ runVerificationGate wtDir packet = do
               if hasVerify
                 then do
                   putStrLn $ "  [Gate] Running verification script: " ++ verifyScript
-                  runGateCmd wtDir "sh" [verifyScript]
+                  runGateCmd wtDir gateSec "sh" [verifyScript]
                 else pure (Right ())
 
 -- | Execute a verification command and capture its output on failure with a hard 180s timeout.
-runGateCmd :: FilePath -> String -> [String] -> IO (Either Text ())
-runGateCmd workDir cmd rawArgs = do
+runGateCmd :: FilePath -> Int -> String -> [String] -> IO (Either Text ())
+runGateCmd workDir timeoutSec cmd rawArgs = do
   let args = if cmd == "cabal" && not (any (`elem` rawArgs) ["-j", "--jobs"])
                then rawArgs ++ ["-j20", "--semaphore"]
                else rawArgs
-  mRes <- timeout (180 * 1000000) $ readProcess (setWorkingDir workDir (proc cmd args))
+  mRes <- timeout (timeoutSec * 1000000) $ readProcess (setWorkingDir workDir (proc cmd args))
   case mRes of
     Nothing -> do
       let desc = T.pack cmd <> " " <> T.unwords (map T.pack args)
-      putStrLn $ "  [Gate TIMEOUT] " ++ cmd ++ " " ++ unwords args ++ " (exceeded 180s)"
-      pure (Left ("Verification command timed out after 180 seconds (" <> desc <> ")"))
+      putStrLn $ "  [Gate TIMEOUT] " ++ cmd ++ " " ++ unwords args ++ " (exceeded " ++ show timeoutSec ++ "s)"
+      pure (Left ("Verification command timed out after " <> T.pack (show timeoutSec) <> " seconds (" <> desc <> ")"))
     Just (code, outBs, errBs) ->
       case code of
         ExitSuccess -> do
