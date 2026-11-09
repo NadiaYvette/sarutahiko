@@ -721,16 +721,65 @@ isRateLimited err =
      || "quota" `T.isInfixOf` lower
      || "resource_exhausted" `T.isInfixOf` lower
 
+-- | Direct-connexion protocol for the Utai executor: the model has no file
+-- tools, so it must emit its work as fenced unified-diff blocks which the
+-- runner applies to the worktree with `git apply`.
+utaiDiffInstructions :: Text
+utaiDiffInstructions = T.unlines
+  [ ""
+  , "## Direct-Connexion Output Protocol (Utai)"
+  , ""
+  , "You are invoked as a direct (stateless) model call: you have NO file-editing"
+  , "tools. Express your entire implementation as unified diffs in fenced"
+  , "code blocks opened with ```diff (or ```patch):"
+  , ""
+  , "    ```diff"
+  , "    --- a/path/to/File.hs"
+  , "    +++ b/path/to/File.hs"
+  , "    @@ -1,2 +1,3 @@"
+  , "     context line"
+  , "    +added line"
+  , "    ```"
+  , ""
+  , "Rules:"
+  , "1. One fenced block per changed file, with `a/` + `b/` paths relative to the"
+  , "   repository root. New files: use `--- /dev/null` / `+++ b/path/to/File.hs`."
+  , "2. Context lines must match the existing file content exactly (diff -u style);"
+  , "   keep hunks small and self-contained so `git apply --recount` succeeds."
+  , "3. Emit every changed file (source, .cabal, tests, re-exports) in these blocks;"
+  , "   your response is concatenated and applied verbatim."
+  , "4. Do NOT narrate tool usage or claim files were edited - the diff blocks"
+  , "   ARE the deliverable. Nothing outside the fenced blocks is applied."
+  , ""
+  ]
+
+-- | Extract unified-diff fenced blocks (```diff / ```patch) from a model response.
+extractDiffBlocks :: Text -> [Text]
+extractDiffBlocks txt = go (T.lines txt)
+  where
+    isFence l =
+      let s = T.strip l
+      in "```diff" `T.isPrefixOf` s || "```patch" `T.isPrefixOf` s
+    go [] = []
+    go (l:ls)
+      | isFence l =
+          let (block, rest) = span (\x -> not (T.isPrefixOf "```" (T.strip x))) ls
+          in case block of
+               [] -> go (drop 1 rest)
+               _  -> T.unlines block : go (drop 1 rest)
+      | otherwise = go ls
+
 -- | Delegate task execution directly to Utai native LLM client.
 runUtaiStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
-runUtaiStep _wtDir packet dbPath mRepairPrompt attempt = do
+runUtaiStep wtDir packet dbPath mRepairPrompt attempt = do
   let tId = packetId packet
       promptContent = case mRepairPrompt of
-        Just rp -> rp
-        Nothing -> buildWorkerPrompt packet
+        Just rp -> rp <> utaiDiffInstructions
+        Nothing -> buildWorkerPrompt packet <> utaiDiffInstructions
       targetModel = case packetModel packet of
         Just m  -> m
-        Nothing -> "mistral/codestral-latest"
+        Nothing -> "auto/best-coding"
+      budgetSec = maybe 600 id (packetRunBudget packet)
 
   logEvent dbPath tId "UTAI_SPAWNED" ("Utai native client querying " <> targetModel <> " (attempt " <> T.pack (show attempt) <> ")")
   putStrLn $ "=== [yamaarashi-exec] Querying native Utai client (model: " ++ T.unpack targetModel ++ ", attempt " ++ show attempt ++ ") ==="
@@ -758,21 +807,44 @@ runUtaiStep _wtDir packet dbPath mRepairPrompt attempt = do
           Left err -> pure (Left err)
           Right resp -> pure (Right resp)
 
-  mRes <- queryWithBackoff (1 :: Int) (3 :: Int)
+  mRes <- timeout (budgetSec * 1000000) (queryWithBackoff (1 :: Int) (3 :: Int))
   case mRes of
-    Left err -> do
+    Nothing -> do
+      let errMsg = "Utai invocation exceeded the packet run_budget of " <> T.pack (show budgetSec) <> "s"
+      logEvent dbPath tId "UTAI_TIMEOUT" errMsg
+      pure (Left errMsg)
+    Just (Left err) -> do
       let errMsg = "Utai invocation failed: " <> err
       logEvent dbPath tId "UTAI_FAILED" errMsg
       pure (Left errMsg)
-    Right resp -> do
+    Just (Right resp) -> do
       let logDir = takeDirectory dbPath </> "logs"
           attemptSuffix = if attempt > 1 then "-attempt" ++ show attempt else ""
           workerLogFile = logDir </> (T.unpack tId ++ "-utai" ++ attemptSuffix ++ ".log")
       createDirectoryIfMissing True logDir
       TIO.writeFile workerLogFile (respContent resp)
-      logEvent dbPath tId "UTAI_SUCCEEDED" ("Utai returned " <> T.pack (show (T.length (respContent resp))) <> " chars")
-      putStrLn "=== [yamaarashi-exec] Utai native invocation succeeded ==="
-      pure (Right "utai")
+      let diffBlocks = extractDiffBlocks (respContent resp)
+      case diffBlocks of
+        [] -> do
+          let errMsg = "Utai response contained no ```diff/```patch blocks to apply (see " <> T.pack workerLogFile <> ")"
+          logEvent dbPath tId "UTAI_NO_DIFF" errMsg
+          putStrLn $ "=== [yamaarashi-exec] " ++ T.unpack errMsg ++ " ==="
+          pure (Left errMsg)
+        _ -> do
+          let patchFile = wtDir </> (".utai-" ++ show attempt ++ ".patch")
+          TIO.writeFile patchFile (T.unlines diffBlocks)
+          (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc "git" ["apply", "--recount", "--whitespace=nowarn", patchFile]))
+          case code of
+            ExitFailure c -> do
+              let errMsg = "Utai diff failed to apply (git apply exit " <> T.pack (show c) <> "):\n" <> trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
+              logEvent dbPath tId "UTAI_APPLY_FAILED" errMsg
+              putStrLn $ "=== [yamaarashi-exec] " ++ T.unpack errMsg ++ " ==="
+              pure (Left errMsg)
+            ExitSuccess -> do
+              removeFile patchFile
+              logEvent dbPath tId "UTAI_SUCCEEDED" ("Utai returned " <> T.pack (show (T.length (respContent resp))) <> " chars; applied " <> T.pack (show (length diffBlocks)) <> " diff block(s)")
+              putStrLn $ "=== [yamaarashi-exec] Utai native invocation applied " ++ show (length diffBlocks) ++ " diff block(s) ==="
+              pure (Right "utai")
 
 -- | Execute task script in the isolated worktree with quota firewall env.
 runScriptStep :: Bool -> FilePath -> FilePath -> IO (Either Text Text)
