@@ -568,7 +568,7 @@ parsePacket path txt = do
       extractList key =
         let afterKey = drop 1 $ dropWhile (\l -> not (T.isPrefixOf (key <> ":") l)) lns
             items = takeWhile (\l -> T.isPrefixOf "  - " l || T.isPrefixOf "- " l) afterKey
-            clean l = T.strip (T.dropWhile (\c -> c == ' ' || c == '-') (fst (T.breakOn "#" l)))
+            clean l = stripQuotes (T.strip (T.dropWhile (\c -> c == ' ' || c == '-') (fst (T.breakOn "#" l))))
         in filter (not . T.null) (map clean items)
       extractBlock key =
         let afterKey = drop 1 $ dropWhile (\l -> not (T.isPrefixOf (key <> ":") l)) lns
