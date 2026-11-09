@@ -1073,33 +1073,49 @@ normalizeSectionPaths wtDir section = do
 
 -- | Apply one per-file diff section. Models emit two header styles —
 -- `--- a/path` / `+++ b/path` (git's default -p1) or bare repo-relative
--- paths (needs -p0) — so try the right strip level first, then the other.
--- Returns the patch file and the strip level used (for rollback), or the
--- section target plus `git apply`'s stderr.
-applyDiffSection :: FilePath -> FilePath -> Text -> IO (Either (Text, Text) (FilePath, Maybe FilePath))
+-- paths (needs -p0) — so try `git apply` (strict) at the right strip
+-- level first, then the other, then GNU `patch` (fuzzy anchor search,
+-- tolerates invented context lines). Returns the patch file and the
+-- applied (tool, strip flag) for rollback, or the section target plus
+-- the aggregated stderr.
+applyDiffSection :: FilePath -> FilePath -> Text -> IO (Either (Text, Text) (FilePath, (FilePath, Maybe FilePath)))
 applyDiffSection wtDir patchFile section = do
   TIO.writeFile patchFile section
   let hasAbPrefix = any (\l -> "--- a/" `T.isPrefixOf` l || "+++ b/" `T.isPrefixOf` l) (T.lines section)
-      levels :: [Maybe FilePath]
-      levels = if hasAbPrefix then [Nothing, Just "-p0"] else [Just "-p0", Nothing]
-  go levels []
+      appliers :: [(FilePath, Maybe FilePath)]
+      appliers = if hasAbPrefix
+        then [("git", Nothing), ("git", Just "-p0"), ("patch", Just "-p1"), ("patch", Just "-p0")]
+        else [("git", Just "-p0"), ("git", Nothing), ("patch", Just "-p0"), ("patch", Just "-p1")]
+  go appliers []
   where
-    baseArgs = ["apply", "--recount", "--whitespace=nowarn"]
+    applierArgs (tool, lvl) = case tool of
+      "patch" -> ["-s", "--batch", "--fuzz=3"] ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
+      _       -> ["apply", "--recount", "--whitespace=nowarn"] ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
     go [] errs = pure (Left (sectionTarget section, T.pack (unlines (reverse errs))))
-    go (lvl:rest) errs = do
-      let args = baseArgs ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
-          levelTag = maybe "default" id lvl
-      (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc "git" args))
+    go ((tool, lvl):rest) errs = do
+      let args = applierArgs (tool, lvl)
+          toolTag = tool <> " " <> maybe "default" id lvl
+      (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc tool args))
       case code of
-        ExitSuccess -> pure (Right (patchFile, lvl))
-        ExitFailure c -> go rest (("git apply [" <> levelTag <> ", exit " <> show c <> "]: " <> T.unpack (trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs]))))) : errs)
+        ExitSuccess -> pure (Right (patchFile, (tool, lvl)))
+        ExitFailure c -> do
+          case tool of
+            -- patch applies hunks individually: a failed attempt may
+            -- leave the file half-patched; reverse it before continuing.
+            "patch" -> rollbackDiffSection wtDir patchFile (tool, lvl)
+            _ -> pure ()
+          go rest ((toolTag <> " [exit " <> show c <> "]: " <> T.unpack (trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs]))))) : errs)
 
 -- | Reverse-apply a previously applied section (used to roll the
 -- worktree back to a clean pre-attempt state after a partial failure).
-rollbackDiffSection :: FilePath -> FilePath -> Maybe FilePath -> IO ()
-rollbackDiffSection wtDir patchFile lvl = do
-  let args = ["apply", "-R", "--recount", "--whitespace=nowarn"] ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
-  _ <- readProcess (setWorkingDir wtDir (proc "git" args))
+rollbackDiffSection :: FilePath -> FilePath -> (FilePath, Maybe FilePath) -> IO ()
+rollbackDiffSection wtDir patchFile (tool, lvl) = do
+  let args = case tool of
+        "patch" -> ["-R", "-s", "--batch"] ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
+        _       -> ["apply", "-R", "--recount", "--whitespace=nowarn"] ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
+  _ <- readProcess (setWorkingDir wtDir (proc tool args))
+  _ <- readProcess (proc "find" [wtDir, "-name", "*.rej", "-delete"])
+  _ <- readProcess (proc "find" [wtDir, "-name", "*.orig", "-delete"])
   pure ()
 
 -- | Execute task script in the isolated worktree with quota firewall env.
