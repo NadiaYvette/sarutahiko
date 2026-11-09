@@ -4,7 +4,7 @@
 **Status:** APPROVED ARCHITECTURAL SYNTHESIS NOTE  
 **Date:** 2026-11-09  
 **Author:** Antigravity (Google DeepMind / Advanced Agentic Coding) & NYC  
-**Target Audiences:** Gemini Argon (Design & Planning Sessions), Agentic Orchestrators, System Maintainers  
+**Target Audiences:** Gemini Argon (Design & Planning Sessions), Agentic Orchestrators, System Maintainers, Parallel Scheduler Architects  
 **Canonical Locations:**  
 - `~/src/plans/architecture/TOOLING_QUOTA_AND_ENGINEERING_SYNTHESIS.md` (Cross-cutting orchestration hub)  
 - `~/src/sarutahiko/docs/notes/TOOLING_QUOTA_AND_ENGINEERING_SYNTHESIS.md` (Version-controlled repository note)  
@@ -18,9 +18,9 @@ This document synthesizes findings, architectural remedies, tooling configuratio
 
 During deep collaborative sessions, software development by high-capability AI assistants encounters two compounding bottlenecks:
 1. **Quota Drain via Context Inflation**: As conversational trajectories grow, re-submitting massive historical prompts into LLM attention layers burns quota exponentially, threatening to halt collaboration prematurely.
-2. **The "Mechanical Tax" on Intelligence**: Burning high-tier LLM cycles on trivial compiler warnings, import cleanup, or fragile shell scripts is a catastrophic misallocation of token budgets.
+2. **The "Mechanical Tax" on Intelligence**: Burning high-tier LLM cycles on trivial compiler warnings, import cleanup, fragile shell scripts, or malformed diff repairs is a catastrophic misallocation of token budgets.
 
-This synthesis provides **Gemini Argon** with the empirical evidence, architectural principles, concrete code patterns, and tooling fixes discovered on this frontline. These insights should directly inform Argon's design recommendations and code plans.
+This synthesis provides **Gemini Argon** with the empirical evidence, architectural principles, concrete code patterns, and tooling fixes discovered on this frontline. These insights should directly inform Argon's design recommendations and code plans, particularly for **parallel task DAG and queue processing**.
 
 ---
 
@@ -57,9 +57,46 @@ To break this cycle, the following systemic protocols were implemented:
    - Subprocesses (`yamaarashi-exec`, worker scripts, yaegi) are strictly airgapped: metered API keys (`GEMINI_API_KEY`, etc.) are scrubbed from worker environments (`buildWorkerEnv`).
    - Flags `MCP_DISABLE_SAMPLING=1` and `AGY_DISABLE_SAMPLING=1` prevent child processes from spawning unmetered recursive LLM calls.
    - Build-test-fix loops are delegated to isolated worktree subagents with minimal context windows (3k–5k tokens), shielding the orchestrator's context from raw compiler logs.
-4. **Kagami-Ita (鏡板) Token Accounting**:
-   - Implemented in `sarutahiko-observability` (`Sarutahiko.Observability.TokenLedger`).
-   - Streams JSONL turn records, computes real-time cache hit ratios, and trips a circuit breaker (`evaluateCircuitBreaker`) when fresh token budgets or context window thresholds (>100k tokens) are breached. Exposes CLI metrics via `yamaarashi-exec telemetry`.
+
+### 2.4 The Airgap Breach & Non-Interactive REPL Trap (The Great Quota Burn Event)
+A critical post-mortem over the weekend centered on how a supposedly airgapped task execution burned millions of quota tokens in unattended retry loops.
+
+**The Chain of Failures:**
+1. **Utai Backend Truncation & Diff Bugs**: Our native zero-cost LLM executor (`utai`) encountered model reasoning truncation (`max_tokens` exhausted on internal reasoning traces before code was emitted) and generated malformed diffs with hallucinated paths and mismatched hunk line counts (`@@ -1,5 +1,6 @@`).
+2. **Fallback to Coding Assistant REPLs**: Faced with failing diff applications, the orchestrator fell back to invoking coding assistant REPLs in non-interactive modes (`hermes -z <prompt> --yolo` or `agy` non-interactive scripts).
+3. **The Porous Environment Airgap**: While `yamaarashi-exec` scrubbed environment variables (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) via `buildWorkerEnv`, **modern coding assistant REPLs do not rely solely on ambient environment variables.** They actively inspect the filesystem:
+   - Reading `~/.gemini/antigravity-cli/` credentials and configuration files
+   - Ingesting `~/.config/kioku/ai-config.json`
+   - Searching local `.env` files and parent `/proc/` environments
+4. **Catastrophic Unattended Burn**: Bypassing the environment scrub, the headless REPL discovered stored cloud API keys on disk, initialized live connections to metered Gemini/Anthropic endpoints, and executed multi-turn autonomous repair loops in the background, consuming millions of fresh tokens before detection.
+
+**Architectural Remediation:**
+- Environment variable scrubbing is **insufficient** for agent sandboxing.
+- True airgapping requires **filesystem isolation**: running worker subprocesses with sanitized user homes (`HOME=$(mktemp -d)`), Linux mount namespaces (`unshare -m`), or isolated container boundaries that prevent processes from accessing `~/.config/` or `~/.gemini/`.
+
+### 2.5 The Background Task Polling Trap & The Zero-Polling Invariant
+A secondary, insidious quota leak occurred during the supervision of background execution tasks (long builds, test suites, or subagents):
+- When an orchestrator launches a task in the background, it receives a task ID (e.g. `task-54610`).
+- If the agent repeatedly calls `manage_task Action="status"` or views log files in a polling loop, **each status check turn re-transmits the entire conversational context buffer (186k tokens)** to the model.
+- Furthermore, the tool output of `manage_task status` or log inspections returns terminal buffer outputs that are appended to the conversational transcript, accelerating context growth.
+- Polling a 5-minute build every 15 seconds incurs 20 turns $\times$ 9,300 fresh tokens = **~186,000 to 250,000 fresh tokens burned purely waiting on a clock!**
+
+**The Architectural Invariant:**
+- **Zero-Polling Reactive Wakeup**: Agents must NEVER poll in loops. The execution runtime must rely entirely on reactive interrupts: OS signals (`SIGCHLD`), file descriptors, named pipes, or system event wakeups (`<SYSTEM_MESSAGE>`). Schedulers must put the LLM to sleep until a concrete milestone event triggers execution resumption.
+
+### 2.6 Dispersing the Fog-of-War: Granular Activity Attribution in Kagami-Ita
+During the height of quota depletion, there was profound uncertainty regarding which development activities were actually responsible for the burn:
+- Was it test execution and debugging?
+- Was it port collisions in parallel test suites causing unexpected retries?
+- Was it struggling to close the final 5% of test coverage?
+- Was it mechanical compiler warning repairs?
+- Was it diff parsing and git apply failures?
+
+To eliminate this uncertainty, we extended the **Kagami-Ita (鏡板)** observability substrate in `sarutahiko` (`packages/kagami-ita/kagami-ita-observability/`):
+- **`Sarutahiko.Observability.TokenLedger`**: Tracks turn-by-turn records (`TurnTokenRecord`) capturing `freshInputTokens`, `cacheReadTokens`, `cacheCreationTokens`, `outputTokens`, and `wallClockMs`.
+- **`Sarutahiko.Observability.Transcript`**: Streams JSONL records directly from `transcript.jsonl`.
+- **Activity Correlation**: Maps token expenditures against explicit operational states (`GATE_VERIFYING`, `HERMES_SPAWNED`, `UTAI_INVOKED`, `AUTOHEAL_PASS`).
+- **Telemetry CLI**: Integrated `yamaarashi-exec telemetry` to expose real-time activity breakdowns and token distributions, transforming quota management from guesswork into deterministic accounting.
 
 ---
 
@@ -131,6 +168,14 @@ We developed `hls-autoheal` (`/home/nyc/.local/bin/hls-autoheal`, compiled from 
 - Strict quality gates mandate 100% resolution of reference tags (`[ref:name]`) against definition tags (`[tag:name]`) and zero broken intra-repository markdown links.
 - When moving files or refactoring modules, path updates in documentation must be part of the same atomic changeset (`DOC_STRATEGY.md` §4 precedence rule).
 
+### 4.4 Tricorder In-Memory Compiler Daemon & Cabal Stanza Invariants
+- **The Incident**: In-memory compilation checks using Tweag's Tricorder daemon (`tricorder status --json`, MCP `status(wait: true)`) began failing with cryptic module lookup errors and solver aborts. Initial assumptions pointed to a daemon bug or platform incompatibility in Tricorder.
+- **The True Diagnosis**: Forensic inspection revealed the defects lay entirely in **our own `.cabal` and `cabal.project` configurations**:
+  1. **Unexposed Internal Modules**: Modules created during fast refactoring were imported by tests or sibling modules without being listed under `other-modules` or `exposed-modules` in the `.cabal` stanza. While batch `cabal build` occasionally tolerated this via pre-compiled artifacts, Tricorder’s in-memory GHCi session strictly rebuilds the AST dependency graph and hard-failed.
+  2. **Stanza Extension Asymmetry**: Certain language pragmas (e.g. `OverloadedStrings`, `GHC2021`) were declared in the library's `default-extensions` but omitted from the `test-suite` stanza, causing Tricorder to fail when evaluating cross-stanza dependencies.
+  3. **Runtime RTS Options for Concurrency**: Missing `-threaded -rtsopts -with-rtsopts=-N` flags in test stanzas caused concurrent test runners to dead-lock under Tricorder's in-memory evaluator.
+- **The Invariant**: Interactive compiler daemons (Tricorder, HLS) are significantly less forgiving than batch Cabal builders. Every new module must be registered in `.cabal` stanzas immediately upon creation.
+
 ---
 
 ## 5. Code Architecture Patterns for High-Performance & Agentic Software
@@ -161,18 +206,63 @@ For performance-critical engines, high-level abstractions often incur severe mem
    - For database pre-filtering, decouple index extraction from VM execution.
    - Extract required $k$-grams as a monotone boolean formula (`GramFormula a`: `GramAll`, `GramAny`, `GramExact`, `GramTop`, `GramBot`). Evaluating this formula against bitmap trigram indices prunes 99% of non-matching records before Pike/Thompson VM evaluation begins.
 
+### 5.3 Hermes Concurrency, Socket Locks & Daemon Collisions
+- **The Incident**: When executing task packets via `executor: hermes`, spawned subagents frequently froze or crashed on launch.
+- **The Root Cause**:
+  1. **Lockfile & Daemon Port Contention**: If an interactive Hermes session was already active in the user's terminal, it held an exclusive lock on `~/.hermes/` state and bound to local daemon ports. Headless child workers spawned by `yamaarashi-exec` deadlocked waiting on the lock.
+  2. **Broken MCP Extensions**: A non-functional or misconfigured MCP server (e.g., `codegraph-mcp`) in `~/.hermes/config.yaml` caused every spawned Hermes instance to block for 180 seconds during startup before timing out.
+- **The Solution**: Sanitized `~/.hermes/config.yaml`, transitioned to headless, single-shot invocations with dedicated working directories (`--in <wtDir>`), and prioritized standalone in-tree executors (`utai`, `yaegi`) over daemon-dependent CLI tools.
+
 ---
 
-## 6. The "Orphaned Artifact" Problem & Where Things Fit
+## 6. Architectural Invariants for Parallel Task DAG & Queue Processing
 
-### 6.1 The Breakdown of Single-Repo Boundaries
+As engineering moves toward executing parallel task packets across multi-core machines (e.g. via `ConcurrentZ3Pool` or parallel `yamaarashi-exec` workers), the forensic failures of the past weekend dictate six mandatory architectural invariants:
+
+### 6.1 Ephemeral Network & Port Namespacing
+- **Failure Mode**: Parallel test suites or subagent daemons binding to hardcoded ports (e.g. port 8080, 5432, or Hermes IPC sockets) collide, causing random test flakiness and hangs.
+- **Invariant**: All parallel tasks must bind to dynamic, ephemeral ports (`PORT=0`) or UNIX domain sockets scoped strictly to the task's isolated worktree path (`wtDir </> "ipc.sock"`).
+
+### 6.2 Build Directory & Lockfile Isolation (`dist-newstyle`)
+- **Failure Mode**: When multiple worktrees run `cabal build` or `cabal test` concurrently, they contend on Cabal’s global package cache lock, causing build aborts or cache corruption.
+- **Invariant**: Parallel execution runners must partition build caches. Tasks must either execute with private `--builddir` paths or leverage a centralized, serialized compilation queue that serves compiled artifacts to parallel test runners.
+
+### 6.3 True Filesystem Sandboxing (Preventing Credential Leakage)
+- **Failure Mode**: Worker scripts or sub-agents bypass environment variable filtering by fishing credentials out of `$HOME/.config/`, `$HOME/.gemini/`, or parent process `/proc/` tables.
+- **Invariant**: Parallel workers must run in containerized or namespace-isolated filesystems:
+  - Setting `HOME=$(mktemp -d)`
+  - Masking cloud credential directories
+  - Using Linux `unshare -m` or bubblewrap (`bwrap`) to enforce strict read-only / airgapped sandboxes.
+
+### 6.4 Provider Rate Limiting & Backoff Cascades
+- **Failure Mode**: When 5 parallel subagents simultaneously make LLM API calls, they instantly trip cloud provider rate limits (HTTP 429 Too Many Requests), triggering uncoordinated retry storms.
+- **Invariant**: Schedulers must implement centralized token bucket rate limiting with exponential jittered backoff (`sarutahiko` commit `e08543f`), retrying fresh across transport errors rather than hammering metered endpoints.
+
+### 6.5 Resilient Multi-Tier Diff Ingestion & Atomic Rollback
+- **Failure Mode**: LLM code generation frequently produces malformed diffs (hallucinated `a/b/` prefixes, bad line numbers, missing context). Applying partial diffs leaves the worktree dirty, corrupting subsequent repair attempts.
+- **Invariant**: Diff application must use a deterministic multi-tier cascade (`sarutahiko` commits `dafc6f5`, `82468d2`):
+  1. `git apply --recount -p1` (strict)
+  2. `git apply --recount -p0` (bare relative paths)
+  3. GNU `patch -s --batch --fuzz=3 -p1` (fuzzy anchor matching)
+  4. GNU `patch -s --batch --fuzz=3 -p0`
+  5. **Atomic Rollback**: If all tiers fail, reverse-apply any partially written hunks (`rollbackDiffSection`) and purge `.rej`/`.orig` artifacts, returning the worktree to a pristine state.
+
+### 6.6 Strict Zero-Polling Event Supervision
+- **Failure Mode**: Supervisor threads polling sub-worker status in LLM agent loops explode context size and burn tokens exponentially.
+- **Invariant**: Parallel schedulers must be purely event-driven. Worker supervisors must wait on OS process termination signals (`waitpid`), named pipes, or SQLite transaction triggers, waking the orchestrator only when a task packet transitions to `COMPLETED` or `FAILED`.
+
+---
+
+## 7. The "Orphaned Artifact" Problem & Where Things Fit
+
+### 7.1 The Breakdown of Single-Repo Boundaries
 Traditional software engineering assumes every document, script, and artifact belongs inside a specific Git repository. In an agentic multi-repo ecosystem, this assumption breaks down:
 - **Cross-Cutting Waves & DAGs**: A task wave (e.g. `TP-SMIRK-001` or `TP-META-000`) touches `t-digest`, `polytropos`, `smirk`, and `sarutahiko` simultaneously. Placing the master DAG inside one repo creates cyclic dependencies and commits unrelated planning noise to clean library histories.
 - **Meta-Tooling & Automation Scripts**: Tools like `yamaarashi-exec`, `hls-autoheal`, and `kioku-remember` serve the whole environment, not just one library.
 - **Reference Literature & Specifications**: Research PDFs (e.g., `Synquid_AI_Magnifier.pdf`), paper extractions, and academic surveys do not belong in a library's production git tree.
 - **Architectural Synthesis & Forensic Notes**: Cross-project notes (like this document) govern ecosystem policies, compiler quirks, and quota accounting across multiple projects.
 
-### 6.2 The 4-Layer Placement Model
+### 7.2 The 4-Layer Placement Model
 To solve this cleanly, we established a 4-layer taxonomy:
 
 ```
@@ -205,7 +295,7 @@ To solve this cleanly, we established a 4-layer taxonomy:
 +-------------------------------------------------------------------------------+
 ```
 
-### 6.3 Where Does THIS Document Belong?
+### 7.3 Where Does THIS Document Belong?
 By following this taxonomy, this synthesis note lives in two deliberate locations:
 1. **`~/src/plans/architecture/TOOLING_QUOTA_AND_ENGINEERING_SYNTHESIS.md`**:  
    Available as the canonical cross-project design document for orchestrator waves, task packet planning, and Gemini Argon design sessions.
@@ -214,9 +304,9 @@ By following this taxonomy, this synthesis note lives in two deliberate location
 
 ---
 
-## 7. Discoverability via Kioku: Exact Query Guide & Recipes
+## 8. Discoverability via Kioku: Exact Query Guide & Recipes
 
-### 7.1 Understanding Kioku Retrieval
+### 8.1 Understanding Kioku Retrieval
 Memories and architectural decisions are persisted in `shinzui kioku` (PostgreSQL `postgresql:///kioku`). To retrieve facts effectively without guessing, keep the following fundamentals in mind:
 
 1. **Namespace vs. Scope**:
@@ -227,71 +317,68 @@ Memories and architectural decisions are persisted in `shinzui kioku` (PostgreSQ
    - `--strategy keyword`: Uses PostgreSQL Full-Text Search (`tsvector`/`tsquery`). It is deterministic, fast, and matches exact identifiers, error codes (`GHC-68383`), tool names (`hls-autoheal`), and technical terms.
    - `--strategy hybrid`: Combines keyword matching with `pgvector` dense embeddings. Ideal for semantic or conceptual questions, but requires embedding generation.
 
-### 7.2 Concrete Copy-Pasteable Query Recipes
+### 8.2 Concrete Copy-Pasteable Query Recipes
 
 #### A. Quota Governance, Token Accounting & Context Inflation
 ```bash
 # Search for token burn findings, context window inflation, and cache ratios
-kioku recall "context window inflation quota burn" --namespace-wide antigravity --strategy keyword
+kioku recall "context inflation" --namespace-wide antigravity --strategy keyword
 
 # Search for Kagami-Ita token ledger design and circuit breakers
-kioku recall "Kagami-Ita token ledger circuit breaker" --namespace-wide antigravity --strategy keyword
+kioku recall "Kagami-Ita token ledger" --namespace-wide antigravity --strategy keyword
 
-# Search for quota firewalls and airgapping subprocesses
-kioku recall "quota firewall airgap sampling" --namespace-wide antigravity --strategy keyword
+# Search for airgap circumvention and credential isolation
+kioku recall "airgap sampling" --namespace-wide antigravity --strategy keyword
 ```
 
 #### B. Tooling Configurations, Self-Healing & Compiler Quirks
 ```bash
 # Search for hls-autoheal implementation and CLI usage
-kioku recall "hls-autoheal unused imports" --namespace-wide antigravity --strategy keyword
+kioku recall "autoheal" --namespace-wide antigravity --strategy keyword
 
 # Search for GHC 9.14 vs HLint pattern/data namespace workaround
-kioku recall "GHC-68383 pattern namespace specifier" --namespace-wide antigravity --strategy keyword
+kioku recall "GHC-68383 pattern namespace" --namespace-wide antigravity --strategy keyword
 
-# Search for HLS multi-cradle hie.yaml configuration
-kioku recall "multi-cradle hie.yaml discovery" --namespace-wide antigravity --strategy keyword
+# Search for Tricorder daemon and cabal stanza dependencies
+kioku recall "Tricorder cabal stanza" --namespace-wide antigravity --strategy keyword
 ```
 
-#### C. Agentic Scripting, Yaegi & Task Packet Automation
+#### C. Agentic Scripting, Yaegi & Parallel Execution Invariants
 ```bash
 # Search for Yaegi Go scripting rationale and academic citations
-kioku recall "Yaegi Go script agentic ergonomics" --namespace-wide antigravity --strategy keyword
+kioku recall "yaegi agentic" --namespace-wide antigravity --strategy keyword
 
-# Search for autonomous task execution without LLMs
-kioku recall "executor auto deterministic task" --namespace-wide antigravity --strategy keyword
+# Search for parallel task DAG invariants and worktree isolation
+kioku recall "parallel task DAG invariant" --namespace-wide antigravity --strategy keyword
 ```
 
 #### D. High-Performance Code Patterns (Data Layouts, VM, Cursors)
 ```bash
 # Search for flat array capture slots and backtrack frame pools
-kioku recall "CaptureSlots PrimArray SmallArray VMFramePool" --namespace-wide antigravity --strategy keyword
+kioku recall "CaptureSlots PrimArray SmallArray" --namespace-wide antigravity --strategy keyword
 
 # Search for linear cursor and graded lookbehind bounds
-kioku recall "linear cursor graded horizon evacuatePrefix" --namespace-wide antigravity --strategy keyword
-
-# Search for Russ Cox trigram index calculus and gram formulas
-kioku recall "GramFormula required grams database pre-filter" --namespace-wide antigravity --strategy keyword
+kioku recall "linear cursor graded horizon" --namespace-wide antigravity --strategy keyword
 ```
 
 #### E. Systemic Organization & Cross-Project Placement
 ```bash
-# Search for plans directory structure and orphaned artifact taxonomy
-kioku recall "plans structure cross-project orchestration" --namespace-wide antigravity --strategy keyword
-
-# Search for this exact document in Kioku
-kioku recall "TOOLING_QUOTA_AND_ENGINEERING_SYNTHESIS" --namespace-wide antigravity --strategy keyword
+# Search for 4-layer placement model and plans structure
+kioku recall "placement model" --namespace-wide antigravity --strategy keyword
 ```
 
 ---
 
-## 8. Checklist for Gemini Argon Design & Planning Sessions
+## 9. Checklist for Gemini Argon Design & Planning Sessions
 
-When entering a design and planning session with Gemini Argon, use the following architectural checklist to evaluate proposals:
+When entering a design and planning session with Gemini Argon (especially for **parallel task queues and DAG processing**), use the following architectural checklist to evaluate proposals:
 
 - [ ] **Verification Asymmetry**: Does the proposed design prioritize *cheap, deterministic verification* over compact code authoring?
 - [ ] **Mechanical Isolation**: Are mechanical changes (imports, formatting, pragmas) delegated to `hls-autoheal` or deterministic scripts rather than multi-turn LLM prompts?
-- [ ] **Context Window Discipline**: Is the task scoped cleanly to run in an isolated leaf subagent or Yaegi script rather than the long-running orchestrator context?
+- [ ] **Filesystem-Level Airgapping**: Does the task execution model prevent rogue subagents from fishing API credentials out of `$HOME/.config/` or `$HOME/.gemini/`?
+- [ ] **Zero-Polling Scheduling**: Is the worker supervisor purely event-driven, avoiding all LLM turn polling over background jobs?
+- [ ] **Resource Partitioning for Parallelism**: Are network ports, UNIX sockets, and Cabal build caches (`dist-newstyle`) explicitly partitioned per concurrent task?
+- [ ] **Multi-Tier Diff Ingestion**: Does the worker harness implement a 4-tier diff fallback (`git apply` $\rightarrow$ `patch` $\rightarrow$ atomic rollback) to protect worktrees against model diff errors?
 - [ ] **Data Layout Overhead**: Are hot evaluation loops using unboxed flat arrays (`PrimArray`, `SmallArray`) rather than boxed associative maps (`Map`)?
 - [ ] **Modal Bounds**: Can lookbehind, resource usage, or recursion depth be statically or graded-indexed at the type level to enable aggressive garbage collection?
 - [ ] **Pre-Filtering Separation**: Can search spaces be pre-filtered via boolean $k$-gram formulas or lightweight index structures before invoking full state machine evaluators?
