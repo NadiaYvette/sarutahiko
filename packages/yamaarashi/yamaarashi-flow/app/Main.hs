@@ -484,8 +484,13 @@ runTaskPacket cliAllowMetered path = do
               logEvent dbPath (packetId packet) "STEP_FAILED" stepErr
               if attempt < maxAttempts
                 then do
-                  let nextPrompt = buildRepairPrompt packet stepErr (attempt + 1) maxAttempts
-                  loop (attempt + 1) (Just nextPrompt)
+                  -- Transport/invocation failures produced no model output:
+                  -- retry with the fresh prompt rather than framing the
+                  -- infrastructure error as a repair task.
+                  let noOutput = "invocation failed" `T.isInfixOf` stepErr || "invocation exceeded" `T.isInfixOf` stepErr
+                  if noOutput
+                    then loop (attempt + 1) Nothing
+                    else loop (attempt + 1) (Just (buildRepairPrompt packet stepErr (attempt + 1) maxAttempts))
                 else throwIO (userError $ "Task execution failed after " ++ show maxAttempts ++ " attempts: " ++ T.unpack stepErr)
             Right actualExec -> do
               logEvent dbPath (packetId packet) "STEP_EXECUTED" ("Modifications applied successfully via " <> actualExec <> " (attempt " <> T.pack (show attempt) <> ")")
@@ -720,6 +725,7 @@ isRateLimited err =
      || "rate limit" `T.isInfixOf` lower
      || "quota" `T.isInfixOf` lower
      || "resource_exhausted" `T.isInfixOf` lower
+     || "profiles exhausted" `T.isInfixOf` lower
 
 -- | Direct-connexion protocol for the Utai executor: the model has no file
 -- tools, so it must emit its work as fenced unified-diff blocks which the
