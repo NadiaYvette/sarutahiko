@@ -770,13 +770,17 @@ extractDiffBlocks txt = go (T.lines txt)
     isFence l =
       let s = T.strip l
       in "```diff" `T.isPrefixOf` s || "```patch" `T.isPrefixOf` s
+    -- A block ending with blank lines makes `git apply` treat them as
+    -- spurious trailing context: the counts then overrun and eat the next
+    -- section header. Strip them; `sanityDiff` normalizes internal empties.
+    trimTrailingBlanks = T.unlines . reverse . dropWhile T.null . reverse . T.lines
     go [] = []
     go (l:ls)
       | isFence l =
           let (block, rest) = span (\x -> not (T.isPrefixOf "```" (T.strip x))) ls
           in case block of
                [] -> go (drop 1 rest)
-               _  -> T.unlines block : go (drop 1 rest)
+               _  -> trimTrailingBlanks (T.unlines block) : go (drop 1 rest)
       | otherwise = go ls
 
 -- | Recount hunk line counts in a unified diff. Models routinely emit
