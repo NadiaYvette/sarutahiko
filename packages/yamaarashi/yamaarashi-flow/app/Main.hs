@@ -799,10 +799,15 @@ buildUtaiContext wtDir packet = do
     let cab = wtDir </> "packages" </> pd
     fs <- safeList cab
     let cabalFiles = filter (\f -> ".cabal" `T.isSuffixOf` T.pack f) fs
-    fileEntries <- mapM (\f -> do
+    cabalEntries <- mapM (\f -> do
       t <- TIO.readFile (cab </> f)
       pure ["--- packages/" <> T.pack pd <> "/" <> T.pack f <> " ---", t]) cabalFiles
-    pure (concat fileEntries)) [p | p <- pkgDirs, pkgFilter p]
+    srcFiles <- walkFiles (cab </> "src") 5
+    testFiles <- walkFiles (cab </> "test") 5
+    srcEntries <- mapM (\f -> do
+      t <- TIO.readFile f
+      pure ["--- FILE: " <> T.pack (rel f) <> " ---", t]) (take 40 (srcFiles ++ testFiles))
+    pure (concat cabalEntries ++ concat srcEntries)) [p | p <- pkgDirs, pkgFilter p]
   let treeLines = concatMap (\(pd, fs) -> map (\f -> "packages/" ++ pd ++ "/" ++ rel f) fs) srcEntries
       scriptsLine = unwords (map rel (take 200 scriptEntries))
       topLine = unwords (map rel (take 100 topLevel))
@@ -823,7 +828,7 @@ buildUtaiContext wtDir packet = do
       , "### Top level"
       , T.pack topLine
       , ""
-      , "### Target package .cabal contents (verbatim)"
+      , "### Target package files (verbatim; these are the ONLY files you may diff against)"
       ]
     , cabalSection
     ]
@@ -832,6 +837,18 @@ buildUtaiContext wtDir packet = do
     safeList p = do
       exists <- doesDirectoryExist p
       if exists then listDirectory p else pure []
+    walkFiles :: FilePath -> Int -> IO [FilePath]
+    walkFiles root d
+      | d <= 0 = pure []
+      | otherwise = do
+          entries <- safeList root
+          mapM walk1 entries >>= pure . concat
+      where walk1 name = do
+              let p = root </> name
+              isDir <- doesDirectoryExist p
+              if isDir
+                then walkFiles p (d - 1)
+                else pure [p]  -- include all files; read happens at embed time
 
 -- | Delegate task execution directly to Utai native LLM client.
 runUtaiStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
@@ -849,6 +866,11 @@ runUtaiStep wtDir packet dbPath mRepairPrompt attempt = do
 
   logEvent dbPath tId "UTAI_SPAWNED" ("Utai native client querying " <> targetModel <> " (attempt " <> T.pack (show attempt) <> ")")
   putStrLn $ "=== [yamaarashi-exec] Querying native Utai client (model: " ++ T.unpack targetModel ++ ", attempt " ++ show attempt ++ ") ==="
+
+  -- Persist the exact prompt so failures can be debugged post-hoc.
+  let logDir0 = takeDirectory dbPath </> "logs"
+  createDirectoryIfMissing True logDir0
+  TIO.writeFile (logDir0 </> (T.unpack tId ++ "-utai-attempt" ++ show attempt ++ "-prompt.md")) promptContent
 
   let req = CompletionReq
         { reqModel    = targetModel
