@@ -779,6 +779,53 @@ extractDiffBlocks txt = go (T.lines txt)
                _  -> T.unlines block : go (drop 1 rest)
       | otherwise = go ls
 
+-- | Recount hunk line counts in a unified diff. Models routinely emit
+-- plausible-but-wrong counts in the `@@ ... @@` headers (attempt 1 of
+-- TP-AUDIT-002 claimed +100 with 85 body lines); `git apply` validates
+-- new-file sections strictly and rejects the patch with "new file
+-- depends on old contents" despite `--recount`. This rewrites each
+-- header with counts measured from its body.
+sanityDiff :: Text -> Text
+sanityDiff txt = T.unlines (go (T.lines txt))
+  where
+    isSectionHead x =
+      let s = T.strip x
+      in "--- " `T.isPrefixOf` s || "+++ " `T.isPrefixOf` s
+           || "diff --git" `T.isPrefixOf` s || "@@" `T.isPrefixOf` s
+    go [] = []
+    go (l:ls)
+      | "@@" `T.isPrefixOf` T.strip l =
+          let (body, rest) = span (\x -> not (isSectionHead x)) ls
+              isPlus x = T.isPrefixOf "+" x && not (T.isPrefixOf "+++" x)
+              isMinus x = T.isPrefixOf "-" x && not (T.isPrefixOf "---" x)
+              isCtx x = T.isPrefixOf " " x || T.null x
+              oldC = length (filter (\x -> isMinus x || isCtx x) body)
+              newC = length (filter (\x -> isPlus x || isCtx x) body)
+              parts = T.splitOn " " (T.strip l)
+              parseRange p def = case T.splitOn "," (T.drop 1 p) of
+                [a] -> maybe def (\n -> (n, 1)) (parseInt a)
+                (a:b:_) -> case (parseInt a, parseInt b) of
+                  (Just s, Just c) -> (s, c)
+                  _ -> def
+                _ -> def
+              parseInt s = case reads (T.unpack s) of
+                [(n, "")] -> Just n
+                _ -> Nothing
+              (oldStart, _oldLen) = case parts of
+                (_:r:_) -> parseRange r (1, 1)
+                _ -> (1, 1)
+              (newStart, _newLen) = case parts of
+                (_:_:r:_) -> parseRange r (1, 1)
+                _ -> (1, 1)
+              newHeader = T.unwords
+                [ "@@"
+                , "-" <> T.pack (show oldStart) <> "," <> T.pack (show oldC)
+                , "+" <> T.pack (show newStart) <> "," <> T.pack (show newC)
+                , "@@"
+                ]
+          in newHeader : body ++ go rest
+      | otherwise = l : go ls
+
 -- | Direct-connexion context: the model cannot list or open files, so the
 -- runner embeds a bounded inventory of the worktree (packages, .cabal files,
 -- source/test trees, top-level scripts) plus verbatim contents of the
@@ -920,7 +967,7 @@ runUtaiStep wtDir packet dbPath mRepairPrompt attempt = do
           pure (Left errMsg)
         _ -> do
           let patchFile = wtDir </> (".utai-" ++ show attempt ++ ".patch")
-          TIO.writeFile patchFile (T.unlines diffBlocks)
+          TIO.writeFile patchFile (T.unlines (map sanityDiff diffBlocks))
           (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc "git" ["apply", "--recount", "--whitespace=nowarn", patchFile]))
           case code of
             ExitFailure c -> do
