@@ -742,14 +742,24 @@ utaiDiffInstructions = T.unlines
   , "    ```"
   , ""
   , "Rules:"
-  , "1. One fenced block per changed file, with `a/` + `b/` paths relative to the"
-  , "   repository root. New files: use `--- /dev/null` / `+++ b/path/to/File.hs`."
-  , "2. Context lines must match the existing file content exactly (diff -u style);"
+  , "1. One fenced block per changed file, paths relative to the repository root."
+  , "   EXISTING files: header MUST be exactly `--- a/path/to/File.hs` and"
+  , "   `+++ b/path/to/File.hs` (no `index`, no `diff --git` lines, no timestamps)."
+  , "   NEW files (not present in the repository context): header MUST be exactly"
+  , "   `--- /dev/null` and `+++ b/path/to/NewFile.hs`."
+  , "2. NEVER create a new package, .cabal file, or top-level module. Work ONLY"
+  , "   within the existing packages named in the spec; extend their existing"
+  , "   .cabal files and source trees. Study the repository context below before"
+  , "   writing any diff; mirror its module naming and dependency conventions."
+  , "3. Context lines must match the existing file content exactly (diff -u style);"
   , "   keep hunks small and self-contained so `git apply --recount` succeeds."
-  , "3. Emit every changed file (source, .cabal, tests, re-exports) in these blocks;"
+  , "4. Emit every changed file (source, .cabal, tests, re-exports) in these blocks;"
   , "   your response is concatenated and applied verbatim."
-  , "4. Do NOT narrate tool usage or claim files were edited - the diff blocks"
-  , "   ARE the deliverable. Nothing outside the fenced blocks is applied."
+  , "5. If the spec names target files that do not exist yet, still use the"
+  , "   `--- /dev/null` new-file header for them."
+  , "6. Do NOT narrate tool usage, do NOT propose shell commands, and do NOT claim"
+  , "   files were edited - the diff blocks ARE the deliverable. Nothing outside"
+  , "   the fenced blocks is applied."
   , ""
   ]
 
@@ -769,14 +779,70 @@ extractDiffBlocks txt = go (T.lines txt)
                _  -> T.unlines block : go (drop 1 rest)
       | otherwise = go ls
 
+-- | Direct-connexion context: the model cannot list or open files, so the
+-- runner embeds a bounded inventory of the worktree (packages, .cabal files,
+-- source/test trees, top-level scripts) plus verbatim contents of the
+-- packet's target files and the nearest dependency cabals. Without this
+-- the model invents its own layout instead of matching the repository.
+buildUtaiContext :: FilePath -> TaskPacket -> IO Text
+buildUtaiContext wtDir packet = do
+  let pkgs = packetPackages packet
+      pkgFilter p = p `elem` map T.unpack pkgs
+      rel p = if take (length wtDir + 1) p == wtDir ++ "/"
+                then drop (length wtDir + 1) p
+                else p
+  pkgDirs <- filter (\p -> length p > 0) <$> listDirectory (wtDir </> "packages")
+  srcEntries <- mapM (\pd -> (pd,) <$> safeList (wtDir </> "packages" </> pd)) pkgDirs
+  scriptEntries <- safeList (wtDir </> "scripts")
+  topLevel <- safeList wtDir
+  targetPackLines <- mapM (\pd -> do
+    let cab = wtDir </> "packages" </> pd
+    fs <- safeList cab
+    let cabalFiles = filter (\f -> ".cabal" `T.isSuffixOf` T.pack f) fs
+    fileEntries <- mapM (\f -> do
+      t <- TIO.readFile (cab </> f)
+      pure ["--- packages/" <> T.pack pd <> "/" <> T.pack f <> " ---", t]) cabalFiles
+    pure (concat fileEntries)) [p | p <- pkgDirs, pkgFilter p]
+  let treeLines = concatMap (\(pd, fs) -> map (\f -> "packages/" ++ pd ++ "/" ++ rel f) fs) srcEntries
+      scriptsLine = unwords (map rel (take 200 scriptEntries))
+      topLine = unwords (map rel (take 100 topLevel))
+      cabalSection = concat targetPackLines
+  return $ T.unlines $ concat
+    [ [ "## Repository Context (embedded; you cannot browse the worktree)"
+      , ""
+      , "Target packages: " <> (if null pkgs then T.pack "(all)" else T.intercalate ", " pkgs)
+      , "Package directories: " <> T.pack (unwords pkgDirs)
+      , ""
+      , "### Files under packages/ (one level per package)"
+      ]
+    , take 300 (map T.pack treeLines)
+    , [ ""
+      , "### scripts/tasks/"
+      , T.pack scriptsLine
+      , ""
+      , "### Top level"
+      , T.pack topLine
+      , ""
+      , "### Target package .cabal contents (verbatim)"
+      ]
+    , cabalSection
+    ]
+  where
+    safeList :: FilePath -> IO [FilePath]
+    safeList p = do
+      exists <- doesDirectoryExist p
+      if exists then listDirectory p else pure []
+
 -- | Delegate task execution directly to Utai native LLM client.
 runUtaiStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
 runUtaiStep wtDir packet dbPath mRepairPrompt attempt = do
   let tId = packetId packet
-      promptContent = case mRepairPrompt of
-        Just rp -> rp <> utaiDiffInstructions
-        Nothing -> buildWorkerPrompt packet <> utaiDiffInstructions
-      targetModel = case packetModel packet of
+      basePrompt = case mRepairPrompt of
+        Just rp -> rp
+        Nothing -> buildWorkerPrompt packet
+  repoContext <- buildUtaiContext wtDir packet
+  let promptContent = basePrompt <> "\n" <> repoContext <> utaiDiffInstructions
+  let targetModel = case packetModel packet of
         Just m  -> m
         Nothing -> "auto/best-coding"
       budgetSec = maybe 600 id (packetRunBudget packet)
