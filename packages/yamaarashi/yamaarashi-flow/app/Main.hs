@@ -974,20 +974,83 @@ runUtaiStep wtDir packet dbPath mRepairPrompt attempt = do
           putStrLn $ "=== [yamaarashi-exec] " ++ T.unpack errMsg ++ " ==="
           pure (Left errMsg)
         _ -> do
-          let patchFile = wtDir </> (".utai-" ++ show attempt ++ ".patch")
-          TIO.writeFile patchFile (T.unlines (map sanityDiff diffBlocks))
-          (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc "git" ["apply", "--recount", "--whitespace=nowarn", patchFile]))
-          case code of
-            ExitFailure c -> do
-              let errMsg = "Utai diff failed to apply (git apply exit " <> T.pack (show c) <> "):\n" <> trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
+          let sections = concatMap (splitSections . sanityDiff) diffBlocks
+          let sectionFiles = [ wtDir </> (".utai-" ++ show attempt ++ "-" ++ show i ++ ".patch") | i <- [1 .. length sections] ]
+          results <- mapM (\(f, s) -> applyDiffSection wtDir f s) (zip sectionFiles sections)
+          let failures = [ (n, e) | Left (n, e) <- results ]
+              applied  = [ (f, p) | Right (f, p) <- results ]
+          if null failures then pure () else mapM_ (\(f, p) -> rollbackDiffSection wtDir f p) applied
+          mapM_ removeFile sectionFiles
+          case failures of
+            [] -> do
+              logEvent dbPath tId "UTAI_SUCCEEDED" ("Utai returned " <> T.pack (show (T.length (respContent resp))) <> " chars; applied " <> T.pack (show (length sections)) <> " diff section(s)")
+              putStrLn $ "=== [yamaarashi-exec] Utai native invocation applied " ++ show (length sections) ++ " diff section(s) ==="
+              pure (Right "utai")
+            _ -> do
+              let errMsg = "Utai diff failed to apply (" <> T.pack (show (length failures)) <> "/" <> T.pack (show (length sections)) <> " sections failed):\n" <> T.intercalate "\n" [ "- " <> n <> ": " <> e | (n, e) <- failures ] <> "\nWorktree rolled back to pre-attempt state; re-emit the complete corrected diff."
               logEvent dbPath tId "UTAI_APPLY_FAILED" errMsg
               putStrLn $ "=== [yamaarashi-exec] " ++ T.unpack errMsg ++ " ==="
               pure (Left errMsg)
-            ExitSuccess -> do
-              removeFile patchFile
-              logEvent dbPath tId "UTAI_SUCCEEDED" ("Utai returned " <> T.pack (show (T.length (respContent resp))) <> " chars; applied " <> T.pack (show (length diffBlocks)) <> " diff block(s)")
-              putStrLn $ "=== [yamaarashi-exec] Utai native invocation applied " ++ show (length diffBlocks) ++ " diff block(s) ==="
-              pure (Right "utai")
+
+-- | Split a sanitized diff block into per-file sections. A section starts
+-- at a `--- ` (or `diff --git`) line and runs until the next section
+-- start. Lines before the first section are discarded; trailing blank
+-- lines within a section are dropped (they read as spurious context and
+-- overrun `git apply` counts).
+splitSections :: Text -> [Text]
+splitSections txt = go (T.lines txt)
+  where
+    isStart l = "--- " `T.isPrefixOf` l || "diff --git " `T.isPrefixOf` l
+    go [] = []
+    go (l:ls)
+      | isStart l = let (raw, more) = span (not . isStart) ls
+                        body = reverse (dropWhile T.null (reverse raw))
+                    in T.unlines (l : body) : go more
+      | otherwise = go ls
+
+-- | Target path of a diff section, for error messages.
+sectionTarget :: Text -> Text
+sectionTarget txt = go (T.lines txt)
+  where
+    go [] = "<unknown file>"
+    go (l:rest)
+      | "+++ " `T.isPrefixOf` l =
+          let p = T.strip (T.drop 4 l)
+              p1 = if "a/" `T.isPrefixOf` p || "b/" `T.isPrefixOf` p then T.drop 2 p else p
+          in if T.null p1 then go rest else p1
+      | otherwise = go rest
+
+-- | Apply one per-file diff section. Models emit two header styles —
+-- `--- a/path` / `+++ b/path` (git's default -p1) or bare repo-relative
+-- paths (needs -p0) — so try the right strip level first, then the other.
+-- Returns the patch file and the strip level used (for rollback), or the
+-- section target plus `git apply`'s stderr.
+applyDiffSection :: FilePath -> FilePath -> Text -> IO (Either (Text, Text) (FilePath, Maybe FilePath))
+applyDiffSection wtDir patchFile section = do
+  TIO.writeFile patchFile section
+  let hasAbPrefix = any (\l -> "--- a/" `T.isPrefixOf` l || "+++ b/" `T.isPrefixOf` l) (T.lines section)
+      levels :: [Maybe FilePath]
+      levels = if hasAbPrefix then [Nothing, Just "-p0"] else [Just "-p0", Nothing]
+  go levels
+  where
+    baseArgs = ["apply", "--recount", "--whitespace=nowarn"]
+    go [] = pure (Left (sectionTarget section, T.pack "git apply failed at every -p level"))
+    go (lvl:rest) = do
+      let args = baseArgs ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
+      (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc "git" args))
+      case code of
+        ExitSuccess    -> pure (Right (patchFile, lvl))
+        ExitFailure _  -> case rest of
+          [] -> pure (Left (sectionTarget section, trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))))
+          _  -> go rest
+
+-- | Reverse-apply a previously applied section (used to roll the
+-- worktree back to a clean pre-attempt state after a partial failure).
+rollbackDiffSection :: FilePath -> FilePath -> Maybe FilePath -> IO ()
+rollbackDiffSection wtDir patchFile lvl = do
+  let args = ["apply", "-R", "--recount", "--whitespace=nowarn"] ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
+  _ <- readProcess (setWorkingDir wtDir (proc "git" args))
+  pure ()
 
 -- | Execute task script in the isolated worktree with quota firewall env.
 runScriptStep :: Bool -> FilePath -> FilePath -> IO (Either Text Text)
@@ -1182,35 +1245,49 @@ buildWorkerPrompt packet = T.unlines
 
 -- | Construct structured prompt markdown for repairing a failed verification attempt.
 buildRepairPrompt :: TaskPacket -> Text -> Int -> Int -> Text
-buildRepairPrompt packet errorOutput attempt maxAtt = T.unlines
-  [ "# Autonomous Task Repair: " <> packetTitle packet <> " (Attempt " <> T.pack (show attempt) <> "/" <> T.pack (show maxAtt) <> ")"
-  , ""
-  , "## Packet Identifier"
-  , packetId packet
-  , ""
-  , "## Context"
-  , "The previous implementation attempt left verification or compilation errors in the worktree."
-  , "All files created so far are preserved in your current working directory."
-  , ""
-  , "## Verification / Compiler Error Output"
-  , "```"
-  , errorOutput
-  , "```"
-  , ""
-  , "## Repair Directives"
-  , "1. Diagnose and fix the specific compilation, type mismatch, import, or test failure errors shown above."
-  , "2. DO NOT delete or recreate files from scratch unless necessary — apply targeted edits to the existing codebase."
-  , "3. Strict Quality Gates:"
-  , "   - Fix HLint suggestions (eta-reduction, redundant lambdas, unused language extensions)."
-  , "   - Tagref: Ensure anchor [tag:name] is unique; citations in source must use [ref:name]."
-  , "   - Comment Density: Maintain CLOC comments >= 25%."
-  , "4. Zero-Token Progressive Code Navigation:"
-  , "   - Use tags to check definitions: `grep -w \"^<Symbol>\" tags`"
-  , "   - Test compilation directly via `cabal v2-build`."
-  , "5. Verification Pre-requisite: Before finishing, verify that your implementation builds"
-  , "   and passes tests via `cabal v2-build` and `cabal v2-test`."
-  , "6. Conclude cleanly: Once code is in place and verified, output your summary and exit."
-  ]
+buildRepairPrompt packet errorOutput attempt maxAtt =
+  let isApplyFail = "failed to apply" `T.isInfixOf` errorOutput
+      ctxLine = if isApplyFail
+        then "The previous attempt's diff failed to apply. The runner rolled the worktree back to its pre-attempt state — your next response must contain the COMPLETE corrected diff, not just the failing file."
+        else "The previous implementation attempt left verification or compilation errors in the worktree. All files created so far are preserved in your current working directory."
+      directives = if isApplyFail
+        then
+          [ "1. Diagnose why the diff could not be applied (path prefixes, headers, or hunk context) and repair the DIFF ITSELF. Keep the same implementation changes; only fix how they are expressed as a diff."
+          , "2. Headers: EXISTING files MUST use exactly `--- a/<repo-relative path>` and `+++ b/<repo-relative path>`; NEW files MUST use `--- /dev/null` and `+++ b/<repo-relative path>`. NEVER emit an existing file as a new file, and NEVER drop a leading directory component (e.g. `packages/`) from a path."
+          , "3. One fenced ```diff block per changed file; include EVERY changed file (source, .cabal files, tests, re-exports) — the blocks are concatenated and applied."
+          , "4. Context lines must match the existing file content exactly; keep hunks small and self-contained."
+          , "5. Conclude cleanly: once the corrected diff is emitted, output your summary and exit."
+          ]
+        else
+          [ "1. Diagnose and fix the specific compilation, type mismatch, import, or test failure errors shown above."
+          , "2. DO NOT delete or recreate files from scratch unless necessary — apply targeted edits to the existing codebase."
+          , "3. Strict Quality Gates:"
+          , "   - Fix HLint suggestions (eta-reduction, redundant lambdas, unused language extensions)."
+          , "   - Tagref: Ensure anchor [tag:name] is unique; citations in source must use [ref:name]."
+          , "   - Comment Density: Maintain CLOC comments >= 25%."
+          , "4. Zero-Token Progressive Code Navigation:"
+          , "   - Use tags to check definitions: `grep -w \"^<Symbol>\" tags`"
+          , "   - Test compilation directly via `cabal v2-build`."
+          , "5. Verification Pre-requisite: Before finishing, verify that your implementation builds"
+          , "   and passes tests via `cabal v2-build` and `cabal v2-test`."
+          , "6. Conclude cleanly: Once code is in place and verified, output your summary and exit."
+          ]
+  in T.unlines
+    ([ "# Autonomous Task Repair: " <> packetTitle packet <> " (Attempt " <> T.pack (show attempt) <> "/" <> T.pack (show maxAtt) <> ")"
+     , ""
+     , "## Packet Identifier"
+     , packetId packet
+     , ""
+     , "## Context"
+     , ctxLine
+     , ""
+     , "## Error Output From Previous Attempt"
+     , "```"
+     , errorOutput
+     , "```"
+     , ""
+     , "## Repair Directives"
+     ] ++ directives)
 
 -- | Verification gate: builds packages, runs tests, and audits code.
 -- Returns Right () on success, or Left errorOutput on failure.
