@@ -27,7 +27,7 @@ import System.Directory
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
 import System.Environment (getArgs, getEnvironment)
 import System.Exit (exitFailure, exitSuccess)
-import System.FilePath (takeBaseName, takeDirectory, (</>))
+import System.FilePath (takeBaseName, takeDirectory, takeFileName, (</>))
 import System.Process.Typed
 import System.Timeout (timeout)
 
@@ -975,19 +975,20 @@ runUtaiStep wtDir packet dbPath mRepairPrompt attempt = do
           pure (Left errMsg)
         _ -> do
           let sections = concatMap (splitSections . sanityDiff) diffBlocks
-          let sectionFiles = [ wtDir </> (".utai-" ++ show attempt ++ "-" ++ show i ++ ".patch") | i <- [1 .. length sections] ]
-          results <- mapM (\(f, s) -> applyDiffSection wtDir f s) (zip sectionFiles sections)
+          normalized <- mapM (normalizeSectionPaths wtDir) sections
+          let sectionFiles = [ wtDir </> (".utai-" ++ show attempt ++ "-" ++ show i ++ ".patch") | i <- [1 .. length normalized] ]
+          results <- mapM (\(f, s) -> applyDiffSection wtDir f s) (zip sectionFiles normalized)
           let failures = [ (n, e) | Left (n, e) <- results ]
               applied  = [ (f, p) | Right (f, p) <- results ]
           if null failures then pure () else mapM_ (\(f, p) -> rollbackDiffSection wtDir f p) applied
           mapM_ removeFile sectionFiles
           case failures of
             [] -> do
-              logEvent dbPath tId "UTAI_SUCCEEDED" ("Utai returned " <> T.pack (show (T.length (respContent resp))) <> " chars; applied " <> T.pack (show (length sections)) <> " diff section(s)")
-              putStrLn $ "=== [yamaarashi-exec] Utai native invocation applied " ++ show (length sections) ++ " diff section(s) ==="
+              logEvent dbPath tId "UTAI_SUCCEEDED" ("Utai returned " <> T.pack (show (T.length (respContent resp))) <> " chars; applied " <> T.pack (show (length normalized)) <> " diff section(s)")
+              putStrLn $ "=== [yamaarashi-exec] Utai native invocation applied " ++ show (length normalized) ++ " diff section(s) ==="
               pure (Right "utai")
             _ -> do
-              let errMsg = "Utai diff failed to apply (" <> T.pack (show (length failures)) <> "/" <> T.pack (show (length sections)) <> " sections failed):\n" <> T.intercalate "\n" [ "- " <> n <> ": " <> e | (n, e) <- failures ] <> "\nWorktree rolled back to pre-attempt state; re-emit the complete corrected diff."
+              let errMsg = "Utai diff failed to apply (" <> T.pack (show (length failures)) <> "/" <> T.pack (show (length normalized)) <> " sections failed):\n" <> T.intercalate "\n" [ "- " <> n <> ": " <> e | (n, e) <- failures ] <> "\nWorktree rolled back to pre-attempt state; re-emit the complete corrected diff."
               logEvent dbPath tId "UTAI_APPLY_FAILED" errMsg
               putStrLn $ "=== [yamaarashi-exec] " ++ T.unpack errMsg ++ " ==="
               pure (Left errMsg)
@@ -1020,6 +1021,46 @@ sectionTarget txt = go (T.lines txt)
           in if T.null p1 then go rest else p1
       | otherwise = go rest
 
+-- | Models routinely drop leading directory components from diff paths
+-- (e.g. `gargamelle-audit/test/Main.hs` for
+-- `packages/gargamelle-audit/test/Main.hs`). For modification sections
+-- whose path does not exist in the worktree, search for a unique file
+-- with the same path suffix and rewrite the section headers to it.
+normalizeSectionPaths :: FilePath -> Text -> IO Text
+normalizeSectionPaths wtDir section = do
+  let ls = T.lines section
+      target = sectionTarget section
+      isNewFile = any (T.isPrefixOf "--- /dev/null") ls
+  if target == "<unknown file>" || isNewFile
+    then pure section
+    else do
+      exists <- doesFileExist (wtDir </> T.unpack target)
+      if exists
+        then pure section
+        else do
+          candidates <- findBySuffix wtDir target
+          case candidates of
+            [cand] -> pure (rewritePaths target cand section)
+            _ -> pure section
+  where
+    findBySuffix root suffix = do
+      (_code, outBs, _errBs) <- readProcess (proc "find" [root, "-type", "f", "-name", takeFileName (T.unpack suffix)])
+      let out = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict outBs)
+          prefix = T.pack (root ++ "/")
+          cands = [ T.strip (T.drop (T.length prefix) l) | l <- T.lines out, T.isPrefixOf prefix l, T.isSuffixOf ("/" <> suffix) l ]
+      pure cands
+    rewritePaths old new txt = T.unlines (map rewrite (T.lines txt))
+      where
+        rewrite l
+          | "--- " `T.isPrefixOf` l = rewriteOne "--- " l
+          | "+++ " `T.isPrefixOf` l = rewriteOne "+++ " l
+          | otherwise = l
+        rewriteOne marker l =
+          let p = T.strip (T.drop 4 l)
+              (prefix, stripped) = if "a/" `T.isPrefixOf` p || "b/" `T.isPrefixOf` p
+                                    then (T.take 2 p, T.drop 2 p) else ("", p)
+          in if stripped == old then marker <> prefix <> new else l
+
 -- | Apply one per-file diff section. Models emit two header styles —
 -- `--- a/path` / `+++ b/path` (git's default -p1) or bare repo-relative
 -- paths (needs -p0) — so try the right strip level first, then the other.
@@ -1031,18 +1072,17 @@ applyDiffSection wtDir patchFile section = do
   let hasAbPrefix = any (\l -> "--- a/" `T.isPrefixOf` l || "+++ b/" `T.isPrefixOf` l) (T.lines section)
       levels :: [Maybe FilePath]
       levels = if hasAbPrefix then [Nothing, Just "-p0"] else [Just "-p0", Nothing]
-  go levels
+  go levels []
   where
     baseArgs = ["apply", "--recount", "--whitespace=nowarn"]
-    go [] = pure (Left (sectionTarget section, T.pack "git apply failed at every -p level"))
-    go (lvl:rest) = do
+    go [] errs = pure (Left (sectionTarget section, T.pack (unlines (reverse errs))))
+    go (lvl:rest) errs = do
       let args = baseArgs ++ maybe [] (\a -> [a]) lvl ++ [patchFile]
+          levelTag = maybe "default" id lvl
       (code, outBs, errBs) <- readProcess (setWorkingDir wtDir (proc "git" args))
       case code of
-        ExitSuccess    -> pure (Right (patchFile, lvl))
-        ExitFailure _  -> case rest of
-          [] -> pure (Left (sectionTarget section, trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))))
-          _  -> go rest
+        ExitSuccess -> pure (Right (patchFile, lvl))
+        ExitFailure c -> go rest (("git apply [" <> levelTag <> ", exit " <> show c <> "]: " <> T.unpack (trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs]))))) : errs)
 
 -- | Reverse-apply a previously applied section (used to roll the
 -- worktree back to a clean pre-attempt state after a partial failure).
