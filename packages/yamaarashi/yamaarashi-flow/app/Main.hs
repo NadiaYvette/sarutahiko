@@ -35,6 +35,7 @@ import Utai
   ( CompletionReq (..)
   , CompletionResp (..)
   , Message (..)
+  , ModelOptions (..)
   , ProviderProfile (..)
   , Role (..)
   , callOpenAIWithFallback
@@ -941,7 +942,10 @@ runUtaiStep wtDir packet dbPath mRepairPrompt attempt = do
         { reqModel    = targetModel
         , reqMessages = [Message RoleUser promptContent]
         , reqTools    = []
-        , reqOptions  = defaultModelOptions
+        -- Reasoning backends burn completion budget on traces before
+        -- emitting content; a generous cap keeps the diff output from
+        -- being truncated into empty responses.
+        , reqOptions  = defaultModelOptions { optMaxTokens = Just 32768 }
         }
       primaryProfile = omnirouteProfile { profileModels = [targetModel] }
       fallbackProfiles = if packetAllowMetered packet
