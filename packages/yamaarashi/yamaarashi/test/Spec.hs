@@ -26,6 +26,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 import qualified Yamaarashi as Y
 import qualified Yamaarashi.Context.BlastShield as BlastShield
+import qualified Yamaarashi.Context.TailExcision as TailExcision
 import Yamaarashi.Synthesis.Synquid
   ( SynEnv (..)
   , SynM
@@ -66,6 +67,11 @@ tests = testGroup "Yamaarashi Suite"
   , testGroup "Yamaarashi.Context.BlastShield"
       [ testProperty "inlines small output <= 1500 tokens" prop_blastShield_inline
       , testProperty "spills 100 KB synthetic log to disk with compact digest" prop_blastShield_spill
+      ]
+  , testGroup "Yamaarashi.Context.TailExcision"
+      [ testProperty "pruneTranscriptTail inserts tombstone when non-advancing" prop_tailExcision_tombstone
+      , testProperty "pruneTranscriptTail preserves prefix when advancing" prop_tailExcision_advancing
+      , testProperty "renderStatelessStalk bounds total prompt <= 6000 tokens" prop_statelessStalk_bound
       ]
   ]
 
@@ -272,3 +278,57 @@ prop_blastShield_spill = property $ do
       assert (T.isInfixOf "turn-1.log" (T.pack path))
       assert (T.isInfixOf "GHC-83865" digest)
       assert (T.length digest < 2000)
+
+--------------------------------------------------------------------------------
+-- TailExcision Tests
+--------------------------------------------------------------------------------
+
+prop_tailExcision_tombstone :: Property
+prop_tailExcision_tombstone = property $ do
+  let s0 = TailExcision.emptyContextValveState
+             { TailExcision.lastCompilerCode = Just "GHC-83865"
+             , TailExcision.lastErrorCount   = 1
+             , TailExcision.messageHistory   = ["Initial turn message"]
+             }
+      obs = TailExcision.TurnObservation
+        { TailExcision.obsTurnIndex       = 2
+        , TailExcision.obsEstimatedTokens = 1500
+        , TailExcision.obsCompilerCode    = Just "GHC-83865"
+        , TailExcision.obsErrorCount      = 1
+        , TailExcision.obsRawText         = "Same compiler error with huge logs"
+        }
+      s1 = TailExcision.pruneTranscriptTail s0 obs
+  length (TailExcision.tombstoneRecords s1) === 1
+  case TailExcision.messageHistory s1 of
+    (m:_) -> assert (T.isInfixOf "[Excised Turn 2:" m)
+    []    -> failure
+
+prop_tailExcision_advancing :: Property
+prop_tailExcision_advancing = property $ do
+  let s0 = TailExcision.emptyContextValveState
+             { TailExcision.lastCompilerCode = Just "GHC-83865"
+             , TailExcision.lastErrorCount   = 3
+             , TailExcision.messageHistory   = ["Initial turn message"]
+             }
+      obs = TailExcision.TurnObservation
+        { TailExcision.obsTurnIndex       = 2
+        , TailExcision.obsEstimatedTokens = 1500
+        , TailExcision.obsCompilerCode    = Just "GHC-83865"
+        , TailExcision.obsErrorCount      = 1
+        , TailExcision.obsRawText         = "Advancing! Error count dropped from 3 to 1."
+        }
+      s1 = TailExcision.pruneTranscriptTail s0 obs
+  length (TailExcision.tombstoneRecords s1) === 0
+  case TailExcision.messageHistory s1 of
+    (m:_) -> m === "Advancing! Error count dropped from 3 to 1."
+    []    -> failure
+
+prop_statelessStalk_bound :: Property
+prop_statelessStalk_bound = property $ do
+  let blockA = TailExcision.FrozenBlockA "Block A: Invariant Task Rules & Signatures."
+      hugeText = T.replicate 10000 "Dynamic file content line\n"
+      blockB = TailExcision.DynamicBlockB hugeText
+      stalk = TailExcision.renderStatelessStalk blockA blockB
+      stalkText = TailExcision.unStalkPrompt stalk
+  assert (T.isPrefixOf "Block A: Invariant Task Rules & Signatures." stalkText)
+  assert (T.length stalkText <= 24500)
