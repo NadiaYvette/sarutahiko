@@ -5,6 +5,7 @@ module Main (main) where
 import Data.IORef
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import qualified Data.Text as T
 
 import Gargamelle.Core.Institution.Liquid
   ( BinOp (..)
@@ -24,6 +25,7 @@ import qualified Sarutahiko.Effect.Stepper as Stepper
 import Test.Tasty
 import Test.Tasty.Hedgehog
 import qualified Yamaarashi as Y
+import qualified Yamaarashi.Context.BlastShield as BlastShield
 import Yamaarashi.Synthesis.Synquid
   ( SynEnv (..)
   , SynM
@@ -60,6 +62,10 @@ tests = testGroup "Yamaarashi Suite"
       , testProperty "narrowVariantMorphism injects set difference narrowing on tag checks" prop_narrowVariantMorphism
       , testProperty "tryVariantExhaustion discharges empty variant branches via absurdVariantF" prop_tryVariantExhaustion
       , testProperty "substPredInRType correctly substitutes dependent arguments into arrows and refinements" prop_substPredInRType
+      ]
+  , testGroup "Yamaarashi.Context.BlastShield"
+      [ testProperty "inlines small output <= 1500 tokens" prop_blastShield_inline
+      , testProperty "spills 100 KB synthetic log to disk with compact digest" prop_blastShield_spill
       ]
   ]
 
@@ -235,3 +241,34 @@ prop_substPredInRType = property $ do
       expectedBase = RBase "v" SortInt (PRel Eq (PVar "v") (PBinOp Add (PIntLit 10) (PVar "y")))
       expectedArrow = RArrow "y" (RBScalar (RBase "v" SortInt PTrue)) (RBScalar expectedBase)
   substituted === expectedArrow
+
+--------------------------------------------------------------------------------
+-- BlastShield Tests
+--------------------------------------------------------------------------------
+
+prop_blastShield_inline :: Property
+prop_blastShield_inline = property $ do
+  let small = "Just a small compiler message with 10 tokens."
+  res <- evalIO $ BlastShield.spillOrDigest BlastShield.defaultBlastShieldConfig 1 small
+  case res of
+    BlastShield.InlineOutput t -> t === small
+    BlastShield.SpilledWithDigest _ _ -> failure
+
+prop_blastShield_spill :: Property
+prop_blastShield_spill = property $ do
+  let bigLog = T.unlines $
+        [ "Building package foo..." ]
+        ++ replicate 1000 "Compiling Module.Foo ( src/Module/Foo.hs, dist/Module/Foo.o )"
+        ++ [ "src/Module/Foo.hs:42:15: error: [GHC-83865] Variable not in scope: undefinedSymbol"
+           , "    |"
+           , " 42 |   let x = undefinedSymbol"
+           , "    |           ^^^^^^^^^^^^^^^"
+           ]
+        ++ replicate 1000 "Additional compiler debug traces and notes..."
+  res <- evalIO $ BlastShield.spillOrDigest BlastShield.defaultBlastShieldConfig 1 bigLog
+  case res of
+    BlastShield.InlineOutput _ -> failure
+    BlastShield.SpilledWithDigest path digest -> do
+      assert (T.isInfixOf "turn-1.log" (T.pack path))
+      assert (T.isInfixOf "GHC-83865" digest)
+      assert (T.length digest < 2000)

@@ -41,11 +41,16 @@ library
     exposed-modules:
         Yamaarashi
         Yamaarashi.Synthesis.Synquid
+        Yamaarashi.Context.BlastShield
     build-depends:
         base >= 4.20 && < 5,
         containers,
         text,
         mtl,
+        bytestring,
+        filepath,
+        directory,
+        kagami-ita-observability,
         polytropos-core,
         gargamelle-core,
         gargamelle-fol,
@@ -62,6 +67,10 @@ test-suite yamaarashi-test
         base >= 4.20 && < 5,
         containers,
         text,
+        bytestring,
+        filepath,
+        directory,
+        kagami-ita-observability,
         yamaarashi,
         polytropos-core,
         gargamelle-core,
