@@ -27,6 +27,11 @@ import Test.Tasty.Hedgehog
 import qualified Yamaarashi as Y
 import qualified Yamaarashi.Context.BlastShield as BlastShield
 import qualified Yamaarashi.Context.TailExcision as TailExcision
+import Control.Monad (forM_)
+import qualified System.Directory as Directory
+import System.Exit (ExitCode (..))
+import qualified System.Process as Process
+import qualified Yamaarashi.Sandbox.Airgap as Airgap
 import Yamaarashi.Synthesis.Synquid
   ( SynEnv (..)
   , SynM
@@ -72,6 +77,11 @@ tests = testGroup "Yamaarashi Suite"
       [ testProperty "pruneTranscriptTail inserts tombstone when non-advancing" prop_tailExcision_tombstone
       , testProperty "pruneTranscriptTail preserves prefix when advancing" prop_tailExcision_advancing
       , testProperty "renderStatelessStalk bounds total prompt <= 6000 tokens" prop_statelessStalk_bound
+      ]
+  , testGroup "Yamaarashi.Sandbox.Airgap"
+      [ testProperty "creates isolated home and masks credential paths" prop_airgap_isolated_home
+      , testProperty "scrubs API keys, secrets, and cloud variables from environment" prop_airgap_scrubbed_env
+      , testProperty "executes subprocess reactively in isolated sandbox" prop_airgap_run_isolated
       ]
   ]
 
@@ -332,3 +342,49 @@ prop_statelessStalk_bound = property $ do
       stalkText = TailExcision.unStalkPrompt stalk
   assert (T.isPrefixOf "Block A: Invariant Task Rules & Signatures." stalkText)
   assert (T.length stalkText <= 24500)
+
+--------------------------------------------------------------------------------
+-- Airgap Tests
+--------------------------------------------------------------------------------
+
+prop_airgap_isolated_home :: Property
+prop_airgap_isolated_home = property $ do
+  sEnv <- evalIO $ Airgap.buildAirgappedSandbox "/tmp"
+  let home = Airgap.sandboxHome sEnv
+  assert ("/tmp" `T.isInfixOf` T.pack home)
+  homeExists <- evalIO $ Directory.doesDirectoryExist home
+  homeExists === True
+  let masked = Airgap.maskedPaths sEnv
+  length masked === 2
+  forM_ masked $ \p -> do
+    dExists <- evalIO $ Directory.doesDirectoryExist p
+    dExists === True
+
+prop_airgap_scrubbed_env :: Property
+prop_airgap_scrubbed_env = property $ do
+  let dirty =
+        [ ("GEMINI_API_KEY", "secret-key-123")
+        , ("OPENAI_API_KEY", "sk-secret")
+        , ("ANTHROPIC_AUTH_TOKEN", "ant-secret")
+        , ("MY_PASSWORD", "hunter2")
+        , ("PATH", "/usr/bin:/bin")
+        , ("USER", "developer")
+        , ("HOME", "/home/original")
+        ]
+      clean = Airgap.scrubEnvironment "/tmp/isolated-home" dirty
+      cleanKeys = map fst clean
+  assert ("GEMINI_API_KEY" `notElem` cleanKeys)
+  assert ("OPENAI_API_KEY" `notElem` cleanKeys)
+  assert ("ANTHROPIC_AUTH_TOKEN" `notElem` cleanKeys)
+  assert ("MY_PASSWORD" `notElem` cleanKeys)
+  lookup "HOME" clean === Just "/tmp/isolated-home"
+  lookup "QUOTA_FIREWALL_ACTIVE" clean === Just "1"
+  lookup "PATH" clean === Just "/usr/bin:/bin"
+  lookup "USER" clean === Just "developer"
+
+prop_airgap_run_isolated :: Property
+prop_airgap_run_isolated = property $ do
+  sEnv <- evalIO $ Airgap.buildAirgappedSandbox "/tmp"
+  (ec, stdoutText, _) <- evalIO $ Airgap.runInIsolatedHome sEnv (Process.proc "echo" ["airgap-verified"])
+  ec === ExitSuccess
+  assert (T.isInfixOf "airgap-verified" stdoutText)

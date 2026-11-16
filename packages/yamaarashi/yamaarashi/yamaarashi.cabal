@@ -43,6 +43,7 @@ library
         Yamaarashi.Synthesis.Synquid
         Yamaarashi.Context.BlastShield
         Yamaarashi.Context.TailExcision
+        Yamaarashi.Sandbox.Airgap
     build-depends:
         base >= 4.20 && < 5,
         containers,
@@ -51,6 +52,7 @@ library
         bytestring,
         filepath,
         directory,
+        process,
         kagami-ita-observability,
         polytropos-core,
         gargamelle-core,
@@ -71,6 +73,7 @@ test-suite yamaarashi-test
         bytestring,
         filepath,
         directory,
+        process,
         kagami-ita-observability,
         yamaarashi,
         polytropos-core,
