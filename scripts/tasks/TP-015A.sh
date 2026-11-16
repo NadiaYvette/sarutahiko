@@ -316,14 +316,14 @@ prop_filter = property $ do
 
 prop_take :: Property
 prop_take = property $ do
-  xs <- forAll $ Gen.list (Range.linear 0 100) (Gen.int (Range.linear (-5) 120))
+  xs <- forAll $ Gen.list (Range.linear 0 100) (Gen.int (Range.linear (-1000) 1000))
   n <- forAll $ Gen.int (Range.linear (-5) 120)
   res <- evalIO $ Y.toList_ (Y.take n (Y.each xs))
   res === take n xs
 
 prop_drop :: Property
 prop_drop = property $ do
-  xs <- forAll $ Gen.list (Range.linear 0 100) (Gen.int (Range.linear (-5) 120))
+  xs <- forAll $ Gen.list (Range.linear 0 100) (Gen.int (Range.linear (-1000) 1000))
   n <- forAll $ Gen.int (Range.linear (-5) 120)
   res <- evalIO $ Y.toList_ (Y.drop n (Y.each xs))
   res === drop n xs
@@ -331,73 +331,131 @@ prop_drop = property $ do
 prop_stepper_parity :: Property
 prop_stepper_parity = property $ do
   xs <- forAll $ Gen.list (Range.linear 0 100) (Gen.int (Range.linear (-1000) 1000))
-  res <- evalIO $ do
-    stp <- Stepper.listStepper xs
-    Y.toList_ (Y.unrollStepper stp)
-  res === xs
+  let st1 = Stepper.unfoldStepper xs
+      st2 = Stepper.unfoldStepper xs
+  drained <- evalIO $ Stepper.drainStepper st1
+  unrolled <- evalIO $ Y.toList_ (Y.unfoldStepper st2)
+  unrolled === drained
+  unrolled === xs
 
 prop_stepper_teardown :: Property
 prop_stepper_teardown = property $ do
-  cleanedUp <- evalIO $ newIORef False
-  let stp = Stepper.Stepper
-        { Stepper.step = pure Stepper.Done
-        , Stepper.teardown = writeIORef cleanedUp True
-        }
-  res <- evalIO $ do
-    r <- Y.toList_ (Y.unrollStepper stp)
-    c <- readIORef cleanedUp
-    pure (r, c)
-  res === ([], True)
+  xs <- forAll $ Gen.list (Range.linear 1 50) (Gen.int (Range.linear 0 100))
+  ref <- evalIO $ newIORef False
+  let st = Stepper.Stepper xs step (teardown ref)
+      step [] = pure Nothing
+      step (y:ys) = pure (Just (y, ys))
+      teardown r _ = writeIORef r True
+  res <- evalIO $ Y.toList_ (Y.unfoldStepper st)
+  res === xs
+  closed <- evalIO $ readIORef ref
+  closed === True
 
 --------------------------------------------------------------------------------
--- Synquid Synthesis Institution Properties
+-- Yamaarashi.Synthesis.Synquid Unit Tests
 --------------------------------------------------------------------------------
 
+-- 1. termToLiquidPred correctly projects getF_ and matchTagF_ spines
 prop_termToLiquidPred :: Property
 prop_termToLiquidPred = property $ do
-  let env = SynEnv Map.empty Map.empty Map.empty
-      s0 = SynState 0 []
-      term = SynApp (SynApp (SynVar "f") (SynVar "x")) (SynVar "y")
-  case fst $ runSynM env s0 (termToLiquidPred term) of
-    Left _ -> failure
-    Right p -> case p of
-      LPApp "f" [LPVar "x", LPVar "y"] -> success
-      _ -> failure
+  -- getF_count r  -> sel_count(r)
+  let getFTerm = TApp (TVar "getF_count") [TVar "r"]
+  termToLiquidPred getFTerm === Just (PMeasureApp "sel_count" (PVar "r"))
 
+  -- matchTagF_Foo v -> vpayload_Foo(v)
+  let matchTagFTerm = TApp (TVar "matchTagF_Foo") [TVar "v"]
+  termToLiquidPred matchTagFTerm === Just (PMeasureApp "vpayload_Foo" (PVar "v"))
+
+  -- standard arithmetic
+  let addTerm = TApp (TVar "add") [TIntLit 1, TVar "x"]
+  termToLiquidPred addTerm === Just (PBinOp Add (PIntLit 1) (PVar "x"))
+
+-- 2. extVarMorphism and extPathMorphism correctly extend signatures
 prop_sigMorphisms :: Property
 prop_sigMorphisms = property $ do
-  let sig = LiquidSig Set.empty Set.empty Map.empty Map.empty
-      mVar = extVarMorphism sig "v" (RBase TInt)
-      mPath = extPathMorphism sig (LPRel Eq (LPVar "v") (LPInt 42))
-  Set.member "v" (sigSorts (targetSig mVar)) === True
-  length (sigAxioms (targetSig mPath)) === 1
+  let emptySig = LiquidSig
+        { sigSorts      = Set.empty
+        , sigMeasures   = Map.empty
+        , sigCtorAxioms = []
+        , sigQualifiers = Set.empty
+        , sigEnv        = Map.empty
+        , sigPathCond   = []
+        }
+      varType = RBScalar (RBase "v" SortInt PTrue)
+      mVar = extVarMorphism "x" varType emptySig
+  Map.lookup "x" (sigEnv (morphTarget mVar)) === Just varType
 
+  let pathPred = PRel Eq (PVar "x") (PIntLit 42)
+      mPath = extPathMorphism pathPred (morphTarget mVar)
+  sigPathCond (morphTarget mPath) === [pathPred]
+
+-- 3. narrowVariantMorphism injects set difference narrowing on tag checks
 prop_narrowVariantMorphism :: Property
 prop_narrowVariantMorphism = property $ do
-  let sig = LiquidSig Set.empty Set.empty Map.empty Map.empty
-      tags = Set.fromList ["TagA", "TagB", "TagC"]
-      (morp, narrowed) = narrowVariantMorphism sig "TagA" tags
-  Set.member "TagA" narrowed === False
-  Set.member "TagB" narrowed === True
-  Set.member "TagC" narrowed === True
-  length (sigAxioms (targetSig morp)) === 1
+  let emptySig = LiquidSig
+        { sigSorts      = Set.empty
+        , sigMeasures   = Map.empty
+        , sigCtorAxioms = []
+        , sigQualifiers = Set.empty
+        , sigEnv        = Map.empty
+        , sigPathCond   = []
+        }
+      negTagGuard = PNot (PRel SetMember (PVar "Tag_Foo") (PMeasureApp "vtags" (PVar "u")))
+      mMorph = narrowVariantMorphism negTagGuard emptySig
+      expectedNarrowed = PRel Eq
+        (PMeasureApp "vtags" (PVar "u"))
+        (PBinOp SetDiff (PMeasureApp "vtags" (PVar "u")) (PVar "Tag_Foo"))
+  sigPathCond (morphTarget mMorph) === [PAnd [negTagGuard, expectedNarrowed]]
 
+-- 4. tryVariantExhaustion discharges empty variant branches via absurdVariantF
 prop_tryVariantExhaustion :: Property
 prop_tryVariantExhaustion = property $ do
-  let env = SynEnv Map.empty Map.empty (Map.singleton "v" (RVariant (Map.singleton "TagA" (RBase TInt))))
-      s0 = SynState 0 []
-      (res, _) = runSynM env s0 $ tryVariantExhaustion "v" Set.empty (RBase TInt)
-  case res of
-    Right (Just (SynAbsurdVariant "v" _)) -> success
-    _ -> failure
+  let sortTag = SortADT "PolytroposTag" []
+      varU = "u"
+      uType = RBScalar (RBase "v" (SortADT "VariantF_Row" []) PTrue)
+      vtagsDecl = MeasureDecl
+        { measureName        = "vtags"
+        , measureDomain      = SortADT "VariantF_Row" []
+        , measureRange       = SortSet sortTag
+        , measureWellFounded = False
+        }
+      -- Path condition proving that vtags(u) == EmptySet
+      pathCond = [PRel Eq (PMeasureApp "vtags" (PVar varU)) (PEmptySet sortTag)]
+      sig = LiquidSig
+        { sigSorts      = Set.fromList ["Int", "Bool", "PolytroposTag", "VariantF_Row"]
+        , sigMeasures   = Map.singleton "vtags" vtagsDecl
+        , sigCtorAxioms = []
+        , sigQualifiers = Set.empty
+        , sigEnv        = Map.singleton varU uType
+        , sigPathCond   = pathCond
+        }
+      env = SynEnv
+        { envSig        = sig
+        , envComponents = Map.empty
+        , envZ3Session  = Z3StreamSession
+        , envMaxDepth   = 5
+        , envMaxAbduct  = 2
+        , envStateVar   = "st"
+        , envFuelVar    = "fuel"
+        }
+      st = SynState
+        { stFreshCounter   = 0
+        , stRejectedModels = []
+        , stMorphTrace     = []
+        }
+  (mTerm, _) <- evalIO $ runSynM env st (tryVariantExhaustion :: SynM SynTerm)
+  mTerm === Just (TApp (TVar "absurdVariantF") [TVar varU])
 
+-- 5. substPredInRType correctly substitutes dependent arguments into arrows and refinements
 prop_substPredInRType :: Property
 prop_substPredInRType = property $ do
-  let t = RArrow "x" (RBase TInt) (RRefine "nu" TInt (LPRel Eq (LPVar "nu") (LPVar "x")))
-      subst = substPredInRType "x" (LPInt 100) t
-  case subst of
-    RArrow "x'" (RBase TInt) (RRefine "nu" TInt (LPRel Eq (LPVar "nu") (LPInt 100))) -> success
-    _ -> failure
+  -- y:Int -> {v:Int | v == x + y} with [x := 10]
+  let innerBase = RBase "v" SortInt (PRel Eq (PVar "v") (PBinOp Add (PVar "x") (PVar "y")))
+      arrowTy = RArrow "y" (RBScalar (RBase "v" SortInt PTrue)) (RBScalar innerBase)
+      substituted = substPredInRType "x" (PIntLit 10) arrowTy
+      expectedBase = RBase "v" SortInt (PRel Eq (PVar "v") (PBinOp Add (PIntLit 10) (PVar "y")))
+      expectedArrow = RArrow "y" (RBScalar (RBase "v" SortInt PTrue)) (RBScalar expectedBase)
+  substituted === expectedArrow
 
 --------------------------------------------------------------------------------
 -- BlastShield Tests
