@@ -13,12 +13,108 @@ if ! grep -q "Kogaki.Text.VirtualCharList" packages/kogaki/kogaki-core/kogaki-co
   sed -i '/exposed-modules:/a \        Kogaki.Text.VirtualCharList' packages/kogaki/kogaki-core/kogaki-core.cabal
 fi
 
-# 3. Add VirtualCharList tests to test/Spec.hs if not already present
-if ! grep -q "Kogaki.Text.VirtualCharList" packages/kogaki/kogaki-core/test/Spec.hs; then
-  sed -i '/import Kogaki.Core.String/a import Kogaki.Text.VirtualCharList' packages/kogaki/kogaki-core/test/Spec.hs
-  sed -i '/testGroup "Kogaki.Core.String"/a \  , testGroup "Kogaki.Text.VirtualCharList"\n      [ testProperty "roundtrip packUTF8Literal and unpackVirtualCharList" prop_virtualchar_roundtrip\n      , testProperty "pattern matching with (:>) and VNil matches [Char]" prop_virtualchar_patterns\n      , testProperty "appendRopeInPlace preserves concatenation" prop_virtualchar_append\n      ]' packages/kogaki/kogaki-core/test/Spec.hs
+# 3. Write clean test/Spec.hs
+cat << 'EOF' > packages/kogaki/kogaki-core/test/Spec.hs
+{-# LANGUAGE OverloadedStrings #-}
 
-  cat << 'EOF' >> packages/kogaki/kogaki-core/test/Spec.hs
+module Main (main) where
+
+import qualified Data.ByteString as BS
+import Data.NonNull (fromNullable, toNullable)
+import qualified Data.Text.Encoding as TE
+import Hedgehog
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
+import Test.Tasty
+import Test.Tasty.Hedgehog
+
+import Kogaki.Core.String
+import Kogaki.Text.VirtualCharList
+
+main :: IO ()
+main = defaultMain tests
+
+tests :: TestTree
+tests = testGroup "kogaki-core"
+  [ testGroup "Kogaki.Core.String"
+      [ testProperty "roundtrip valid UTF-8 Text -> LogicalString -> ByteString -> LogicalString" prop_roundtrip_valid_utf8
+      , testProperty "identity toByteString (fromText t) == TE.encodeUtf8 t" prop_identity_bytestring
+      , testProperty "reject invalid UTF-8 with typed UnicodeException" prop_reject_invalid_utf8
+      , testProperty "lenient decode never fails" prop_lenient_never_fails
+      , testProperty "monoid associativity and identity" prop_monoid_laws
+      , testProperty "non-empty logical string contract" prop_nonempty_contract
+      ]
+  , testGroup "Kogaki.Text.VirtualCharList"
+      [ testProperty "roundtrip packUTF8Literal and unpackVirtualCharList" prop_virtualchar_roundtrip
+      , testProperty "pattern matching with (:>) and VNil matches [Char]" prop_virtualchar_patterns
+      , testProperty "appendRopeInPlace preserves concatenation" prop_virtualchar_append
+      ]
+  ]
+
+-- | Valid UTF-8 round-trip property.
+prop_roundtrip_valid_utf8 :: Property
+prop_roundtrip_valid_utf8 = property $ do
+  t <- forAll $ Gen.text (Range.linear 0 200) Gen.unicode
+  let ls = fromText t
+      bs = toByteString ls
+  case fromByteString bs of
+    Left err -> do
+      annotateShow err
+      failure
+    Right ls' -> ls' === ls
+
+-- | Encoding identity matches Data.Text.Encoding.encodeUtf8.
+prop_identity_bytestring :: Property
+prop_identity_bytestring = property $ do
+  t <- forAll $ Gen.text (Range.linear 0 200) Gen.unicode
+  toByteString (fromText t) === TE.encodeUtf8 t
+
+-- | Malformed UTF-8 sequences must surface typed UnicodeException.
+prop_reject_invalid_utf8 :: Property
+prop_reject_invalid_utf8 = property $ do
+  badByte <- forAll $ Gen.element [0xC0, 0xC1, 0xF5, 0xFF]
+  let badBs = BS.pack [badByte]
+  case fromByteString badBs of
+    Left (MalformedUtf8 {}) -> success
+    Left other -> do
+      annotateShow other
+      failure
+    Right _ -> failure
+
+-- | Lenient decode always produces a valid LogicalString.
+prop_lenient_never_fails :: Property
+prop_lenient_never_fails = property $ do
+  bs <- forAll $ Gen.bytes (Range.linear 0 200)
+  let ls = fromByteStringLenient bs
+  toByteString ls === TE.encodeUtf8 (TE.decodeUtf8With (\_ _ -> Just '\xFFFD') bs)
+
+-- | Monoid laws: associativity and identity.
+prop_monoid_laws :: Property
+prop_monoid_laws = property $ do
+  t1 <- forAll $ Gen.text (Range.linear 0 50) Gen.unicode
+  t2 <- forAll $ Gen.text (Range.linear 0 50) Gen.unicode
+  t3 <- forAll $ Gen.text (Range.linear 0 50) Gen.unicode
+  let ls1 = fromText t1
+      ls2 = fromText t2
+      ls3 = fromText t3
+  -- Left identity
+  mempty <> ls1 === ls1
+  -- Right identity
+  ls1 <> mempty === ls1
+  -- Associativity
+  (ls1 <> ls2) <> ls3 === ls1 <> (ls2 <> ls3)
+
+-- | Non-empty contract: nonNull guarantees non-empty ByteString and Text.
+prop_nonempty_contract :: Property
+prop_nonempty_contract = property $ do
+  t <- forAll $ Gen.text (Range.linear 1 100) Gen.unicode
+  let ls = fromText t
+  case fromNullable ls of
+    Nothing -> failure
+    Just nels -> do
+      let unwrapped = toNullable nels
+      unwrapped === ls
+      toByteString unwrapped === toByteString ls
 
 -- | VirtualCharList round-trip property.
 prop_virtualchar_roundtrip :: Property
@@ -45,7 +141,6 @@ prop_virtualchar_append = property $ do
       r2 = packUTF8Literal s2
   unpackVirtualCharList (appendRopeInPlace r1 r2) === (s1 ++ s2)
 EOF
-fi
 
 echo "=== [TP-KOG-001A] Building and testing kogaki-core ==="
 cabal v2-build kogaki-core -j20 --semaphore
