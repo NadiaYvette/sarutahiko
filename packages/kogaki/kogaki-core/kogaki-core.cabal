@@ -38,6 +38,7 @@ library
     import:           commons
     exposed-modules:
         Kogaki.Text.VirtualCharList
+        Kogaki.Effect.TextLayout
         Kogaki.Core
         Kogaki.Core.String
     build-depends:
