@@ -37,6 +37,7 @@ common commons
 library
     import:           commons
     exposed-modules:
+        Kogaki.Text.VirtualCharList
         Kogaki.Core
         Kogaki.Core.String
     build-depends:

@@ -12,18 +12,26 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Kogaki.Core.String
+import Kogaki.Text.VirtualCharList
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Kogaki.Core.String"
-  [ testProperty "roundtrip valid UTF-8 Text -> LogicalString -> ByteString -> LogicalString" prop_roundtrip_valid_utf8
-  , testProperty "identity toByteString (fromText t) == TE.encodeUtf8 t" prop_identity_bytestring
-  , testProperty "reject invalid UTF-8 with typed UnicodeException" prop_reject_invalid_utf8
-  , testProperty "lenient decode never fails" prop_lenient_never_fails
-  , testProperty "monoid associativity and identity" prop_monoid_laws
-  , testProperty "non-empty logical string contract" prop_nonempty_contract
+tests = testGroup "kogaki-core"
+  [ testGroup "Kogaki.Core.String"
+      [ testProperty "roundtrip valid UTF-8 Text -> LogicalString -> ByteString -> LogicalString" prop_roundtrip_valid_utf8
+      , testProperty "identity toByteString (fromText t) == TE.encodeUtf8 t" prop_identity_bytestring
+      , testProperty "reject invalid UTF-8 with typed UnicodeException" prop_reject_invalid_utf8
+      , testProperty "lenient decode never fails" prop_lenient_never_fails
+      , testProperty "monoid associativity and identity" prop_monoid_laws
+      , testProperty "non-empty logical string contract" prop_nonempty_contract
+      ]
+  , testGroup "Kogaki.Text.VirtualCharList"
+      [ testProperty "roundtrip packUTF8Literal and unpackVirtualCharList" prop_virtualchar_roundtrip
+      , testProperty "pattern matching with (:>) and VNil matches [Char]" prop_virtualchar_patterns
+      , testProperty "appendRopeInPlace preserves concatenation" prop_virtualchar_append
+      ]
   ]
 
 -- | Valid UTF-8 round-trip property.
@@ -85,3 +93,28 @@ prop_nonempty_contract = property $ do
   case fromNullable (LogicalString "nonempty") of
     Nothing -> failure
     Just nn -> toNullable nn === LogicalString "nonempty"
+
+-- | VirtualCharList round-trip property.
+prop_virtualchar_roundtrip :: Property
+prop_virtualchar_roundtrip = property $ do
+  s <- forAll $ Gen.string (Range.linear 0 300) Gen.unicode
+  unpackVirtualCharList (packUTF8Literal s) === s
+
+-- | VirtualCharList pattern synonym equivalence.
+prop_virtualchar_patterns :: Property
+prop_virtualchar_patterns = property $ do
+  s <- forAll $ Gen.string (Range.linear 0 100) Gen.unicode
+  let rope = packUTF8Literal s
+  let unpackWithPatterns VNil      = []
+      unpackWithPatterns (c :> cs) = c : unpackWithPatterns cs
+      unpackWithPatterns _         = error "unreachable"
+  unpackWithPatterns rope === s
+
+-- | VirtualCharList append equivalence.
+prop_virtualchar_append :: Property
+prop_virtualchar_append = property $ do
+  s1 <- forAll $ Gen.string (Range.linear 0 100) Gen.unicode
+  s2 <- forAll $ Gen.string (Range.linear 0 100) Gen.unicode
+  let r1 = packUTF8Literal s1
+      r2 = packUTF8Literal s2
+  unpackVirtualCharList (appendRopeInPlace r1 r2) === (s1 ++ s2)
