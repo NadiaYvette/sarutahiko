@@ -46,6 +46,8 @@ library
         Yamaarashi.Sandbox.Airgap
         Yamaarashi.Executor.DeterministicSplicer
         Yamaarashi.Daemon.PowerAndWAL
+        Yamaarashi.Schedule.TropicalPERT
+        Yamaarashi.Schedule.Quarantine
     build-depends:
         base >= 4.20 && < 5,
         containers,
@@ -59,6 +61,7 @@ library
         polytropos-core,
         gargamelle-core,
         gargamelle-fol,
+        gargamelle-sheaf,
         sarutahiko-effect-signatures >= 0.1,
         direct-sqlite >= 2.3
     hs-source-dirs:   src
@@ -82,6 +85,7 @@ test-suite yamaarashi-test
         polytropos-core,
         gargamelle-core,
         gargamelle-fol,
+        gargamelle-sheaf,
         sarutahiko-effect-signatures >= 0.1,
         direct-sqlite >= 2.3,
         tasty,
