@@ -32,6 +32,10 @@ import qualified System.Directory as Directory
 import System.Exit (ExitCode (..))
 import qualified System.Process as Process
 import qualified Yamaarashi.Sandbox.Airgap as Airgap
+import qualified Data.Text.IO as TIO
+import qualified System.CPUTime as CPUTime
+import System.FilePath ((</>))
+import qualified Yamaarashi.Executor.DeterministicSplicer as Splicer
 import Yamaarashi.Synthesis.Synquid
   ( SynEnv (..)
   , SynM
@@ -82,6 +86,12 @@ tests = testGroup "Yamaarashi Suite"
       [ testProperty "creates isolated home and masks credential paths" prop_airgap_isolated_home
       , testProperty "scrubs API keys, secrets, and cloud variables from environment" prop_airgap_scrubbed_env
       , testProperty "executes subprocess reactively in isolated sandbox" prop_airgap_run_isolated
+      ]
+  , testGroup "Yamaarashi.Executor.DeterministicSplicer"
+      [ testProperty "mountPrestageSeeds writes files to target relative paths" prop_splicer_mount
+      , testProperty "spliceTopLevelDeclaration replaces function declaration cleanly" prop_splicer_splice
+      , testProperty "spliceTopLevelDeclaration appends missing function declaration" prop_splicer_splice_append
+      , testProperty "runZeroTurnCheck validates verification command exit code" prop_splicer_zero_turn
       ]
   ]
 
@@ -388,3 +398,73 @@ prop_airgap_run_isolated = property $ do
   (ec, stdoutText, _) <- evalIO $ Airgap.runInIsolatedHome sEnv (Process.proc "echo" ["airgap-verified"])
   ec === ExitSuccess
   assert (T.isInfixOf "airgap-verified" stdoutText)
+
+--------------------------------------------------------------------------------
+-- DeterministicSplicer Tests
+--------------------------------------------------------------------------------
+
+prop_splicer_mount :: Property
+prop_splicer_mount = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let testDir = tmpRoot </> ("splicer-test-" ++ show t)
+      mount1 = Splicer.SeedMount "src/Foo/Bar.hs" "module Foo.Bar where\nx = 42\n"
+      mount2 = Splicer.SeedMount "README.txt" "Seed documentation\n"
+  evalIO $ Splicer.mountPrestageSeeds testDir [mount1, mount2]
+  f1Exists <- evalIO $ Directory.doesFileExist (testDir </> "src/Foo/Bar.hs")
+  f2Exists <- evalIO $ Directory.doesFileExist (testDir </> "README.txt")
+  f1Exists === True
+  f2Exists === True
+  c1 <- evalIO $ TIO.readFile (testDir </> "src/Foo/Bar.hs")
+  c1 === "module Foo.Bar where\nx = 42\n"
+
+prop_splicer_splice :: Property
+prop_splicer_splice = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let testDir = tmpRoot </> ("splicer-splice-" ++ show t)
+      testFile = testDir </> "Target.hs"
+      initial = T.unlines
+        [ "module Target where"
+        , ""
+        , "oldFunc :: Int -> Int"
+        , "oldFunc x ="
+        , "  x + 1"
+        , ""
+        , "otherFunc :: Bool"
+        , "otherFunc = True"
+        ]
+      replacement = T.unlines
+        [ "oldFunc :: Int -> Int"
+        , "oldFunc x = x * 10"
+        ]
+  evalIO $ Directory.createDirectoryIfMissing True testDir
+  evalIO $ TIO.writeFile testFile initial
+  evalIO $ Splicer.spliceTopLevelDeclaration testFile "oldFunc" (T.stripEnd replacement)
+  content <- evalIO $ TIO.readFile testFile
+  assert (T.isInfixOf "oldFunc x = x * 10" content)
+  assert (not (T.isInfixOf "x + 1" content))
+  assert (T.isInfixOf "otherFunc = True" content)
+
+prop_splicer_splice_append :: Property
+prop_splicer_splice_append = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let testDir = tmpRoot </> ("splicer-append-" ++ show t)
+      testFile = testDir </> "Target.hs"
+      initial = "module Target where\n\nexisting = 1\n"
+      newDecl = "addedFunc :: String\naddedFunc = \"hello\""
+  evalIO $ Directory.createDirectoryIfMissing True testDir
+  evalIO $ TIO.writeFile testFile initial
+  evalIO $ Splicer.spliceTopLevelDeclaration testFile "addedFunc" newDecl
+  content <- evalIO $ TIO.readFile testFile
+  assert (T.isInfixOf "existing = 1" content)
+  assert (T.isInfixOf "addedFunc = \"hello\"" content)
+
+prop_splicer_zero_turn :: Property
+prop_splicer_zero_turn = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  passResult <- evalIO $ Splicer.runZeroTurnCheck tmpRoot "true"
+  failResult <- evalIO $ Splicer.runZeroTurnCheck tmpRoot "false"
+  passResult === True
+  failResult === False

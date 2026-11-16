@@ -44,6 +44,7 @@ library
         Yamaarashi.Context.BlastShield
         Yamaarashi.Context.TailExcision
         Yamaarashi.Sandbox.Airgap
+        Yamaarashi.Executor.DeterministicSplicer
     build-depends:
         base >= 4.20 && < 5,
         containers,
