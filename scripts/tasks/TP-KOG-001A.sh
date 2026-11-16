@@ -10,7 +10,7 @@ cp -f /home/nyc/src/plans/seeds/TP-KOG-001A-VirtualCharList.hs packages/kogaki/k
 
 # 2. Expose module in kogaki-core.cabal if not already present
 if ! grep -q "Kogaki.Text.VirtualCharList" packages/kogaki/kogaki-core/kogaki-core.cabal; then
-  sed -i '/exposed-modules:/a \        Kogaki.Text.VirtualCharList,' packages/kogaki/kogaki-core/kogaki-core.cabal
+  sed -i '/exposed-modules:/a \        Kogaki.Text.VirtualCharList' packages/kogaki/kogaki-core/kogaki-core.cabal
 fi
 
 # 3. Add VirtualCharList tests to test/Spec.hs if not already present
