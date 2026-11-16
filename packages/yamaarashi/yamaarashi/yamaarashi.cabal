@@ -45,6 +45,7 @@ library
         Yamaarashi.Context.TailExcision
         Yamaarashi.Sandbox.Airgap
         Yamaarashi.Executor.DeterministicSplicer
+        Yamaarashi.Daemon.PowerAndWAL
     build-depends:
         base >= 4.20 && < 5,
         containers,
@@ -58,7 +59,8 @@ library
         polytropos-core,
         gargamelle-core,
         gargamelle-fol,
-        sarutahiko-effect-signatures >= 0.1
+        sarutahiko-effect-signatures >= 0.1,
+        direct-sqlite >= 2.3
     hs-source-dirs:   src
 
 test-suite yamaarashi-test
@@ -81,6 +83,7 @@ test-suite yamaarashi-test
         gargamelle-core,
         gargamelle-fol,
         sarutahiko-effect-signatures >= 0.1,
+        direct-sqlite >= 2.3,
         tasty,
         hedgehog,
         tasty-hedgehog

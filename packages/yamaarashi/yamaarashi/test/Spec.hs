@@ -36,6 +36,7 @@ import qualified Data.Text.IO as TIO
 import qualified System.CPUTime as CPUTime
 import System.FilePath ((</>))
 import qualified Yamaarashi.Executor.DeterministicSplicer as Splicer
+import qualified Yamaarashi.Daemon.PowerAndWAL as PowerWAL
 import Yamaarashi.Synthesis.Synquid
   ( SynEnv (..)
   , SynM
@@ -92,6 +93,12 @@ tests = testGroup "Yamaarashi Suite"
       , testProperty "spliceTopLevelDeclaration replaces function declaration cleanly" prop_splicer_splice
       , testProperty "spliceTopLevelDeclaration appends missing function declaration" prop_splicer_splice_append
       , testProperty "runZeroTurnCheck validates verification command exit code" prop_splicer_zero_turn
+      ]
+  , testGroup "Yamaarashi.Daemon.PowerAndWAL"
+      [ testProperty "determinePowerPolicy enforces 15% soft throttle and 7% hard checkpoint" prop_power_policy_thresholds
+      , testProperty "pollBatteryState reads synthetic capacity and status correctly" prop_battery_poll_synthetic
+      , testProperty "checkpointTurnWAL and resumeFromWAL restore turn state" prop_wal_checkpoint_and_resume
+      , testProperty "memoizeZ3Query and lookupZ3Memo cache solver subtype decisions" prop_wal_z3_memo
       ]
   ]
 
@@ -468,3 +475,69 @@ prop_splicer_zero_turn = property $ do
   failResult <- evalIO $ Splicer.runZeroTurnCheck tmpRoot "false"
   passResult === True
   failResult === False
+
+--------------------------------------------------------------------------------
+-- PowerAndWAL Tests
+--------------------------------------------------------------------------------
+
+prop_power_policy_thresholds :: Property
+prop_power_policy_thresholds = property $ do
+  PowerWAL.determinePowerPolicy (PowerWAL.BatteryState 5 PowerWAL.BatteryCharging "") === PowerWAL.PolicyNormal
+  PowerWAL.determinePowerPolicy (PowerWAL.BatteryState 100 PowerWAL.BatteryFull "") === PowerWAL.PolicyNormal
+  PowerWAL.determinePowerPolicy (PowerWAL.BatteryState 10 PowerWAL.BatteryNotCharging "") === PowerWAL.PolicyNormal
+  PowerWAL.determinePowerPolicy (PowerWAL.BatteryState 20 PowerWAL.BatteryDischarging "") === PowerWAL.PolicyNormal
+  PowerWAL.determinePowerPolicy (PowerWAL.BatteryState 15 PowerWAL.BatteryDischarging "") === PowerWAL.PolicySoftThrottle
+  PowerWAL.determinePowerPolicy (PowerWAL.BatteryState 10 PowerWAL.BatteryDischarging "") === PowerWAL.PolicySoftThrottle
+  PowerWAL.determinePowerPolicy (PowerWAL.BatteryState 7 PowerWAL.BatteryDischarging "") === PowerWAL.PolicyHardCheckpoint
+  PowerWAL.determinePowerPolicy (PowerWAL.BatteryState 2 PowerWAL.BatteryDischarging "") === PowerWAL.PolicyHardCheckpoint
+
+prop_battery_poll_synthetic :: Property
+prop_battery_poll_synthetic = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let batDir = tmpRoot </> ("synthetic-bat-" ++ show t)
+  evalIO $ Directory.createDirectoryIfMissing True batDir
+  evalIO $ TIO.writeFile (batDir </> "capacity") "12\n"
+  evalIO $ TIO.writeFile (batDir </> "status") "Discharging\n"
+  st <- evalIO $ PowerWAL.pollBatteryState (Just batDir)
+  PowerWAL.bsCapacity st === 12
+  PowerWAL.bsStatus st === PowerWAL.BatteryDischarging
+  action <- evalIO $ PowerWAL.enforcePowerThrottle st
+  action === PowerWAL.ActionHaltNewSandboxes
+
+prop_wal_checkpoint_and_resume :: Property
+prop_wal_checkpoint_and_resume = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let dbPath = tmpRoot </> ("wal-test-" ++ show t ++ ".sqlite3")
+  evalIO $ PowerWAL.initWALSchema dbPath
+  let cp1 = PowerWAL.TurnWALCheckpoint "task-test-1" 1 "snapshot-turn-1" ""
+      cp2 = PowerWAL.TurnWALCheckpoint "task-test-1" 2 "snapshot-turn-2" ""
+  evalIO $ PowerWAL.checkpointTurnWAL dbPath cp1
+  evalIO $ PowerWAL.checkpointTurnWAL dbPath cp2
+  mRes <- evalIO $ PowerWAL.resumeFromWAL dbPath "task-test-1"
+  case mRes of
+    Nothing -> failure
+    Just res -> do
+      PowerWAL.twcTaskId res === "task-test-1"
+      PowerWAL.twcTurnIndex res === 2
+      PowerWAL.twcStateSnapshot res === "snapshot-turn-2"
+  mMissing <- evalIO $ PowerWAL.resumeFromWAL dbPath "non-existent-task"
+  mMissing === Nothing
+
+prop_wal_z3_memo :: Property
+prop_wal_z3_memo = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let dbPath = tmpRoot </> ("wal-z3-test-" ++ show t ++ ".sqlite3")
+  evalIO $ PowerWAL.initWALSchema dbPath
+  let e1 = PowerWAL.Z3MemoEntry "sig-alpha" "vc-001" True
+      e2 = PowerWAL.Z3MemoEntry "sig-alpha" "vc-002" False
+  evalIO $ PowerWAL.memoizeZ3Query dbPath e1
+  evalIO $ PowerWAL.memoizeZ3Query dbPath e2
+  r1 <- evalIO $ PowerWAL.lookupZ3Memo dbPath "sig-alpha" "vc-001"
+  r2 <- evalIO $ PowerWAL.lookupZ3Memo dbPath "sig-alpha" "vc-002"
+  r3 <- evalIO $ PowerWAL.lookupZ3Memo dbPath "sig-alpha" "vc-003"
+  r1 === Just True
+  r2 === Just False
+  r3 === Nothing
