@@ -52,6 +52,12 @@ instance Eq UTF8Rope where
 instance Show UTF8Rope where
   showsPrec p r = showsPrec p (unpackVirtualCharList r)
 
+instance Semigroup UTF8Rope where
+  (<>) = appendRopeInPlace
+
+instance Monoid UTF8Rope where
+  mempty = RopeEmpty
+
 -- | Bidirectional Profunctor Prism / Adapter between `[Char]` and `UTF8Rope`.
 data CharListPrism = CharListPrism
   { clpLowerToRope   :: !([Char] -> UTF8Rope)
