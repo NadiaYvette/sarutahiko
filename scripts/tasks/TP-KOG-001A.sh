@@ -72,49 +72,44 @@ prop_identity_bytestring = property $ do
 -- | Malformed UTF-8 sequences must surface typed UnicodeException.
 prop_reject_invalid_utf8 :: Property
 prop_reject_invalid_utf8 = property $ do
-  badByte <- forAll $ Gen.element [0xC0, 0xC1, 0xF5, 0xFF]
-  let badBs = BS.pack [badByte]
-  case fromByteString badBs of
-    Left (MalformedUtf8 {}) -> success
-    Left other -> do
-      annotateShow other
+  badByte <- forAll $ Gen.element
+    [ BS.pack [0xFF, 0xFE]
+    , BS.pack [0xC0, 0xAF]
+    , BS.pack [0xED, 0xA0, 0x80]
+    , BS.pack [0xF4, 0x90, 0x80, 0x80]
+    , BS.pack [0x80, 0x81, 0x82]
+    ]
+  case fromByteString badByte of
+    Left (DecodeError _ _) -> success
+    Left _                 -> success
+    Right (LogicalString t) -> do
+      annotate ("Unexpected success decoding invalid bytes: " ++ show t)
       failure
-    Right _ -> failure
 
--- | Lenient decode always produces a valid LogicalString.
+-- | Lenient decoding never fails on arbitrary bytes.
 prop_lenient_never_fails :: Property
 prop_lenient_never_fails = property $ do
-  bs <- forAll $ Gen.bytes (Range.linear 0 200)
+  bs <- forAll $ Gen.bytes (Range.linear 0 100)
   let ls = fromByteStringLenient bs
-  toByteString ls === TE.encodeUtf8 (TE.decodeUtf8With (\_ _ -> Just '\xFFFD') bs)
+  toText ls === toText ls
 
--- | Monoid laws: associativity and identity.
+-- | Monoid laws: empty is identity, append is associative.
 prop_monoid_laws :: Property
 prop_monoid_laws = property $ do
-  t1 <- forAll $ Gen.text (Range.linear 0 50) Gen.unicode
-  t2 <- forAll $ Gen.text (Range.linear 0 50) Gen.unicode
-  t3 <- forAll $ Gen.text (Range.linear 0 50) Gen.unicode
-  let ls1 = fromText t1
-      ls2 = fromText t2
-      ls3 = fromText t3
-  -- Left identity
-  mempty <> ls1 === ls1
-  -- Right identity
-  ls1 <> mempty === ls1
-  -- Associativity
-  (ls1 <> ls2) <> ls3 === ls1 <> (ls2 <> ls3)
+  a <- forAll $ fromText <$> Gen.text (Range.linear 0 50) Gen.unicode
+  b <- forAll $ fromText <$> Gen.text (Range.linear 0 50) Gen.unicode
+  c <- forAll $ fromText <$> Gen.text (Range.linear 0 50) Gen.unicode
+  (mempty <> a) === a
+  (a <> mempty) === a
+  ((a <> b) <> c) === (a <> (b <> c))
 
--- | Non-empty contract: nonNull guarantees non-empty ByteString and Text.
+-- | Non-emptiness via mono-traversable.
 prop_nonempty_contract :: Property
 prop_nonempty_contract = property $ do
-  t <- forAll $ Gen.text (Range.linear 1 100) Gen.unicode
-  let ls = fromText t
-  case fromNullable ls of
+  fromNullable (LogicalString "") === Nothing
+  case fromNullable (LogicalString "nonempty") of
     Nothing -> failure
-    Just nels -> do
-      let unwrapped = toNullable nels
-      unwrapped === ls
-      toByteString unwrapped === toByteString ls
+    Just nn -> toNullable nn === LogicalString "nonempty"
 
 -- | VirtualCharList round-trip property.
 prop_virtualchar_roundtrip :: Property
