@@ -12,11 +12,11 @@ Using `tricorder` slashes token burn by >95%: instead of dumping 300+ lines of r
 
 ## 1. Using the MCP Server (`tricorder-mcp`)
 
-If the assistant environment supports Model Context Protocol (configured via [`.mcp.json`](file:///home/nyc/src/sarutahiko/.mcp.json) or [`.agents/mcp.json`](file:///home/nyc/src/sarutahiko/.agents/mcp.json)):
+If the assistant environment supports Model Context Protocol (configured via [`.mcp.json`](../../.mcp.json) or [`.agents/mcp.json`](../mcp.json)):
 
 - **`status`**: Query current compiler errors, warnings, and diagnostics. Pass `wait: true` to block until in-progress compilation finishes.
 - **`test_results`**: Query the latest test execution results. Pass `failed: true` to see only failing suites.
-- **`source`**: Retrieve Haskell source for installed or dependency modules (e.g. `Data.Map.Strict` or `LargeAnon`).
+- **`source`**: Retrieve Haskell source for installed or dependency modules (e.g. `Polytropos.Core`).
 
 ## 2. CLI Invocation Fallback
 
@@ -43,4 +43,5 @@ cabal build all --dry-run
 
 # Standard compilation fallback
 cabal build all
+cabal test all
 ```

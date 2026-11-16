@@ -48,6 +48,19 @@ code implements blessed designs.
 | Assistant tooling | `docs/notes/ASSISTANT_TOOLING_DESIGN.md` | REPL config, code intel, degradation |
 | Glossary | `docs/registers/GLOSSARY.md` | term index; add entries same-change |
 
+## Subdivided operational rules (`.agents/rules/`)
+
+To conserve context tokens and prevent attention degradation, operational guidance is subdivided into modular rules loaded on demand:
+
+- [`.agents/rules/code-navigation.md`](.agents/rules/code-navigation.md) — Progressive disclosure funnel (`./tags` -> `ast-grep` -> surgical slices).
+- [`.agents/rules/commit-attribution.md`](.agents/rules/commit-attribution.md) — Linux kernel RFC 2822 trailer format (`Assisted-by:`), DCO boundaries.
+- [`.agents/rules/compiler-verification.md`](.agents/rules/compiler-verification.md) — Low-token compiler diagnostics via `tricorder status --json`.
+- [`.agents/rules/documentation-precedence.md`](.agents/rules/documentation-precedence.md) — Precedence rule ("code wins at runtime; notes corrected regardless") and the Two-File loop.
+- [`.agents/rules/hls-housekeeping.md`](.agents/rules/hls-housekeeping.md) — Zero-token mechanical code repairs via `hls-autoheal`.
+- [`.agents/rules/kioku-context.md`](.agents/rules/kioku-context.md) — Durable memory offloading (`kioku-remember`) and `/compact` cadence.
+- [`.agents/rules/plugin-invariants.md`](.agents/rules/plugin-invariants.md) — TcPlugin literal index evidence and Core AST dictionary synthesis.
+- [`.agents/rules/task-execution.md`](.agents/rules/task-execution.md) — Yamaarashi runner invariants, `executor: auto` preference, and zero-polling discipline.
+
 ## Operational advisories (binding unless a canonical doc supersedes)
 
 1. **Pushes are batched** — commit locally and frequently, but push only at session
