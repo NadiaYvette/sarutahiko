@@ -13,6 +13,7 @@ module Yamaarashi.Flow.PacketCodec
   , isDhallFile
   ) where
 
+import Control.Exception (SomeException, try)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BSL
@@ -20,10 +21,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
-import System.Directory (findExecutable)
-import System.Exit (ExitCode (..))
 import System.FilePath (takeBaseName, takeExtension)
-import System.Process.Typed (proc, readProcess)
+import qualified Dhall.Import
+import qualified Dhall.JSON
 
 import Darcs.Patch.Witnesses (Sealed2 (..))
 import Gargamelle.Evidence.Patch.Prim (unPatchId)
@@ -79,61 +79,55 @@ decodePacketResilient path
                 }
           pure (packet, Just path)
   | isDhallFile path = do
-      mDhallToJson <- findExecutable "dhall-to-json"
-      case mDhallToJson of
-        Just bin -> do
-          (code, outBs, _) <- readProcess (proc bin ["--file", path])
-          case code of
-            ExitSuccess ->
-              case Aeson.decode outBs of
-                Just (Aeson.Object obj) -> do
-                  let baseId = T.pack (takeBaseName path)
-                      extractTxt k = case KM.lookup k obj of
-                        Just (Aeson.String s) -> s
-                        _                     -> ""
-                      extractListKey k = case KM.lookup k obj of
-                        Just (Aeson.Array arr) ->
-                          [ s | Aeson.String s <- concatMap (\case { Aeson.String s -> [Aeson.String s]; _ -> [] }) arr ]
-                        _ -> []
-                      extractInt k = case KM.lookup k obj of
-                        Just (Aeson.Number n) -> Just (round n)
-                        _                     -> Nothing
-                      extractBool k def = case KM.lookup k obj of
-                        Just (Aeson.Bool b) -> b
-                        _                   -> def
-                      pId = let v = extractTxt "id" in if T.null v then baseId else v
-                      pTitle = let v = extractTxt "title" in if T.null v then pId else v
-                      pDesc = let v = extractTxt "description"
-                              in if T.null v then extractTxt "instructions" else v
-                      pPkgs = extractListKey "packages"
-                      pExec = let v = extractTxt "executor" in if T.null v then "auto" else v
-                      pModel = let v = extractTxt "model" in if T.null v then Nothing else Just v
-                      pSkills = extractListKey "skills"
-                      pMaxTurns = extractInt "maxTurns"
-                      pBudget = extractInt "runBudgetSeconds"
-                      pMaxRepair = extractInt "maxRepairAttempts"
-                      pAllowMetered = extractBool "allowMetered" False
-                      pSeeds = map T.unpack (extractListKey "seeds" ++ extractListKey "seed_files")
-                      rawYaml = TE.decodeUtf8 (BSL.toStrict outBs)
-                      pkt = TaskPacket
-                        { packetId                = pId
-                        , packetTitle             = pTitle
-                        , packetDescription       = pDesc
-                        , packetPackages          = pPkgs
-                        , packetExecutor          = pExec
-                        , packetModel             = pModel
-                        , packetSkills            = pSkills
-                        , packetMaxTurns          = pMaxTurns
-                        , packetRunBudget         = pBudget
-                        , packetMaxRepairAttempts = pMaxRepair
-                        , packetAllowMetered      = pAllowMetered
-                        , packetSeedFiles         = pSeeds
-                        , packetRawYaml           = rawYaml
-                        }
-                  pure (pkt, Nothing)
-                _ -> fallbackYaml path
-            _ -> fallbackYaml path
-        Nothing -> fallbackYaml path
+      content <- TIO.readFile path
+      eVal <- try (Dhall.JSON.codeToValue Dhall.JSON.defaultConversion Dhall.JSON.ForbidWithinJSON Dhall.Import.RejectRemoteImports (Just path) content) :: IO (Either SomeException Aeson.Value)
+      case eVal of
+        Right (Aeson.Object obj) -> do
+          let baseId = T.pack (takeBaseName path)
+              extractTxt k = case KM.lookup k obj of
+                Just (Aeson.String s) -> s
+                _                     -> ""
+              extractListKey k = case KM.lookup k obj of
+                Just (Aeson.Array arr) ->
+                  [ s | Aeson.String s <- concatMap (\case { Aeson.String s -> [Aeson.String s]; _ -> [] }) arr ]
+                _ -> []
+              extractInt k = case KM.lookup k obj of
+                Just (Aeson.Number n) -> Just (round n)
+                _                     -> Nothing
+              extractBool k def = case KM.lookup k obj of
+                Just (Aeson.Bool b) -> b
+                _                   -> def
+              pId = let v = extractTxt "id" in if T.null v then baseId else v
+              pTitle = let v = extractTxt "title" in if T.null v then pId else v
+              pDesc = let v = extractTxt "description"
+                      in if T.null v then extractTxt "instructions" else v
+              pPkgs = extractListKey "packages"
+              pExec = let v = extractTxt "executor" in if T.null v then "auto" else v
+              pModel = let v = extractTxt "model" in if T.null v then Nothing else Just v
+              pSkills = extractListKey "skills"
+              pMaxTurns = extractInt "maxTurns"
+              pBudget = extractInt "runBudgetSeconds"
+              pMaxRepair = extractInt "maxRepairAttempts"
+              pAllowMetered = extractBool "allowMetered" False
+              pSeeds = map T.unpack (extractListKey "seeds" ++ extractListKey "seed_files")
+              rawYaml = TE.decodeUtf8 (BSL.toStrict (Aeson.encode (Aeson.Object obj)))
+              pkt = TaskPacket
+                { packetId                = pId
+                , packetTitle             = pTitle
+                , packetDescription       = pDesc
+                , packetPackages          = pPkgs
+                , packetExecutor          = pExec
+                , packetModel             = pModel
+                , packetSkills            = pSkills
+                , packetMaxTurns          = pMaxTurns
+                , packetRunBudget         = pBudget
+                , packetMaxRepairAttempts = pMaxRepair
+                , packetAllowMetered      = pAllowMetered
+                , packetSeedFiles         = pSeeds
+                , packetRawYaml           = rawYaml
+                }
+          pure (pkt, Nothing)
+        _ -> fallbackYaml path
   | otherwise = fallbackYaml path
   where
     fallbackYaml p = do

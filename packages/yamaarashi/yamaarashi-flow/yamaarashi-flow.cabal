@@ -52,7 +52,9 @@ library
         darcs-witnesses,
         gargamelle-evidence,
         aeson >= 2.2,
-        typed-process >= 0.2.10
+        typed-process >= 0.2.10,
+        dhall,
+        dhall-json
     hs-source-dirs:   src
 
 test-suite yamaarashi-flow-test
@@ -95,4 +97,6 @@ executable yamaarashi-exec
         darcs-witnesses,
         gargamelle-evidence,
         algebraic-graphs >= 0.7,
-        aeson >= 2.2
+        aeson >= 2.2,
+        dhall,
+        dhall-json

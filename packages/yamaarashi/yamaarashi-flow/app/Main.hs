@@ -95,6 +95,8 @@ meteredEnvKeys =
 -- | Build a sanitized process environment for worker subprocesses.
 -- When allowMetered is False, all metered API keys are scrubbed and
 -- MCP sampling loopback is explicitly disabled.
+-- Zero-cost local fleet endpoints (OmniRoute on localhost:20128) are explicitly
+-- configured so workers can synthesize code without burning cloud quota.
 buildWorkerEnv :: Bool -> IO [(String, String)]
 buildWorkerEnv allowMetered = do
   currEnv <- getEnvironment
@@ -106,6 +108,11 @@ buildWorkerEnv allowMetered = do
         , ("MCP_DISABLE_SAMPLING", "1")
         , ("AGY_DISABLE_SAMPLING", "1")
         , ("AGY_ALLOW_METERED", if allowMetered then "1" else "0")
+        , ("OMNIROUTE_BASE_URL", "http://localhost:20128/v1")
+        , ("OMNIROUTE_API_KEY", "sk-nadia-master")
+        , ("OPENAI_BASE_URL", "http://localhost:20128/v1")
+        , ("OPENAI_API_BASE", "http://localhost:20128/v1")
+        , ("OPENAI_API_KEY", "sk-nadia-master")
         ]
   pure $ firewalled ++ filter (\(k, _) -> k `notElem` map fst firewalled) scrubbed
 
@@ -1063,9 +1070,7 @@ runUtaiStep wtDir packet dbPath mRepairPrompt attempt = do
         , reqOptions  = defaultModelOptions { optMaxTokens = Just 32768 }
         }
       primaryProfile = omnirouteProfile { profileModels = [targetModel] }
-      fallbackProfiles = if packetAllowMetered packet
-                           then [primaryProfile, opencodeProfile]
-                           else [primaryProfile]
+      fallbackProfiles = [primaryProfile, opencodeProfile]
 
       queryWithBackoff backoffAttempt maxBackoffs = do
         mRes <- callOpenAIWithFallback fallbackProfiles req

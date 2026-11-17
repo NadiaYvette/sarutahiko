@@ -51,6 +51,7 @@ module Yamaarashi.Campaign.Unfold
   , emitPacketYaml
   ) where
 
+import Control.Exception (SomeException, try)
 import Control.Monad (forM)
 import Data.Aeson
   ( FromJSON (..)
@@ -76,7 +77,6 @@ import Data.Maybe (catMaybes)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
 import GHC.Generics (Generic)
 import System.Directory
@@ -86,9 +86,9 @@ import System.Directory
   , getHomeDirectory
   , listDirectory
   )
-import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeExtension, takeFileName, (</>))
-import qualified System.Process as Process
+import qualified Dhall.Import
+import qualified Dhall.JSON
 
 import Gargamelle.Core.Institution.Liquid
   ( LiquidPred (..)
@@ -846,17 +846,23 @@ unfoldToScheduleGraph matrix = do
 -- 5. Dhall Manifest Loading & Serialization
 --------------------------------------------------------------------------------
 
--- | Load and decode a Campaign Matrix from a Dhall manifest using dhall-to-json.
+-- | Load and decode a Campaign Matrix directly from a Dhall manifest in-memory.
+-- Uses the native Haskell Dhall library (Dhall.JSON.codeToValue) with zero subprocess overhead.
 loadCampaignMatrix :: FilePath -> IO (Either Text CampaignMatrix)
 loadCampaignMatrix path = do
-  (exitCode, stdout, stderr) <- Process.readProcessWithExitCode "dhall-to-json" ["--file", path] ""
-  case exitCode of
-    ExitSuccess ->
-      case Aeson.eitherDecodeStrict' (TE.encodeUtf8 (T.pack stdout)) of
-        Right matrix -> pure (Right matrix)
-        Left err     -> pure (Left ("Aeson decode error: " <> T.pack err))
-    ExitFailure code ->
-      pure (Left ("dhall-to-json failed with code " <> T.pack (show code) <> ": " <> T.pack stderr))
+  exists <- doesFileExist path
+  if not exists
+    then pure (Left ("Dhall manifest not found: " <> T.pack path))
+    else do
+      content <- TIO.readFile path
+      eVal <- try (Dhall.JSON.codeToValue Dhall.JSON.defaultConversion Dhall.JSON.ForbidWithinJSON Dhall.Import.RejectRemoteImports (Just path) content)
+      case eVal of
+        Right val ->
+          case Aeson.fromJSON val of
+            Aeson.Success matrix -> pure (Right matrix)
+            Aeson.Error err      -> pure (Left ("Aeson decode error: " <> T.pack err))
+        Left (e :: SomeException) ->
+          pure (Left ("Dhall evaluation error: " <> T.pack (show e)))
 
 -- | Load and decode a Campaign Matrix directly from JSON ByteString.
 loadCampaignMatrixFromJson :: BS.ByteString -> Either Text CampaignMatrix
