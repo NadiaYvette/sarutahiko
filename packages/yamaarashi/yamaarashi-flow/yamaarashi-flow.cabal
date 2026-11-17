@@ -40,6 +40,7 @@ library
         text >= 2.1,
         bytestring >= 0.12,
         filepath >= 1.4,
+        directory >= 1.3,
         direct-sqlite >= 2.3,
         selective >= 0.5,
         algebraic-graphs >= 0.7,
@@ -49,7 +50,9 @@ library
         sarutahiko-effect-signatures,
         yamaarashi,
         darcs-witnesses,
-        gargamelle-evidence
+        gargamelle-evidence,
+        aeson >= 2.2,
+        typed-process >= 0.2.10
     hs-source-dirs:   src
 
 test-suite yamaarashi-flow-test
@@ -87,4 +90,9 @@ executable yamaarashi-exec
         yamaarashi-flow,
         yamaarashi-spec,
         sarutahiko-effect-signatures,
-        utai
+        utai,
+        yamaarashi,
+        darcs-witnesses,
+        gargamelle-evidence,
+        algebraic-graphs >= 0.7,
+        aeson >= 2.2

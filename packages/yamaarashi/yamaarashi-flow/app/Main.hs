@@ -6,10 +6,12 @@ module Main (main) where
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (bracket, throwIO)
-import Control.Monad (filterM, when)
+import Control.Monad (filterM, forM_, when)
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as BSL
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, sortBy)
+import qualified Data.Map.Strict as Map
+import Data.Ord (comparing)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -56,7 +58,24 @@ import Yamaarashi.Flow.Ledger
 import Yamaarashi.Flow.PacketCodec
   ( TaskPacket (..)
   , decodePacketResilient
-  , isGpatchFile
+  )
+import Yamaarashi.Campaign.Unfold
+  ( CampaignMatrix (..)
+  , UnfoldedLeafPacket (..)
+  , emitPacketYaml
+  , loadCampaignMatrix
+  , unfoldCampaignMatrix
+  , unfoldToScheduleGraph
+  )
+import Yamaarashi.Schedule.TropicalPERT
+  ( PERTMetrics (..)
+  , ScheduleGraph (..)
+  , TaskStatus (..)
+  , TaskVertex (..)
+  , allTasks
+  , computePERTMetrics
+  , dynamicRecompute
+  , selectParallelBatch
   )
 
 -- | Metered environment variables that must be scrubbed from worker environments
@@ -97,6 +116,9 @@ main = do
   case args of
     ["run", "--allow-metered", packetPath] -> runTaskPacket True packetPath
     ["run", packetPath]                   -> runTaskPacket False packetPath
+    ["campaign", "unfold", matrixPath]    -> handleCampaignUnfold matrixPath
+    ["campaign", "run", "--allow-metered", matrixPath] -> handleCampaignRun True matrixPath
+    ["campaign", "run", matrixPath]       -> handleCampaignRun False matrixPath
     ("snapshot" : snapArgs)               -> handleSnapshot snapArgs
     ("autoheal" : autoArgs)               -> handleAutoHeal autoArgs
     ["telemetry", tId]                    -> showTelemetry (Just (T.pack tId))
@@ -106,7 +128,7 @@ main = do
     ["--help"]                            -> printHelp >> exitSuccess
     ["-h"]                                -> printHelp >> exitSuccess
     _                                     -> do
-      putStrLn "Usage: yamaarashi-exec (run [--allow-metered] <path/to/packet.yaml> | snapshot <id> [...] | autoheal [<args>] | telemetry [<id>] | kanban [<db-path>])"
+      putStrLn "Usage: yamaarashi-exec (run [--allow-metered] <path/to/packet.(yaml|dhall)> | campaign (unfold|run [--allow-metered]) <path/to/matrix.dhall> | snapshot <id> [...] | autoheal [<args>] | telemetry [<id>] | kanban [<db-path>])"
       exitFailure
 
 -- | Display pure ASCII Kanban projection from the SQLite event ledger.
@@ -125,12 +147,140 @@ showKanbanBoard dbPath = do
       TIO.putStrLn (renderKanbanAscii board)
       putStrLn "============================================================"
 
+-- | Unfold a Dhall CampaignMatrix into concrete Tier-2 task packets and PERT metrics.
+handleCampaignUnfold :: FilePath -> IO ()
+handleCampaignUnfold matrixPath = do
+  putStrLn $ "=== [yamaarashi-exec] Unfolding Campaign Matrix: " ++ matrixPath ++ " ==="
+  eMatrix <- loadCampaignMatrix matrixPath
+  case eMatrix of
+    Left err -> do
+      putStrLn $ "Error loading campaign matrix: " ++ T.unpack err
+      exitFailure
+    Right matrix -> do
+      eArcMap <- unfoldCampaignMatrix matrix
+      case eArcMap of
+        Left err -> do
+          putStrLn $ "Error unfolding campaign matrix: " ++ T.unpack err
+          exitFailure
+        Right arcMap -> do
+          eGraph <- unfoldToScheduleGraph matrix
+          case eGraph of
+            Left err -> do
+              putStrLn $ "Error constructing schedule graph: " ++ T.unpack err
+              exitFailure
+            Right graph -> do
+              let packets = concat (Map.elems arcMap)
+                  metrics = computePERTMetrics graph
+              putStrLn "============================================================"
+              putStrLn "  Yamaarashi Flow — Campaign Unfold & PERT Projection"
+              putStrLn "============================================================"
+              putStrLn $ "Campaign Matrix ID: " ++ T.unpack (matrixId matrix)
+              putStrLn $ "Number of Arcs:     " ++ show (length (matrixArcs matrix))
+              putStrLn $ "Emitted Packets:    " ++ show (length packets)
+              putStrLn $ "Project Makespan:   " ++ show (pmProjectMakespan metrics) ++ " turns/seconds"
+              putStrLn $ "Critical Path:      " ++ show (map T.unpack (pmCriticalPath metrics))
+              putStrLn ""
+              putStrLn "--- Emitted Task Packets (Critical Path First) ---"
+              let sortedPackets = sortBy (comparing (\p -> Map.findWithDefault 0 (ulpId p) (pmSlack metrics))) packets
+              forM_ sortedPackets $ \p -> do
+                let tid = ulpId p
+                    slack = Map.findWithDefault 0 tid (pmSlack metrics)
+                    critTag = if slack <= 1e-9 then " [CRITICAL]" else ""
+                putStrLn $ "  * " ++ T.unpack tid ++ ": " ++ T.unpack (ulpTitle p) ++ critTag
+                putStrLn $ "      Target Module: " ++ T.unpack (ulpTargetModule p)
+                putStrLn $ "      Executor:      " ++ T.unpack (ulpExecutor p)
+                putStrLn $ "      Dependencies:  " ++ show (map T.unpack (ulpDependsOn p))
+                putStrLn $ "      Total Slack:   " ++ show slack
+              putStrLn "============================================================"
+
+-- | Execute an entire CampaignMatrix dynamically over the Tropical PERT DAG.
+handleCampaignRun :: Bool -> FilePath -> IO ()
+handleCampaignRun allowMetered matrixPath = do
+  putStrLn $ "=== [yamaarashi-exec] Launching Autonomous Campaign: " ++ matrixPath ++ " ==="
+  eMatrix <- loadCampaignMatrix matrixPath
+  case eMatrix of
+    Left err -> do
+      putStrLn $ "Error loading campaign matrix: " ++ T.unpack err
+      exitFailure
+    Right matrix -> do
+      eArcMap <- unfoldCampaignMatrix matrix
+      case eArcMap of
+        Left err -> do
+          putStrLn $ "Error unfolding campaign matrix: " ++ T.unpack err
+          exitFailure
+        Right arcMap -> do
+          eGraph <- unfoldToScheduleGraph matrix
+          case eGraph of
+            Left err -> do
+              putStrLn $ "Error constructing schedule graph: " ++ T.unpack err
+              exitFailure
+            Right initialGraph -> do
+              let packets = concat (Map.elems arcMap)
+                  metrics = computePERTMetrics initialGraph
+              putStrLn $ "Campaign Matrix ID: " ++ T.unpack (matrixId matrix)
+              putStrLn $ "Packets Emitted:    " ++ show (length packets)
+              putStrLn $ "Project Makespan:   " ++ show (pmProjectMakespan metrics)
+
+              -- Persist generated packet YAML manifests to worktree-accessible directory
+              (rootOut, _) <- readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])
+              let repoRoot = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
+                  genDir = repoRoot </> ".yamaarashi" </> "campaign-packets" </> T.unpack (matrixId matrix)
+              createDirectoryIfMissing True genDir
+              forM_ packets $ \p -> do
+                let packetFile = genDir </> (T.unpack (ulpId p) ++ ".yaml")
+                TIO.writeFile packetFile (emitPacketYaml p)
+              putStrLn $ "Emitted " ++ show (length packets) ++ " packet manifest(s) to " ++ genDir
+
+              runCampaignLoop allowMetered initialGraph genDir
+
+-- | Dynamic event loop: select parallel batches, execute in isolated worktrees, and recompute PERT graph.
+runCampaignLoop :: Bool -> ScheduleGraph -> FilePath -> IO ()
+runCampaignLoop allowMetered currentGraph genDir = do
+  let batch = selectParallelBatch currentGraph
+  if null batch
+    then do
+      let verts = allTasks currentGraph
+          pending = filter (\t -> tvStatus t == TaskPending) verts
+          quarantined = filter (\t -> tvStatus t == TaskQuarantined) verts
+          completed = filter (\t -> tvStatus t == TaskCompleted) verts
+      putStrLn ""
+      putStrLn "============================================================"
+      putStrLn "  Campaign Execution Summary"
+      putStrLn "============================================================"
+      putStrLn $ "Completed Tasks:   " ++ show (length completed)
+      putStrLn $ "Quarantined Tasks: " ++ show (length quarantined)
+      if null pending
+        then do
+          putStrLn "SUCCESS: All campaign task packets executed to completion!"
+          putStrLn "============================================================"
+        else do
+          putStrLn $ "FAILURE: " ++ show (length pending) ++ " pending task(s) stalled due to unsatisfied dependencies or cycles:"
+          forM_ pending $ \p -> putStrLn $ "  - " ++ T.unpack (tvId p)
+          putStrLn "============================================================"
+          exitFailure
+    else do
+      putStrLn ""
+      putStrLn $ "=== [yamaarashi-exec] Executing Parallel Batch (" ++ show (length batch) ++ " task(s)) ==="
+      forM_ batch $ \t -> do
+        let tid = tvId t
+            packetPath = genDir </> (T.unpack tid ++ ".yaml")
+        putStrLn $ "  -> Dispatching task: " ++ T.unpack tid
+        runTaskPacket allowMetered packetPath
+
+      -- Update completed tasks in schedule graph and dynamically recompute
+      let nextGraph = foldl (\g t -> fst (dynamicRecompute g (tvId t) TaskCompleted)) currentGraph batch
+      runCampaignLoop allowMetered nextGraph genDir
+
 printHelp :: IO ()
 printHelp = do
   putStrLn "yamaarashi-exec — Standalone Yamaarashi workflow runner"
   putStrLn ""
   putStrLn "Commands:"
-  putStrLn "  run [--allow-metered] <packet.yaml>  Execute a task packet in an isolated worktree (airgapped by default)"
+  putStrLn "  run [--allow-metered] <packet.(yaml|dhall)>"
+  putStrLn "                                       Execute a task packet in an isolated worktree (airgapped by default)"
+  putStrLn "  campaign unfold <matrix.dhall>       Unfold Dhall campaign matrix into concrete Tier-2 packets & PERT schedule"
+  putStrLn "  campaign run [--allow-metered] <matrix.dhall>"
+  putStrLn "                                       Execute an entire campaign dynamically across parallel independent PERT batches"
   putStrLn "  snapshot <id> [--title \"...\"] [--verify \"...\"] [--packages \"p1,p2\"]"
   putStrLn "                                       Snapshot workspace diff into a deterministic task packet & runner script"
   putStrLn "  telemetry [<id>]                     Display timing intervals and execution telemetry from the event ledger"
@@ -386,12 +536,46 @@ runAutoHeal wtDir errOutput = do
       let healed = exitCode == ExitSuccess && not (T.isInfixOf "Applied 0 automated repairs" outText)
       pure healed
 
+-- | Mount verbatim code seeds directly into the isolated worktree directory.
+mountSeedFiles :: FilePath -> TaskPacket -> IO ()
+mountSeedFiles wtDir packet = do
+  let explicitSeeds = packetSeedFiles packet
+      tId = T.unpack (packetId packet)
+  if not (null explicitSeeds)
+    then do
+      putStrLn $ "=== [yamaarashi-exec] Mounting " ++ show (length explicitSeeds) ++ " verbatim seed file(s) into worktree ==="
+      forM_ explicitSeeds $ \seedPath -> do
+        let baseName = takeFileName seedPath
+        exists <- doesFileExist seedPath
+        if exists
+          then do
+            let destDir = wtDir </> "seeds"
+            createDirectoryIfMissing True destDir
+            copyFile seedPath (destDir </> baseName)
+            putStrLn $ "  -> Mounted seed: " ++ baseName
+          else putStrLn $ "  [WARN] Explicit seed file not found: " ++ seedPath
+    else do
+      (rootOut, _) <- readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])
+      let repoRoot = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
+          srcDir = takeDirectory repoRoot
+          plansSeedsDir = srcDir </> "plans" </> "seeds"
+      plansSeedsExist <- doesDirectoryExist plansSeedsDir
+      when plansSeedsExist $ do
+        allSeedFiles <- listDirectory plansSeedsDir
+        let matching = filter (\f -> (tId ++ "-") `isPrefixOf` f || (tId ++ ".") `isPrefixOf` f) allSeedFiles
+        when (not (null matching)) $ do
+          putStrLn $ "=== [yamaarashi-exec] Discovered " ++ show (length matching) ++ " pre-staged seed file(s) in " ++ plansSeedsDir ++ " ==="
+          let destDir = wtDir </> "seeds"
+          createDirectoryIfMissing True destDir
+          forM_ matching $ \f -> do
+            copyFile (plansSeedsDir </> f) (destDir </> f)
+            putStrLn $ "  -> Auto-mounted seed: " ++ f
+
 -- | Execute a task packet through an isolated worktree with SQLite event tracking.
 runTaskPacket :: Bool -> FilePath -> IO ()
 runTaskPacket cliAllowMetered path = do
   putStrLn $ "=== [yamaarashi-exec] Loading task packet: " ++ path ++ " ==="
-  content <- TIO.readFile path
-  rawPacket <- parsePacket path content
+  (rawPacket, _) <- decodePacketResilient path
   let effectiveAllowMetered = cliAllowMetered || packetAllowMetered rawPacket
       packet = rawPacket { packetAllowMetered = effectiveAllowMetered }
       tId = T.unpack (packetId packet)
@@ -449,6 +633,7 @@ runTaskPacket cliAllowMetered path = do
         when hasContextful $ do
           _ <- runProcess (proc "ln" ["-s", repoRoot </> ".contextful", worktreeDir </> ".contextful"])
           putStrLn "=== [yamaarashi-exec] Shared .contextful index into isolated worktree ==="
+        mountSeedFiles worktreeDir packet
         logEvent dbPath (packetId packet) "WORKTREE_PROVISIONED" (T.pack worktreeDir)
         pure worktreeDir
 
@@ -458,6 +643,7 @@ runTaskPacket cliAllowMetered path = do
         _ <- runProcess (proc "rm" ["-f", wtDir </> "ok.toml"])
         _ <- runProcess (proc "rm" ["-rf", wtDir </> ".contextful"])
         _ <- runProcess (proc "rm" ["-f", wtDir </> "dist-newstyle"])
+        _ <- runProcess (proc "rm" ["-rf", wtDir </> "seeds"])
         _ <- runProcess (proc "git" ["worktree", "remove", "--force", wtDir])
         _ <- runProcess (proc "git" ["branch", "-D", branchName])
         logEvent dbPath (packetId packet) "WORKTREE_TEARDOWN" (T.pack wtDir)
@@ -509,13 +695,23 @@ runTaskPacket cliAllowMetered path = do
                               logEvent dbPath (packetId packet) "AUTOHEAL_PASSED" ("Verification succeeded after auto-heal on attempt " <> T.pack (show attempt))
                               pure actualExec
                             Left verifyErr2 -> do
-                              putStrLn $ "=== [yamaarashi-exec] Verification still failed after auto-heal. Initiating repair cycle (" ++ show (attempt + 1) ++ "/" ++ show maxAttempts ++ ") ==="
-                              let nextPrompt = buildRepairPrompt packet verifyErr2 (attempt + 1) maxAttempts
-                              loop (attempt + 1) (Just nextPrompt)
+                              if actualExec `elem` ["script", "yaegi", "go", "inline"]
+                                then do
+                                  putStrLn $ "=== [yamaarashi-exec] Static script execution failed verification gate even after auto-heal. Terminating retry loop on attempt " ++ show attempt ++ " to prevent redundant recompilations. ==="
+                                  throwIO (userError $ "Task failed verification after " ++ show attempt ++ " attempt(s) (static script has no dynamic repair loop):\n" ++ T.unpack verifyErr2)
+                                else do
+                                  putStrLn $ "=== [yamaarashi-exec] Verification still failed after auto-heal. Initiating repair cycle (" ++ show (attempt + 1) ++ "/" ++ show maxAttempts ++ ") ==="
+                                  let nextPrompt = buildRepairPrompt packet verifyErr2 (attempt + 1) maxAttempts
+                                  loop (attempt + 1) (Just nextPrompt)
                         else do
-                          putStrLn $ "=== [yamaarashi-exec] Initiating repair cycle (" ++ show (attempt + 1) ++ "/" ++ show maxAttempts ++ ") ==="
-                          let nextPrompt = buildRepairPrompt packet verifyErr (attempt + 1) maxAttempts
-                          loop (attempt + 1) (Just nextPrompt)
+                          if actualExec `elem` ["script", "yaegi", "go", "inline"]
+                            then do
+                              putStrLn $ "=== [yamaarashi-exec] Static script execution failed verification gate and mechanical auto-heal could not resolve it. Terminating retry loop on attempt " ++ show attempt ++ " to prevent redundant recompilations. ==="
+                              throwIO (userError $ "Task failed verification after " ++ show attempt ++ " attempt(s) (static script has no dynamic repair loop):\n" ++ T.unpack verifyErr)
+                            else do
+                              putStrLn $ "=== [yamaarashi-exec] Initiating repair cycle (" ++ show (attempt + 1) ++ "/" ++ show maxAttempts ++ ") ==="
+                              let nextPrompt = buildRepairPrompt packet verifyErr (attempt + 1) maxAttempts
+                              loop (attempt + 1) (Just nextPrompt)
                     else throwIO (userError $ "Task failed verification after " ++ show maxAttempts ++ " attempts:\n" ++ T.unpack verifyErr)
 
     actualExec <- loop 1 Nothing
@@ -547,76 +743,6 @@ initEventDb = initTaskLedger
 logEvent :: FilePath -> Text -> Text -> Text -> IO ()
 logEvent = logTaskEvent
 
--- | Simple parser for Task Packet YAML adhering to Zero-Aeson invariant.
-parsePacket :: FilePath -> Text -> IO TaskPacket
-parsePacket path txt = do
-  let lns = T.lines txt
-      stripQuotes s =
-        let t = T.strip s
-        in if (T.isPrefixOf "\"" t && T.isSuffixOf "\"" t && T.length t >= 2)
-           || (T.isPrefixOf "'" t && T.isSuffixOf "'" t && T.length t >= 2)
-             then T.drop 1 (T.dropEnd 1 t)
-             else t
-      findVal key = case filter (T.isPrefixOf (key <> ":")) lns of
-        (l:_) -> stripQuotes (T.strip (T.drop (T.length key + 1) l))
-        []    -> ""
-      extractList key =
-        let afterKey = drop 1 $ dropWhile (\l -> not (T.isPrefixOf (key <> ":") l)) lns
-            items = takeWhile (\l -> T.isPrefixOf "  - " l || T.isPrefixOf "- " l) afterKey
-            clean l = stripQuotes (T.strip (T.dropWhile (\c -> c == ' ' || c == '-') (fst (T.breakOn "#" l))))
-        in filter (not . T.null) (map clean items)
-      extractBlock key =
-        let afterKey = drop 1 $ dropWhile (\l -> not (T.isPrefixOf (key <> ":") l)) lns
-            headerLine = case filter (T.isPrefixOf (key <> ":")) lns of
-              (l:_) -> T.strip (T.drop (T.length key + 1) l)
-              []    -> ""
-        in if headerLine == "|" || headerLine == ">" || T.null headerLine
-             then
-               let blockLines = takeWhile (\l -> T.null (T.strip l) || T.isPrefixOf "  " l || T.isPrefixOf "\t" l) afterKey
-                   stripIndent l = if T.isPrefixOf "  " l then T.drop 2 l else l
-               in T.unlines (map stripIndent blockLines)
-             else headerLine
-
-      pId = findVal "id"
-      pTitle = findVal "title"
-      pDesc = extractBlock "description"
-      pPackages = extractList "packages"
-      pExecRaw = findVal "executor"
-      pModelRaw = findVal "model"
-      pSkills = extractList "skills"
-      pMaxTurnsRaw = findVal "max_turns"
-      pBudgetRaw = findVal "run_budget"
-      pMaxRepairRaw = findVal "max_repair_attempts"
-      pAllowMeteredRaw = findVal "allow_metered"
-
-      pAllowMetered = pAllowMeteredRaw == "true" || pAllowMeteredRaw == "True"
-      pModel = if T.null pModelRaw then Nothing else Just pModelRaw
-      pMaxTurns = case reads (T.unpack pMaxTurnsRaw) of
-        [(n, "")] -> Just n
-        _         -> Nothing
-      pBudget = case reads (T.unpack pBudgetRaw) of
-        [(n, "")] -> Just n
-        _         -> Nothing
-      pMaxRepair = case reads (T.unpack pMaxRepairRaw) of
-        [(n, "")] -> Just n
-        _         -> Nothing
-      pExec = if T.null pExecRaw then "auto" else pExecRaw
-  if T.null pId
-    then throwIO (userError $ "Malformed task packet in " ++ path ++ ": missing 'id'")
-    else pure $ TaskPacket
-      { packetId = pId
-      , packetTitle = if T.null pTitle then pId else pTitle
-      , packetDescription = pDesc
-      , packetPackages = pPackages
-      , packetExecutor = pExec
-      , packetModel = pModel
-      , packetSkills = pSkills
-      , packetMaxTurns = pMaxTurns
-      , packetRunBudget = pBudget
-      , packetMaxRepairAttempts = pMaxRepair
-      , packetAllowMetered = pAllowMetered
-      , packetRawYaml = txt
-      }
 
 -- | Execute task actions inside the isolated worktree directory.
 -- Returns Right executorName on success ("agy", "hermes", "script", or "inline"),
@@ -819,10 +945,10 @@ sanityDiff txt = T.unlines (go (T.lines txt))
               parseInt s = case reads (T.unpack s) of
                 [(n, "")] -> Just n
                 _ -> Nothing
-              (oldStart, _oldLen) = case parts of
+              (oldStart, _oldLen) :: (Int, Int) = case parts of
                 (_:r:_) -> parseRange r (1, 1)
                 _ -> (1, 1)
-              (newStart, _newLen) = case parts of
+              (newStart, _newLen) :: (Int, Int) = case parts of
                 (_:_:r:_) -> parseRange r (1, 1)
                 _ -> (1, 1)
               newHeader = T.unwords
@@ -859,10 +985,10 @@ buildUtaiContext wtDir packet = do
       pure ["--- packages/" <> T.pack pd <> "/" <> T.pack f <> " ---", t]) cabalFiles
     srcFiles <- walkFiles (cab </> "src") 5
     testFiles <- walkFiles (cab </> "test") 5
-    srcEntries <- mapM (\f -> do
+    srcFileEntries <- mapM (\f -> do
       t <- TIO.readFile f
       pure ["--- FILE: " <> T.pack (rel f) <> " ---", t]) (take 40 (srcFiles ++ testFiles))
-    pure (concat cabalEntries ++ concat srcEntries)) [p | p <- pkgDirs, pkgFilter p]
+    pure (concat cabalEntries ++ concat srcFileEntries)) [p | p <- pkgDirs, pkgFilter p]
   let treeLines = concatMap (\(pd, fs) -> map (\f -> "packages/" ++ pd ++ "/" ++ rel f) fs) srcEntries
       scriptsLine = unwords (map rel (take 200 scriptEntries))
       topLine = unwords (map rel (take 100 topLevel))
