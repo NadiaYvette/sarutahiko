@@ -238,7 +238,9 @@ handleCampaignRun allowMetered matrixPath = do
                   genDir = repoRoot </> ".yamaarashi" </> "campaign-packets" </> T.unpack (matrixId matrix)
               createDirectoryIfMissing True genDir
               forM_ packets $ \p -> do
-                let packetFile = genDir </> (T.unpack (ulpId p) ++ ".yaml")
+                let isDhall = "let " `T.isPrefixOf` T.strip (ulpRawPacketYaml p) || ("--" `T.isPrefixOf` T.strip (ulpRawPacketYaml p) && "let " `T.isInfixOf` ulpRawPacketYaml p)
+                    ext = if isDhall then ".dhall" else ".yaml"
+                    packetFile = genDir </> (T.unpack (ulpId p) ++ ext)
                 if T.null (ulpRawPacketYaml p)
                   then TIO.writeFile packetFile (emitPacketYaml p)
                   else TIO.writeFile packetFile (ulpRawPacketYaml p)
@@ -276,7 +278,10 @@ runCampaignLoop allowMetered currentGraph genDir = do
       putStrLn $ "=== [yamaarashi-exec] Executing Parallel Batch (" ++ show (length batch) ++ " task(s)) ==="
       forM_ batch $ \t -> do
         let tid = tvId t
-            packetPath = genDir </> (T.unpack tid ++ ".yaml")
+            packetYaml = genDir </> (T.unpack tid ++ ".yaml")
+            packetDhall = genDir </> (T.unpack tid ++ ".dhall")
+        hasDhall <- doesFileExist packetDhall
+        let packetPath = if hasDhall then packetDhall else packetYaml
         putStrLn $ "  -> Dispatching task: " ++ T.unpack tid
         runTaskPacket allowMetered packetPath
 
@@ -595,10 +600,20 @@ runTaskPacket cliAllowMetered path = do
 
   -- Get repo root directory
   eRoot <- try (readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])) :: IO (Either SomeException (BSL.ByteString, BSL.ByteString))
-  let fallbackRepo =
+  let explicitRepo = packetRepo rawPacket
+      inferredRepo =
         if any ("gargamelle" `T.isInfixOf`) (packetPackages rawPacket) || "gargamelle" `T.isInfixOf` packetRawYaml rawPacket
           then "/home/nyc/src/gargamelle"
-          else "/home/nyc/src/sarutahiko"
+          else if any ("smirk" `T.isInfixOf`) (packetPackages rawPacket) || "smirk" `T.isInfixOf` packetRawYaml rawPacket
+            then "/home/nyc/src/smirk"
+            else if any ("penelope" `T.isInfixOf`) (packetPackages rawPacket) || "penelope" `T.isInfixOf` packetRawYaml rawPacket
+              then "/home/nyc/src/penelope"
+              else if any ("polytropos" `T.isInfixOf`) (packetPackages rawPacket) || "polytropos" `T.isInfixOf` packetRawYaml rawPacket
+                then "/home/nyc/src/polytropos"
+                else "/home/nyc/src/sarutahiko"
+      fallbackRepo = case explicitRepo of
+        Just r | not (null r) -> r
+        _                     -> inferredRepo
       repoRoot = case eRoot of
         Right (rootOut, _) ->
           let r = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
@@ -1269,21 +1284,31 @@ runScriptStep allowMetered wtDir scriptPath = do
       let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
       pure (Left $ "Task script " <> T.pack scriptPath <> " failed with code " <> T.pack (show c) <> ":\n" <> errText)
 
--- | Execute task Go script via Yaegi interpreter with quota firewall env.
+-- | Execute task Go script via Go or Yaegi interpreter with quota firewall env.
 runYaegiStep :: Bool -> FilePath -> FilePath -> IO (Either Text Text)
 runYaegiStep allowMetered wtDir scriptPath = do
-  putStrLn $ "  -> Running task Go script via Yaegi: " ++ scriptPath
-  mYaegi <- findExecutable "yaegi"
-  case mYaegi of
-    Nothing -> pure (Left "Yaegi executor requested, but 'yaegi' executable was not found in PATH.")
-    Just yaegiBin -> do
-      workerEnv <- buildWorkerEnv allowMetered
-      (code, outBs, errBs) <- readProcess (setEnv workerEnv (setWorkingDir wtDir (proc yaegiBin ["run", scriptPath])))
+  putStrLn $ "  -> Running task Go script: " ++ scriptPath
+  workerEnv <- buildWorkerEnv allowMetered
+  mGo <- findExecutable "go"
+  case mGo of
+    Just goBin -> do
+      (code, outBs, errBs) <- readProcess (setEnv workerEnv (setWorkingDir wtDir (proc goBin ["run", scriptPath])))
       case code of
-        ExitSuccess -> pure (Right "yaegi")
+        ExitSuccess -> pure (Right "go")
         ExitFailure c -> do
           let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
-          pure (Left $ "Yaegi script " <> T.pack scriptPath <> " failed with code " <> T.pack (show c) <> ":\n" <> errText)
+          pure (Left $ "Go script " <> T.pack scriptPath <> " failed with code " <> T.pack (show c) <> ":\n" <> errText)
+    Nothing -> do
+      mYaegi <- findExecutable "yaegi"
+      case mYaegi of
+        Just yaegiBin -> do
+          (code, outBs, errBs) <- readProcess (setEnv workerEnv (setWorkingDir wtDir (proc yaegiBin ["run", scriptPath])))
+          case code of
+            ExitSuccess -> pure (Right "yaegi")
+            ExitFailure c -> do
+              let errText = trimErrorOutput (TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict (BSL.concat [outBs, "\n", errBs])))
+              pure (Left $ "Yaegi script " <> T.pack scriptPath <> " failed with code " <> T.pack (show c) <> ":\n" <> errText)
+        Nothing -> pure (Left "Go executor requested, but neither 'go' nor 'yaegi' was found in PATH.")
 
 -- | Delegate task execution to Antigravity CLI in non-interactive print mode.
 runAgyStep :: FilePath -> TaskPacket -> FilePath -> Maybe Text -> Int -> IO (Either Text Text)
@@ -1550,13 +1575,26 @@ runVerificationGate wtDir packet = do
           case pkgRes of
             Left err -> pure (Left err)
             Right () -> do
-              let verifyScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ "-verify.sh"
+              let verifyGoScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ "-verify.go"
+                  verifyScript = wtDir </> "scripts/tasks" </> T.unpack tId ++ "-verify.sh"
+              hasVerifyGo <- doesFileExist verifyGoScript
               hasVerify <- doesFileExist verifyScript
-              if hasVerify
+              if hasVerifyGo
                 then do
-                  putStrLn $ "  [Gate] Running verification script: " ++ verifyScript
-                  runGateCmd wtDir gateSec "sh" [verifyScript]
-                else pure (Right ())
+                  putStrLn $ "  [Gate] Running Go verification script: " ++ verifyGoScript
+                  mGo <- findExecutable "go"
+                  case mGo of
+                    Just goBin -> runGateCmd wtDir gateSec goBin ["run", verifyGoScript]
+                    Nothing -> do
+                      mYaegi <- findExecutable "yaegi"
+                      case mYaegi of
+                        Just yaegiBin -> runGateCmd wtDir gateSec yaegiBin ["run", verifyGoScript]
+                        Nothing -> pure (Left "Go verification script present, but neither 'go' nor 'yaegi' was found in PATH.")
+                else if hasVerify
+                  then do
+                    putStrLn $ "  [Gate] Running verification script: " ++ verifyScript
+                    runGateCmd wtDir gateSec "sh" [verifyScript]
+                  else pure (Right ())
 
 -- | Execute a verification command and capture its output on failure with a hard 180s timeout.
 runGateCmd :: FilePath -> Int -> String -> [String] -> IO (Either Text ())

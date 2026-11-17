@@ -775,12 +775,22 @@ parseSeedPacketFile arc idx defaultTurns defaultBudget content =
       pId = if T.null valId then fallbackId else valId
       valTitle = findVal "title"
       pTitle = if T.null valTitle then arcTitle arc else valTitle
-      valRepo = findVal "repo"
-      pRepo = if not (T.null valRepo)
-                then T.unpack valRepo
-                else if "gargamelle" `T.isInfixOf` content
-                       then "/home/nyc/src/gargamelle"
-                       else "."
+      pRepo =
+        let r1 = findVal "repo"
+            r2 = findVal "repoDir"
+            r3 = findVal "repo_dir"
+            val = if not (T.null r1) then r1
+                  else if not (T.null r2) then r2
+                  else r3
+        in if not (T.null val)
+             then T.unpack val
+             else if "gargamelle" `T.isInfixOf` content
+                    then "/home/nyc/src/gargamelle"
+                    else if "smirk" `T.isInfixOf` content
+                           then "/home/nyc/src/smirk"
+                           else if "penelope" `T.isInfixOf` content
+                                  then "/home/nyc/src/penelope"
+                                  else "."
       valExec = findVal "executor"
       pExec = if T.null valExec then "auto" else valExec
       pkgs = extractList "packages"
@@ -803,7 +813,9 @@ parseSeedPacketFile arc idx defaultTurns defaultBudget content =
                   then valVerify
                   else if "gargamelle" `T.isInfixOf` T.pack pRepo || "gargamelle" `T.isInfixOf` content
                          then "cabal v2-build gargamelle-audit -j20 --semaphore && cabal v2-test gargamelle-audit-test"
-                         else "cabal v2-build yamaarashi -j20 --semaphore && cabal v2-test yamaarashi"
+                         else if "smirk" `T.isInfixOf` T.pack pRepo || "smirk" `T.isInfixOf` content
+                                then "bin/smirk-verify"
+                                else "cabal v2-build yamaarashi -j20 --semaphore && cabal v2-test yamaarashi"
   in UnfoldedLeafPacket
     { ulpId                = pId
     , ulpTitle             = pTitle
@@ -820,6 +832,89 @@ parseSeedPacketFile arc idx defaultTurns defaultBudget content =
     , ulpVerificationCmd   = pVerify
     , ulpRawPacketYaml     = content
     }
+
+parseSeedPacketDhallOrYaml :: CampaignArc -> Int -> Int -> Int -> FilePath -> Text -> IO UnfoldedLeafPacket
+parseSeedPacketDhallOrYaml arc idx defaultTurns defaultBudget fp content
+  | takeExtension fp == ".dhall" || "let " `T.isPrefixOf` T.strip content = do
+      eVal <- try (Dhall.JSON.codeToValue Dhall.JSON.defaultConversion Dhall.JSON.ForbidWithinJSON Dhall.Import.RejectRemoteImports (Just fp) content) :: IO (Either SomeException Aeson.Value)
+      case eVal of
+        Right (Aeson.Object obj) -> do
+          let extractTxt k = case KeyMap.lookup k obj of
+                Just (Aeson.String s) -> s
+                _                     -> ""
+              extractListKey k = case KeyMap.lookup k obj of
+                Just (Aeson.Array arr) ->
+                  [ s | Aeson.String s <- concatMap (\case { Aeson.String s -> [Aeson.String s]; _ -> [] }) arr ]
+                _ -> []
+              extractInt k = case KeyMap.lookup k obj of
+                Just (Aeson.Number n) -> Just (round n)
+                _                     -> Nothing
+              fallbackId = arcId arc <> "-" <> T.pack (show idx)
+              vId = extractTxt "id"
+              pId = if T.null vId then fallbackId else vId
+              vTitle = extractTxt "title"
+              pTitle = if T.null vTitle then arcTitle arc else vTitle
+              pkgs = extractListKey "packages"
+              tMod = case pkgs of (firstPkg:_) -> firstPkg; [] -> pId
+              deps = extractListKey "dependsOn" ++ extractListKey "depends_on"
+              rawRepo = let r1 = extractTxt "repo"
+                            r2 = extractTxt "repoDir"
+                            r3 = extractTxt "repo_dir"
+                            val = if not (T.null r1) then r1
+                                  else if not (T.null r2) then r2
+                                  else r3
+                        in if not (T.null val)
+                             then T.unpack val
+                             else if "gargamelle" `T.isInfixOf` content || any ("gargamelle" `T.isInfixOf`) pkgs
+                                    then "/home/nyc/src/gargamelle"
+                                    else if "smirk" `T.isInfixOf` content || any ("smirk" `T.isInfixOf`) pkgs
+                                           then "/home/nyc/src/smirk"
+                                           else if "penelope" `T.isInfixOf` content || any ("penelope" `T.isInfixOf`) pkgs
+                                                  then "/home/nyc/src/penelope"
+                                                  else "."
+              vExec = extractTxt "executor"
+              pExec = if T.null vExec then "auto" else vExec
+              pTurns = case extractInt "maxTurns" of
+                Just t  -> t
+                Nothing -> case extractInt "max_turns" of
+                  Just t  -> t
+                  Nothing -> defaultTurns
+              pBudget = case extractInt "runBudgetSeconds" of
+                Just b  -> b
+                Nothing -> case extractInt "run_budget" of
+                  Just b  -> b
+                  Nothing -> defaultBudget
+              pReps = case extractInt "maxRepairAttempts" of
+                Just r  -> r
+                Nothing -> case extractInt "max_repair_attempts" of
+                  Just r  -> r
+                  Nothing -> 3
+              rawVerify = extractTxt "verification_cmd"
+              pVerify = if not (T.null rawVerify)
+                          then rawVerify
+                          else if "gargamelle" `T.isInfixOf` T.pack rawRepo || "gargamelle" `T.isInfixOf` content
+                                 then "cabal v2-build gargamelle-audit -j20 --semaphore && cabal v2-test gargamelle-audit-test"
+                                 else if "smirk" `T.isInfixOf` T.pack rawRepo || "smirk" `T.isInfixOf` content
+                                        then "bin/smirk-verify"
+                                        else "cabal v2-build yamaarashi -j20 --semaphore && cabal v2-test yamaarashi"
+          pure UnfoldedLeafPacket
+            { ulpId                = pId
+            , ulpTitle             = pTitle
+            , ulpArcId             = arcId arc
+            , ulpRepoDir           = rawRepo
+            , ulpTargetModule      = tMod
+            , ulpDependsOn         = deps
+            , ulpExecutor          = pExec
+            , ulpMaxTurns          = pTurns
+            , ulpRunBudgetSeconds  = pBudget
+            , ulpMaxRepairAttempts = pReps
+            , ulpAllowMetered      = False
+            , ulpAssumedGuarantees = []
+            , ulpVerificationCmd   = pVerify
+            , ulpRawPacketYaml     = content
+            }
+        _ -> pure (parseSeedPacketFile arc idx defaultTurns defaultBudget content)
+  | otherwise = pure (parseSeedPacketFile arc idx defaultTurns defaultBudget content)
 
 unfoldFromSeedPackets :: CampaignArc -> IO (Either Text [UnfoldedLeafPacket])
 unfoldFromSeedPackets arc
@@ -857,7 +952,7 @@ unfoldFromSeedPackets arc
         case mFound of
           Just fp -> do
             content <- TIO.readFile fp
-            pure (parseSeedPacketFile arc idx defaultTurns defaultBudget content)
+            parseSeedPacketDhallOrYaml arc idx defaultTurns defaultBudget fp content
           Nothing -> do
             let pid = arcId arc <> "-" <> T.pack (show (idx :: Int))
                 tMod = T.replace ".dhall" "" (T.replace ".md" "" (T.pack (takeFileName seedStr)))
