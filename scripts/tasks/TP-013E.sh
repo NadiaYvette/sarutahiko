@@ -189,7 +189,11 @@ data ReaperResult = ReaperResult
   { rrCombinedPatch :: !(Sealed2 GPatch)
   , rrMergedCount   :: !Int
   , rrFastImport    :: !ByteString
-  } deriving (Show)
+  }
+
+instance Show ReaperResult where
+  show (ReaperResult (Sealed2 gp) cnt _) =
+    "ReaperResult { rrCombinedPatch = " ++ show (gpPatchId gp) ++ ", rrMergedCount = " ++ show cnt ++ " }"
 
 -- | Reap a list of .gpatch bundle files from disk, merging them in parallel.
 reapParallelGPatchBundles
