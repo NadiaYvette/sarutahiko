@@ -573,10 +573,7 @@ mountSeedFiles wtDir packet = do
             putStrLn $ "  -> Mounted seed: " ++ baseName
           else putStrLn $ "  [WARN] Explicit seed file not found: " ++ seedPath
     else do
-      (rootOut, _) <- readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])
-      let repoRoot = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
-          srcDir = takeDirectory repoRoot
-          plansSeedsDir = srcDir </> "plans" </> "seeds"
+      let plansSeedsDir = "/home/nyc/src/plans/seeds"
       plansSeedsExist <- doesDirectoryExist plansSeedsDir
       when plansSeedsExist $ do
         allSeedFiles <- listDirectory plansSeedsDir
