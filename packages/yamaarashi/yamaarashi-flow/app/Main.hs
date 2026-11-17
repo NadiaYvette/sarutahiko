@@ -324,16 +324,32 @@ runCampaignLoop allowMetered currentGraph genDir = do
       putStrLn $ "=== [yamaarashi-exec] Executing Parallel Batch (" ++ show (length batch) ++ " task(s)) ==="
       forM_ batch $ \t -> do
         let tid = tvId t
-            packetYaml = genDir </> (T.unpack tid ++ ".yaml")
-            packetDhall = genDir </> (T.unpack tid ++ ".dhall")
-        hasDhall <- doesFileExist packetDhall
-        let packetPath = if hasDhall then packetDhall else packetYaml
-        putStrLn $ "  -> Dispatching task: " ++ T.unpack tid
+            tidStr = T.unpack tid
+            candidatePaths =
+              [ "/home/nyc/src/plans/tier2-yamaarashi/pending" </> (tidStr ++ ".dhall")
+              , "/home/nyc/src/plans/tier2-yamaarashi/pending" </> (tidStr ++ ".yaml")
+              , "/home/nyc/src/plans/tier2-yamaarashi/completed" </> (tidStr ++ ".dhall")
+              , "/home/nyc/src/plans/tier2-yamaarashi/completed" </> (tidStr ++ ".yaml")
+              , genDir </> (tidStr ++ ".dhall")
+              , genDir </> (tidStr ++ ".yaml")
+              ]
+        mPacketPath <- findFirstExisting candidatePaths
+        let packetPath = case mPacketPath of
+              Just p  -> p
+              Nothing -> genDir </> (tidStr ++ ".dhall")
+        putStrLn $ "  -> Dispatching task: " ++ tidStr ++ " (manifest: " ++ packetPath ++ ")"
         runTaskPacket allowMetered packetPath
 
       -- Update completed tasks in schedule graph and dynamically recompute
       let nextGraph = foldl (\g t -> fst (dynamicRecompute g (tvId t) TaskCompleted)) currentGraph batch
       runCampaignLoop allowMetered nextGraph genDir
+
+-- | Find the first file path that exists on disk.
+findFirstExisting :: [FilePath] -> IO (Maybe FilePath)
+findFirstExisting [] = pure Nothing
+findFirstExisting (c : cs) = do
+  e <- doesFileExist c
+  if e then pure (Just c) else findFirstExisting cs
 
 printHelp :: IO ()
 printHelp = do
@@ -1620,8 +1636,8 @@ runVerificationGate wtDir packet = do
           let pkgs = packetPackages packet
           pkgRes <- if null pkgs
             then do
-              putStrLn "  [Gate] Running general cabal v2-build..."
-              runGateCmd wtDir gateSec "cabal" ["v2-build"]
+              putStrLn "  [Gate] Running general cabal v2-build all..."
+              runGateCmd wtDir gateSec "cabal" ["v2-build", "all"]
             else do
               let checkPkgs [] = pure (Right ())
                   checkPkgs (p:ps) = do
