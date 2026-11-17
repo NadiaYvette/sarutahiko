@@ -753,6 +753,16 @@ runTaskPacket cliAllowMetered path = do
         when hasContextful $ do
           _ <- runProcess (proc "ln" ["-s", repoRoot </> ".contextful", worktreeDir </> ".contextful"])
           putStrLn "=== [yamaarashi-exec] Shared .contextful index into isolated worktree ==="
+        hasScriptsTasks <- doesDirectoryExist (repoRoot </> "scripts" </> "tasks")
+        when hasScriptsTasks $ do
+          createDirectoryIfMissing True (worktreeDir </> "scripts" </> "tasks")
+          taskFiles <- listDirectory (repoRoot </> "scripts" </> "tasks")
+          forM_ taskFiles $ \f -> do
+            let srcF = repoRoot </> "scripts" </> "tasks" </> f
+                dstF = worktreeDir </> "scripts" </> "tasks" </> f
+            isF <- doesFileExist srcF
+            when isF $ copyFile srcF dstF
+          putStrLn "=== [yamaarashi-exec] Seeded scripts/tasks into isolated worktree ==="
         mountSeedFiles worktreeDir packet
         logEvent dbPath (packetId packet) "WORKTREE_PROVISIONED" (T.pack worktreeDir)
         pure worktreeDir
@@ -1306,14 +1316,18 @@ normalizeSectionPaths wtDir section = do
           candidates <- findBySuffix wtDir target
           case candidates of
             [cand] -> pure (rewritePaths target cand section)
+            (cand:_) -> pure (rewritePaths target cand section)
             _ -> pure section
   where
     findBySuffix root suffix = do
       (_code, outBs, _errBs) <- readProcess (proc "find" [root, "-type", "f", "-name", takeFileName (T.unpack suffix)])
       let out = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict outBs)
-          prefix = T.pack (root ++ "/")
-          cands = [ T.strip (T.drop (T.length prefix) l) | l <- T.lines out, T.isPrefixOf prefix l, T.isSuffixOf ("/" <> suffix) l ]
-      pure cands
+          normRoot = reverse $ dropWhile (== '/') $ reverse root
+          prefix = T.pack (normRoot ++ "/")
+          rawCands = [ T.strip (T.drop (T.length prefix) l) | l <- T.lines out, T.isPrefixOf prefix l ]
+          exactSuffix = if "/" `T.isPrefixOf` suffix then suffix else "/" <> suffix
+          filtered = filter (\c -> T.isSuffixOf exactSuffix ("/" <> c)) rawCands
+      pure (if null filtered then rawCands else filtered)
     rewritePaths old new txt = T.unlines (map rewrite (T.lines txt))
       where
         rewrite l
