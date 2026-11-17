@@ -5,7 +5,7 @@
 module Main (main) where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (bracket, throwIO)
+import Control.Exception (SomeException, bracket, throwIO, try)
 import Control.Monad (filterM, forM_, when)
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as BSL
@@ -229,13 +229,19 @@ handleCampaignRun allowMetered matrixPath = do
               putStrLn $ "Project Makespan:   " ++ show (pmProjectMakespan metrics)
 
               -- Persist generated packet YAML manifests to worktree-accessible directory
-              (rootOut, _) <- readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])
-              let repoRoot = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
+              eRoot <- try (readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])) :: IO (Either SomeException (BSL.ByteString, BSL.ByteString))
+              let repoRoot = case eRoot of
+                    Right (rootOut, _) ->
+                      let r = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
+                      in if null r || r == "/home/nyc/src/plans" then "/home/nyc/src/plans" else r
+                    Left _ -> "/home/nyc/src/plans"
                   genDir = repoRoot </> ".yamaarashi" </> "campaign-packets" </> T.unpack (matrixId matrix)
               createDirectoryIfMissing True genDir
               forM_ packets $ \p -> do
                 let packetFile = genDir </> (T.unpack (ulpId p) ++ ".yaml")
-                TIO.writeFile packetFile (emitPacketYaml p)
+                if T.null (ulpRawPacketYaml p)
+                  then TIO.writeFile packetFile (emitPacketYaml p)
+                  else TIO.writeFile packetFile (ulpRawPacketYaml p)
               putStrLn $ "Emitted " ++ show (length packets) ++ " packet manifest(s) to " ++ genDir
 
               runCampaignLoop allowMetered initialGraph genDir
@@ -588,12 +594,21 @@ runTaskPacket cliAllowMetered path = do
       tId = T.unpack (packetId packet)
 
   -- Get repo root directory
-  (rootOut, _) <- readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])
-  let repoRoot = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
+  eRoot <- try (readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])) :: IO (Either SomeException (BSL.ByteString, BSL.ByteString))
+  let fallbackRepo =
+        if any ("gargamelle" `T.isInfixOf`) (packetPackages rawPacket) || "gargamelle" `T.isInfixOf` packetRawYaml rawPacket
+          then "/home/nyc/src/gargamelle"
+          else "/home/nyc/src/sarutahiko"
+      repoRoot = case eRoot of
+        Right (rootOut, _) ->
+          let r = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
+          in if null r || r == "/home/nyc/src/plans" then fallbackRepo else r
+        Left _ -> fallbackRepo
       srcDir   = takeDirectory repoRoot
+      repoBase = takeFileName repoRoot
       dbDir    = repoRoot </> ".yamaarashi"
       dbPath   = dbDir </> "events.sqlite3"
-      worktreeDir = srcDir </> ("sarutahiko-wt-" ++ tId)
+      worktreeDir = srcDir </> (repoBase ++ "-wt-" ++ tId)
       branchName  = "yamaarashi/task-" ++ tId
 
   createDirectoryIfMissing True dbDir
@@ -611,11 +626,11 @@ runTaskPacket cliAllowMetered path = do
   putStrLn $ "=== [yamaarashi-exec] Provisioning isolated worktree at: " ++ worktreeDir ++ " ==="
 
   -- Clean up any stale worktree or branch
-  _ <- runProcess (proc "git" ["worktree", "remove", "--force", worktreeDir])
-  _ <- runProcess (proc "git" ["branch", "-D", branchName])
+  _ <- runProcess (setWorkingDir repoRoot (proc "git" ["worktree", "remove", "--force", worktreeDir]))
+  _ <- runProcess (setWorkingDir repoRoot (proc "git" ["branch", "-D", branchName]))
 
   let provision = do
-        runProcess_ (proc "git" ["worktree", "add", "-B", branchName, worktreeDir, "HEAD"])
+        runProcess_ (setWorkingDir repoRoot (proc "git" ["worktree", "add", "-B", branchName, worktreeDir, "HEAD"]))
         hasTags <- doesFileExist (repoRoot </> "tags")
         when hasTags $ do
           copyFile (repoRoot </> "tags") (worktreeDir </> "tags")
@@ -651,8 +666,8 @@ runTaskPacket cliAllowMetered path = do
         _ <- runProcess (proc "rm" ["-rf", wtDir </> ".contextful"])
         _ <- runProcess (proc "rm" ["-f", wtDir </> "dist-newstyle"])
         _ <- runProcess (proc "rm" ["-rf", wtDir </> "seeds"])
-        _ <- runProcess (proc "git" ["worktree", "remove", "--force", wtDir])
-        _ <- runProcess (proc "git" ["branch", "-D", branchName])
+        _ <- runProcess (setWorkingDir repoRoot (proc "git" ["worktree", "remove", "--force", wtDir]))
+        _ <- runProcess (setWorkingDir repoRoot (proc "git" ["branch", "-D", branchName]))
         logEvent dbPath (packetId packet) "WORKTREE_TEARDOWN" (T.pack wtDir)
 
   bracket provision teardown $ \wtDir -> do

@@ -719,7 +719,7 @@ unfoldArc arc@CampaignArc{..} = do
                     }
               pure (instantiatePushout base witness pushout arc)
             Nothing ->
-              pure (unfoldFromSeedPackets arc)
+              unfoldFromSeedPackets arc
     Nothing -> do
       case arcPushout of
         Just pushout -> do
@@ -741,9 +741,87 @@ unfoldArc arc@CampaignArc{..} = do
                 }
           pure (instantiatePushout base witness pushout arc)
         Nothing ->
-          pure (unfoldFromSeedPackets arc)
+          unfoldFromSeedPackets arc
 
-unfoldFromSeedPackets :: CampaignArc -> Either Text [UnfoldedLeafPacket]
+findFirstExisting :: [FilePath] -> IO (Maybe FilePath)
+findFirstExisting [] = pure Nothing
+findFirstExisting (c:cs) = do
+  e <- doesFileExist c
+  if e then pure (Just c) else findFirstExisting cs
+
+parseSeedPacketFile :: CampaignArc -> Int -> Int -> Int -> Text -> UnfoldedLeafPacket
+parseSeedPacketFile arc idx defaultTurns defaultBudget content =
+  let lns = T.lines content
+      stripQuotes s =
+        let t = T.strip s
+        in if (T.isPrefixOf "\"" t && T.isSuffixOf "\"" t && T.length t >= 2)
+           || (T.isPrefixOf "'" t && T.isSuffixOf "'" t && T.length t >= 2)
+             then T.drop 1 (T.dropEnd 1 t)
+             else t
+      findVal key = case filter (\l -> (key <> ":") `T.isPrefixOf` T.strip l || (key <> " =") `T.isPrefixOf` T.strip l) lns of
+        (l:_) ->
+          let afterSep = if (key <> ":") `T.isPrefixOf` T.strip l
+                           then T.drop (T.length key + 1) (T.strip l)
+                           else T.drop (T.length key + 2) (T.strip l)
+          in stripQuotes (T.strip afterSep)
+        []    -> ""
+      extractList key =
+        let afterKey = drop 1 $ dropWhile (\l -> not ((key <> ":") `T.isPrefixOf` T.strip l || (key <> " =") `T.isPrefixOf` T.strip l)) lns
+            items = takeWhile (\l -> "  - " `T.isPrefixOf` l || "- " `T.isPrefixOf` T.strip l) afterKey
+            clean l = stripQuotes (T.strip (T.dropWhile (\c -> c == ' ' || c == '-') (fst (T.breakOn "#" l))))
+        in filter (not . T.null) (map clean items)
+      fallbackId = arcId arc <> "-" <> T.pack (show idx)
+      valId = findVal "id"
+      pId = if T.null valId then fallbackId else valId
+      valTitle = findVal "title"
+      pTitle = if T.null valTitle then arcTitle arc else valTitle
+      valRepo = findVal "repo"
+      pRepo = if not (T.null valRepo)
+                then T.unpack valRepo
+                else if "gargamelle" `T.isInfixOf` content
+                       then "/home/nyc/src/gargamelle"
+                       else "."
+      valExec = findVal "executor"
+      pExec = if T.null valExec then "auto" else valExec
+      pkgs = extractList "packages"
+      tMod = case pkgs of (firstPkg:_) -> firstPkg; [] -> pId
+      deps = extractList "depends_on" ++ extractList "dependsOn"
+      valTurns = findVal "max_turns"
+      pTurns = case reads (T.unpack valTurns) of
+                 [(n, "")] -> n
+                 _         -> defaultTurns
+      valBudget = findVal "run_budget"
+      pBudget = case reads (T.unpack valBudget) of
+                  [(n, "")] -> n
+                  _         -> defaultBudget
+      valReps = findVal "max_repair_attempts"
+      pReps = case reads (T.unpack valReps) of
+                [(n, "")] -> n
+                _         -> 3
+      valVerify = findVal "verification_cmd"
+      pVerify = if not (T.null valVerify)
+                  then valVerify
+                  else if "gargamelle" `T.isInfixOf` T.pack pRepo || "gargamelle" `T.isInfixOf` content
+                         then "cabal v2-build gargamelle-audit -j20 --semaphore && cabal v2-test gargamelle-audit-test"
+                         else "cabal v2-build yamaarashi -j20 --semaphore && cabal v2-test yamaarashi"
+  in UnfoldedLeafPacket
+    { ulpId                = pId
+    , ulpTitle             = pTitle
+    , ulpArcId             = arcId arc
+    , ulpRepoDir           = pRepo
+    , ulpTargetModule      = tMod
+    , ulpDependsOn         = deps
+    , ulpExecutor          = pExec
+    , ulpMaxTurns          = pTurns
+    , ulpRunBudgetSeconds  = pBudget
+    , ulpMaxRepairAttempts = pReps
+    , ulpAllowMetered      = False
+    , ulpAssumedGuarantees = []
+    , ulpVerificationCmd   = pVerify
+    , ulpRawPacketYaml     = content
+    }
+
+unfoldFromSeedPackets :: CampaignArc -> IO (Either Text [UnfoldedLeafPacket])
 unfoldFromSeedPackets arc
   | null (arcSeedMetaPackets arc) =
       let p = UnfoldedLeafPacket
@@ -762,14 +840,27 @@ unfoldFromSeedPackets arc
             , ulpVerificationCmd   = "cabal v2-build yamaarashi -j20 --semaphore && cabal v2-test yamaarashi"
             , ulpRawPacketYaml     = ""
             }
-      in Right [p { ulpRawPacketYaml = emitPacketYaml p }]
-  | otherwise =
+      in pure (Right [p { ulpRawPacketYaml = emitPacketYaml p }])
+  | otherwise = do
       let pLikely = max 1 (pertMostLikely (arcPert arc))
-          turns = pLikely
-          budget = turns * 120
-          packets = zipWith (\idx seed ->
-            let pid = arcId arc <> "-" <> T.pack (show idx)
-                tMod = T.replace ".dhall" "" (T.replace ".md" "" (T.pack (takeFileName (T.unpack seed))))
+          defaultTurns = pLikely
+          defaultBudget = defaultTurns * 120
+      pkts <- forM (zip [1..] (arcSeedMetaPackets arc)) $ \(idx, seed) -> do
+        let seedStr = T.unpack seed
+            candidates =
+              [ seedStr
+              , "/home/nyc/src/plans" </> seedStr
+              , "/home/nyc/src/plans/tier2-yamaarashi/pending" </> takeFileName seedStr
+              , "/home/nyc/src/plans/tier2-yamaarashi/completed" </> takeFileName seedStr
+              ]
+        mFound <- findFirstExisting candidates
+        case mFound of
+          Just fp -> do
+            content <- TIO.readFile fp
+            pure (parseSeedPacketFile arc idx defaultTurns defaultBudget content)
+          Nothing -> do
+            let pid = arcId arc <> "-" <> T.pack (show (idx :: Int))
+                tMod = T.replace ".dhall" "" (T.replace ".md" "" (T.pack (takeFileName seedStr)))
                 p = UnfoldedLeafPacket
                   { ulpId                = pid
                   , ulpTitle             = arcTitle arc <> " [" <> tMod <> "]"
@@ -778,17 +869,16 @@ unfoldFromSeedPackets arc
                   , ulpTargetModule      = tMod
                   , ulpDependsOn         = if idx == (1 :: Int) then [] else [arcId arc <> "-" <> T.pack (show (idx - 1))]
                   , ulpExecutor          = "auto"
-                  , ulpMaxTurns          = turns
-                  , ulpRunBudgetSeconds  = budget
+                  , ulpMaxTurns          = defaultTurns
+                  , ulpRunBudgetSeconds  = defaultBudget
                   , ulpMaxRepairAttempts = 3
                   , ulpAllowMetered      = False
                   , ulpAssumedGuarantees = []
                   , ulpVerificationCmd   = "cabal v2-build yamaarashi -j20 --semaphore && cabal v2-test yamaarashi"
                   , ulpRawPacketYaml     = ""
                   }
-            in p { ulpRawPacketYaml = emitPacketYaml p }
-            ) [1..] (arcSeedMetaPackets arc)
-      in Right packets
+            pure (p { ulpRawPacketYaml = emitPacketYaml p })
+      pure (Right pkts)
 
 -- | Unfold an entire Campaign Matrix into a map of arc leaf packets.
 unfoldCampaignMatrix :: CampaignMatrix -> IO (Either Text (Map Text [UnfoldedLeafPacket]))
@@ -821,8 +911,9 @@ unfoldToScheduleGraph matrix = do
             in insertTask v g
             ) emptyScheduleGraph allPackets
 
+      let allIds = Set.fromList (map ulpId allPackets)
       let g1 = foldr (\p g ->
-            foldr (\dep gAcc -> addDependency dep (ulpId p) gAcc) g (ulpDependsOn p)
+            foldr (\dep gAcc -> if Set.member dep allIds then addDependency dep (ulpId p) gAcc else gAcc) g (ulpDependsOn p)
             ) g0 allPackets
 
       let g2 = foldr (\arc gAcc ->
