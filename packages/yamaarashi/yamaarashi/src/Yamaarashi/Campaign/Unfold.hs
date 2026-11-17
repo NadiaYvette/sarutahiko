@@ -104,6 +104,12 @@ import Yamaarashi.Schedule.TropicalPERT
   , emptyScheduleGraph
   , insertTask
   )
+import Yamaarashi.Flow.PathDiscovery
+  ( getCompletedQueueDir
+  , getPendingQueueDir
+  , getPlansDir
+  , resolveRepoDir
+  )
 
 --------------------------------------------------------------------------------
 -- 1. Campaign Schema Types (CampaignSchema.dhall)
@@ -785,13 +791,7 @@ parseSeedPacketFile arc idx defaultTurns defaultBudget content =
                   else r3
         in if not (T.null val)
              then T.unpack val
-             else if "gargamelle" `T.isInfixOf` content
-                    then "/home/nyc/src/gargamelle"
-                    else if "smirk" `T.isInfixOf` content
-                           then "/home/nyc/src/smirk"
-                           else if "penelope" `T.isInfixOf` content
-                                  then "/home/nyc/src/penelope"
-                                  else "."
+             else "."
       valExec = findVal "executor"
       pExec = if T.null valExec then "auto" else valExec
       pkgs = extractList "packages"
@@ -858,22 +858,22 @@ parseSeedPacketDhallOrYaml arc idx defaultTurns defaultBudget fp content
               pkgs = extractListKey "packages"
               tMod = case pkgs of (firstPkg:_) -> firstPkg; [] -> pId
               deps = extractListKey "dependsOn" ++ extractListKey "depends_on"
-              rawRepo = let r1 = extractTxt "repo"
-                            r2 = extractTxt "repoDir"
-                            r3 = extractTxt "repo_dir"
-                            val = if not (T.null r1) then r1
-                                  else if not (T.null r2) then r2
-                                  else r3
-                        in if not (T.null val)
-                             then T.unpack val
-                             else if "gargamelle" `T.isInfixOf` content || any ("gargamelle" `T.isInfixOf`) pkgs
-                                    then "/home/nyc/src/gargamelle"
-                                    else if "smirk" `T.isInfixOf` content || any ("smirk" `T.isInfixOf`) pkgs
-                                           then "/home/nyc/src/smirk"
-                                           else if "penelope" `T.isInfixOf` content || any ("penelope" `T.isInfixOf`) pkgs
-                                                  then "/home/nyc/src/penelope"
-                                                  else "."
-              vExec = extractTxt "executor"
+              r1 = extractTxt "repo"
+              r2 = extractTxt "repoDir"
+              r3 = extractTxt "repo_dir"
+              val = if not (T.null r1) then r1
+                    else if not (T.null r2) then r2
+                    else r3
+          rawRepo <- if not (T.null val)
+                       then pure (T.unpack val)
+                       else if "gargamelle" `T.isInfixOf` content || any ("gargamelle" `T.isInfixOf`) pkgs
+                              then resolveRepoDir "gargamelle"
+                              else if "smirk" `T.isInfixOf` content || any ("smirk" `T.isInfixOf`) pkgs
+                                     then resolveRepoDir "smirk"
+                                     else if "penelope" `T.isInfixOf` content || any ("penelope" `T.isInfixOf`) pkgs
+                                            then resolveRepoDir "penelope"
+                                            else pure "."
+          let vExec = extractTxt "executor"
               pExec = if T.null vExec then "auto" else vExec
               pTurns = case extractInt "maxTurns" of
                 Just t  -> t
@@ -942,13 +942,16 @@ unfoldFromSeedPackets arc
       let pLikely = max 1 (pertMostLikely (arcPert arc))
           defaultTurns = pLikely
           defaultBudget = defaultTurns * 120
+      plansDir <- getPlansDir
+      pendingDir <- getPendingQueueDir
+      completedDir <- getCompletedQueueDir
       pkts <- forM (zip [1..] (arcSeedMetaPackets arc)) $ \(idx, seed) -> do
         let seedStr = T.unpack seed
             candidates =
               [ seedStr
-              , "/home/nyc/src/plans" </> seedStr
-              , "/home/nyc/src/plans/tier2-yamaarashi/pending" </> takeFileName seedStr
-              , "/home/nyc/src/plans/tier2-yamaarashi/completed" </> takeFileName seedStr
+              , plansDir </> seedStr
+              , pendingDir </> takeFileName seedStr
+              , completedDir </> takeFileName seedStr
               ]
         mFound <- findFirstExisting candidates
         case mFound of

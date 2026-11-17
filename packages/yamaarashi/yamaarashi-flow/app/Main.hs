@@ -78,6 +78,15 @@ import Yamaarashi.Schedule.TropicalPERT
   , dynamicRecompute
   , selectParallelBatch
   )
+import Yamaarashi.Flow.PathDiscovery
+  ( findHlsAutoheal
+  , getCompletedQueueDir
+  , getPendingQueueDir
+  , getPlansDir
+  , getSeedsDir
+  , getSrcDir
+  , resolveRepoDir
+  )
 
 -- | Metered environment variables that must be scrubbed from worker environments
 -- to enforce the quota firewall (TP-META-000).
@@ -230,12 +239,13 @@ handleCampaignRun allowMetered matrixPath = do
               putStrLn $ "Project Makespan:   " ++ show (pmProjectMakespan metrics)
 
               -- Persist generated packet YAML manifests to worktree-accessible directory
+              defaultPlans <- getPlansDir
               eRoot <- try (readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])) :: IO (Either SomeException (BSL.ByteString, BSL.ByteString))
               let repoRoot = case eRoot of
                     Right (rootOut, _) ->
                       let r = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
-                      in if null r || r == "/home/nyc/src/plans" then "/home/nyc/src/plans" else r
-                    Left _ -> "/home/nyc/src/plans"
+                      in if null r || r == defaultPlans then defaultPlans else r
+                    Left _ -> defaultPlans
                   genDir = repoRoot </> ".yamaarashi" </> "campaign-packets" </> T.unpack (matrixId matrix)
               createDirectoryIfMissing True genDir
               forM_ packets $ \p -> do
@@ -264,19 +274,23 @@ handleCampaignRun allowMetered matrixPath = do
 checkTaskAlreadyCompleted :: FilePath -> UnfoldedLeafPacket -> IO Bool
 checkTaskAlreadyCompleted repoRoot packet = do
   let tid = T.unpack (ulpId packet)
-      completedDhall = "/home/nyc/src/plans/tier2-yamaarashi/completed" </> (tid ++ ".dhall")
-      completedYaml  = "/home/nyc/src/plans/tier2-yamaarashi/completed" </> (tid ++ ".yaml")
+  completedDir <- getCompletedQueueDir
+  let completedDhall = completedDir </> (tid ++ ".dhall")
+      completedYaml  = completedDir </> (tid ++ ".yaml")
   inCompletedDirDhall <- doesFileExist completedDhall
   inCompletedDirYaml  <- doesFileExist completedYaml
   if inCompletedDirDhall || inCompletedDirYaml
     then pure True
     else do
+      smirkDir <- resolveRepoDir "smirk"
+      gargamelleDir <- resolveRepoDir "gargamelle"
+      penelopeDir <- resolveRepoDir "penelope"
       let candidateRepos =
             [ ulpRepoDir packet
             , repoRoot
-            , "/home/nyc/src/smirk"
-            , "/home/nyc/src/gargamelle"
-            , "/home/nyc/src/penelope"
+            , smirkDir
+            , gargamelleDir
+            , penelopeDir
             ]
       checkRepoEvents candidateRepos (ulpId packet)
   where
@@ -322,14 +336,16 @@ runCampaignLoop allowMetered currentGraph genDir = do
     else do
       putStrLn ""
       putStrLn $ "=== [yamaarashi-exec] Executing Parallel Batch (" ++ show (length batch) ++ " task(s)) ==="
+      pendingDir <- getPendingQueueDir
+      completedDir <- getCompletedQueueDir
       forM_ batch $ \t -> do
         let tid = tvId t
             tidStr = T.unpack tid
             candidatePaths =
-              [ "/home/nyc/src/plans/tier2-yamaarashi/pending" </> (tidStr ++ ".dhall")
-              , "/home/nyc/src/plans/tier2-yamaarashi/pending" </> (tidStr ++ ".yaml")
-              , "/home/nyc/src/plans/tier2-yamaarashi/completed" </> (tidStr ++ ".dhall")
-              , "/home/nyc/src/plans/tier2-yamaarashi/completed" </> (tidStr ++ ".yaml")
+              [ pendingDir </> (tidStr ++ ".dhall")
+              , pendingDir </> (tidStr ++ ".yaml")
+              , completedDir </> (tidStr ++ ".dhall")
+              , completedDir </> (tidStr ++ ".yaml")
               , genDir </> (tidStr ++ ".dhall")
               , genDir </> (tidStr ++ ".yaml")
               ]
@@ -421,7 +437,7 @@ handleSnapshot args = case parseSnapshotOptions args of
         repoName = takeBaseName repoRoot
         scriptsDir = repoRoot </> "scripts" </> "tasks"
         plansDir = repoRoot </> "plans" </> "task_packets"
-        pendingQueueDir = "/home/nyc/src/plans/tier2-yamaarashi/pending"
+    pendingQueueDir <- getPendingQueueDir
 
     createDirectoryIfMissing True scriptsDir
     createDirectoryIfMissing True plansDir
@@ -586,12 +602,12 @@ showSingleTaskTelemetry dbPath tId = do
 -- | Invoke the standalone hls-autoheal tool from the CLI.
 handleAutoHeal :: [String] -> IO ()
 handleAutoHeal args = do
-  hasAutoHeal <- doesFileExist "/home/nyc/.local/bin/hls-autoheal"
-  if not hasAutoHeal
-    then putStrLn "Error: /home/nyc/.local/bin/hls-autoheal not found" >> exitFailure
-    else do
+  mAutoHeal <- findHlsAutoheal
+  case mAutoHeal of
+    Nothing -> putStrLn "Error: hls-autoheal executable not found in PATH or ~/.local/bin" >> exitFailure
+    Just autoHealBin -> do
       let effectiveArgs = if null args then ["--hls"] else args
-      (code, outBs, errBs) <- readProcess (proc "/home/nyc/.local/bin/hls-autoheal" effectiveArgs)
+      (code, outBs, errBs) <- readProcess (proc autoHealBin effectiveArgs)
       let outText = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict outBs)
           errText = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict errBs)
       TIO.putStr outText
@@ -602,14 +618,16 @@ handleAutoHeal args = do
 -- inside an isolated worktree using the standalone hls-autoheal utility.
 runAutoHeal :: FilePath -> Text -> IO Bool
 runAutoHeal wtDir errOutput = do
-  hasAutoHeal <- doesFileExist "/home/nyc/.local/bin/hls-autoheal"
-  if not hasAutoHeal
-    then pure False
-    else do
+  mAutoHeal <- findHlsAutoheal
+  case mAutoHeal of
+    Nothing -> do
+      putStrLn "=== [yamaarashi-exec] hls-autoheal binary not found; skipping automated repair ==="
+      pure False
+    Just autoHealBin -> do
       putStrLn "=== [yamaarashi-exec] Attempting automated HLS/GHC auto-heal pass ==="
       let autohealProc = setWorkingDir wtDir
                        $ setStdin (byteStringInput (BSL.fromStrict (TE.encodeUtf8 errOutput)))
-                       $ proc "/home/nyc/.local/bin/hls-autoheal" ["--stdin"]
+                       $ proc autoHealBin ["--stdin"]
       (exitCode, outBs, _) <- readProcess autohealProc
       let outText = TE.decodeUtf8With TEE.lenientDecode (BSL.toStrict outBs)
       TIO.putStr outText
@@ -635,7 +653,7 @@ mountSeedFiles wtDir packet = do
             putStrLn $ "  -> Mounted seed: " ++ baseName
           else putStrLn $ "  [WARN] Explicit seed file not found: " ++ seedPath
     else do
-      let plansSeedsDir = "/home/nyc/src/plans/seeds"
+      plansSeedsDir <- getSeedsDir
       plansSeedsExist <- doesDirectoryExist plansSeedsDir
       when plansSeedsExist $ do
         allSeedFiles <- listDirectory plansSeedsDir
@@ -659,24 +677,30 @@ runTaskPacket cliAllowMetered path = do
 
   -- Get repo root directory
   eRoot <- try (readProcess_ (proc "git" ["rev-parse", "--show-toplevel"])) :: IO (Either SomeException (BSL.ByteString, BSL.ByteString))
+  gargamelleDir <- resolveRepoDir "gargamelle"
+  smirkDir <- resolveRepoDir "smirk"
+  penelopeDir <- resolveRepoDir "penelope"
+  polytroposDir <- resolveRepoDir "polytropos"
+  sarutahikoDir <- resolveRepoDir "sarutahiko"
+  defaultPlansDir <- getPlansDir
   let explicitRepo = packetRepo rawPacket
       inferredRepo =
         if any ("gargamelle" `T.isInfixOf`) (packetPackages rawPacket) || "gargamelle" `T.isInfixOf` packetRawYaml rawPacket
-          then "/home/nyc/src/gargamelle"
+          then gargamelleDir
           else if any ("smirk" `T.isInfixOf`) (packetPackages rawPacket) || "smirk" `T.isInfixOf` packetRawYaml rawPacket
-            then "/home/nyc/src/smirk"
+            then smirkDir
             else if any ("penelope" `T.isInfixOf`) (packetPackages rawPacket) || "penelope" `T.isInfixOf` packetRawYaml rawPacket
-              then "/home/nyc/src/penelope"
+              then penelopeDir
               else if any ("polytropos" `T.isInfixOf`) (packetPackages rawPacket) || "polytropos" `T.isInfixOf` packetRawYaml rawPacket
-                then "/home/nyc/src/polytropos"
-                else "/home/nyc/src/sarutahiko"
+                then polytroposDir
+                else sarutahikoDir
       fallbackRepo = case explicitRepo of
         Just r | not (null r) -> r
         _                     -> inferredRepo
       repoRoot = case eRoot of
         Right (rootOut, _) ->
           let r = T.unpack (T.strip (TE.decodeUtf8 (BSC.toStrict rootOut)))
-          in if null r || r == "/home/nyc/src/plans" then fallbackRepo else r
+          in if null r || r == defaultPlansDir then fallbackRepo else r
         Left _ -> fallbackRepo
       srcDir   = takeDirectory repoRoot
       repoBase = takeFileName repoRoot
@@ -826,9 +850,10 @@ runTaskPacket cliAllowMetered path = do
     putStrLn $ "=== [yamaarashi-exec] Compacted task ledger database via VACUUM ==="
 
     -- Auto-archive packet file from pending/ to completed/ in plans repo if present
-    let pendingDhall = "/home/nyc/src/plans/tier2-yamaarashi/pending" </> (tId ++ ".dhall")
-        pendingYaml  = "/home/nyc/src/plans/tier2-yamaarashi/pending" </> (tId ++ ".yaml")
-        completedDir = "/home/nyc/src/plans/tier2-yamaarashi/completed"
+    pendingDir <- getPendingQueueDir
+    completedDir <- getCompletedQueueDir
+    let pendingDhall = pendingDir </> (tId ++ ".dhall")
+        pendingYaml  = pendingDir </> (tId ++ ".yaml")
     hasPendDhall <- doesFileExist pendingDhall
     when hasPendDhall $ do
       createDirectoryIfMissing True completedDir

@@ -40,6 +40,7 @@ library
         Yamaarashi.Patch.Prepared
         Yamaarashi.Patch.Reaper
         Yamaarashi.Campaign.Unfold
+        Yamaarashi.Flow.PathDiscovery
     build-depends:
         base >= 4.20 && < 5,
         containers,
