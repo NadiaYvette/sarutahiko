@@ -604,10 +604,99 @@ parseBasicYaml fallbackId txt =
     }
 EOF
 
-# Update yamaarashi-flow.cabal to expose Yamaarashi.Flow.PacketCodec (idempotent)
-if ! grep -q "Yamaarashi.Flow.PacketCodec" "$FLOW_DIR/yamaarashi-flow.cabal"; then
-  sed -i '/Yamaarashi.Flow.Ledger/a \        Yamaarashi.Flow.PacketCodec' "$FLOW_DIR/yamaarashi-flow.cabal"
-fi
+# Update yamaarashi-flow.cabal to expose Yamaarashi.Flow.PacketCodec and dependencies
+cat << 'EOF' > "$FLOW_DIR/yamaarashi-flow.cabal"
+cabal-version:      3.14
+name:               yamaarashi-flow
+version:            0.1.0.0
+synopsis:           Selective task DAG workflow orchestrator
+description:
+    Free Selective Applicative Functor workflow orchestrator over algebraic graph
+    DAGs, providing static dependency analysis, virtual tree caching, and hermetic
+    subprocess execution under algebraic effects.
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Nadia Yvette Chambers
+maintainer:         nadia.yvette.chambers@ik.me
+category:           Development, Workflow
+build-type:         Simple
+
+common commons
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Widentities
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wmissing-home-modules
+        -Wpartial-fields
+        -Wredundant-constraints
+
+library
+    import:           commons
+    exposed-modules:
+        Yamaarashi.Flow
+        Yamaarashi.Flow.Types
+        Yamaarashi.Flow.Scheduler
+        Yamaarashi.Flow.Capability
+        Yamaarashi.Flow.Ledger
+        Yamaarashi.Flow.PacketCodec
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        bytestring >= 0.12,
+        filepath >= 1.4,
+        direct-sqlite >= 2.3,
+        selective >= 0.5,
+        algebraic-graphs >= 0.7,
+        large-anon,
+        sarutahiko-fields,
+        sarutahiko-records,
+        sarutahiko-effect-signatures,
+        yamaarashi,
+        darcs-witnesses,
+        gargamelle-evidence
+    hs-source-dirs:   src
+
+test-suite yamaarashi-flow-test
+    import:           commons
+    type:             exitcode-stdio-1.0
+    main-is:          Spec.hs
+    hs-source-dirs:   test
+    ghc-options:      -threaded -rtsopts -with-rtsopts=-N
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        bytestring >= 0.12,
+        directory >= 1.3,
+        algebraic-graphs >= 0.7,
+        selective >= 0.5,
+        yamaarashi-flow,
+        tasty,
+        hedgehog,
+        tasty-hedgehog
+
+executable yamaarashi-exec
+    import:           commons
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    build-depends:
+        base >= 4.20 && < 5,
+        containers >= 0.6,
+        text >= 2.1,
+        bytestring >= 0.12,
+        directory >= 1.3,
+        filepath >= 1.4,
+        time >= 1.12,
+        typed-process >= 0.2.10,
+        yamaarashi-flow,
+        yamaarashi-spec,
+        sarutahiko-effect-signatures,
+        utai
+EOF
 
 # 4. Add unit and property tests to test/Spec.hs in yamaarashi (idempotent)
 if ! grep -q "Yamaarashi.Patch.Prepared Tests" "$YAMA_DIR/test/Spec.hs"; then
