@@ -141,6 +141,10 @@ tests = testGroup "Yamaarashi Suite"
       , testProperty "critical path first dispatch prioritizes lowest slack and gathers maximal independent batch" prop_pert_critical_path_first_dispatch
       , testProperty "dynamic recompute unblocks downstream tasks upon task quarantine" prop_pert_dynamic_recompute_quarantine
       ]
+  , testGroup "Yamaarashi.Patch.Prepared"
+      [ testProperty "materializes pre-staged primitives and deductively synthesizes PrimSynquidHoles" prop_prepared_materialize_and_synthesize
+      , testProperty "executes prepared .gpatch sketch bundle end-to-end and seals completed GPatch" prop_prepared_bundle_roundtrip
+      ]
   , testGroup "Yamaarashi.Schedule.Quarantine"
       [ testProperty "shouldQuarantine enforces repair attempt threshold" prop_quarantine_threshold
       , testProperty "synthesizeAxiomaticStub synthesizes compileable Liquid assume contracts and error stubs" prop_quarantine_synthesis
@@ -835,3 +839,107 @@ prop_quarantine_vertex_execution = property $ do
   assert (T.isInfixOf "module PrimAxiomaticStub where" stubContent)
   assert (T.isInfixOf "{-@ assume step :: {v:Bool | true} @-}" stubContent)
   assert (T.isInfixOf "step :: Bool" stubContent)
+
+--------------------------------------------------------------------------------
+-- Yamaarashi.Patch.Prepared Tests
+--------------------------------------------------------------------------------
+
+prop_prepared_materialize_and_synthesize :: Property
+prop_prepared_materialize_and_synthesize = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let testDir = tmpRoot </> ("prepared-test-" ++ show t)
+      vspec = SheafVertexSpec
+        { svVertexId         = "v-test"
+        , svSig              = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+        , svContext          = Context Map.empty
+        , svBasis            = QualifierBasis Set.empty
+        , svLocalGuarantee   = FTrue
+        , svLocalRequirement = FTrue
+        }
+      primHole = PrimSynquidHole "src/Foo.hs" (SymbolKey "solveHole") (HoleId "h1") "variant absurd" "basis"
+      primCabal = PrimCabalSet "foo.cabal" "exposed-modules" SetInsert "Foo.Bar"
+      primHs = PrimHsHeaderSet "src/Foo.hs" "LANGUAGE" SetInsert "OverloadedStrings"
+      prims = primCabal :>: primHs :>: primHole :>: NilFL
+      sketch = GPatch
+        { gpPatchId       = PatchId "P-SKETCH"
+        , gpContextDeps   = Set.empty
+        , gpBaseTreeOid   = TreeOid (OidHex "1111111111111111111111111111111111111111")
+        , gpResultTreeOid = TreeOid (OidHex "2222222222222222222222222222222222222222")
+        , gpPrims         = prims
+        , gpSigMorphism   = emptyMorphism
+        , gpVertexSpec    = vspec
+        }
+
+  -- 1. Sealing sketch initially fails because hole is unresolved
+  case sealCompletedGPatch sketch of
+    Left err -> assert (T.isInfixOf "unresolved PrimSynquidHoles" err)
+    Right _  -> fail "Expected sealing to fail on un-synthesized hole"
+
+  -- 2. Materialize primitives into test workspace
+  evalIO $ materializePreparedGPatch testDir sketch
+
+  cabalExists <- evalIO $ Directory.doesFileExist (testDir </> "foo.cabal")
+  cabalExists === True
+  cabalContent <- evalIO $ TIO.readFile (testDir </> "foo.cabal")
+  assert (T.isInfixOf "Foo.Bar" cabalContent)
+
+  fooExists <- evalIO $ Directory.doesFileExist (testDir </> "src/Foo.hs")
+  fooExists === True
+  fooContent <- evalIO $ TIO.readFile (testDir </> "src/Foo.hs")
+  assert (T.isInfixOf "{-# LANGUAGE OverloadedStrings #-}" fooContent)
+  assert (T.isInfixOf "solveHole = error \"HOLE: h1\"" fooContent)
+
+  -- 3. Synthesize holes deductively with 0 tokens
+  (newPrims, resolutions) <- evalIO $ synthesizePreparedHoles testDir (gpPrims sketch)
+  length resolutions === 1
+  let [res] = resolutions
+  case resStatus res of
+    SynthesizedZeroToken _term rendered -> do
+      assert (T.isInfixOf "absurdVariantF" rendered)
+    UnresolvedHole msg -> fail (T.unpack msg)
+
+  -- 4. Verify workspace file updated with synthesized declaration
+  updatedFooContent <- evalIO $ TIO.readFile (testDir </> "src/Foo.hs")
+  assert (T.isInfixOf "solveHole = absurdVariantF" updatedFooContent)
+
+  -- 5. Sealing now succeeds on hole-free patch!
+  let completedPatch = sketch { gpPrims = newPrims }
+  case sealCompletedGPatch completedPatch of
+    Right sealed -> gpPatchId sealed === PatchId "P-SKETCH"
+    Left err     -> fail (T.unpack err)
+
+prop_prepared_bundle_roundtrip :: Property
+prop_prepared_bundle_roundtrip = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let testDir = tmpRoot </> ("bundle-test-" ++ show t)
+      bundlePath = testDir </> "sketch.gpatch"
+      vspec = SheafVertexSpec
+        { svVertexId         = "v-roundtrip"
+        , svSig              = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+        , svContext          = Context Map.empty
+        , svBasis            = QualifierBasis Set.empty
+        , svLocalGuarantee   = FTrue
+        , svLocalRequirement = FTrue
+        }
+      primHole = PrimSynquidHole "src/Worker.hs" (SymbolKey "workerTask") (HoleId "w1") "variant absurd" "basis"
+      sketch = GPatch
+        { gpPatchId       = PatchId "P-BUNDLE-TEST"
+        , gpContextDeps   = Set.empty
+        , gpBaseTreeOid   = TreeOid (OidHex "3333333333333333333333333333333333333333")
+        , gpResultTreeOid = TreeOid (OidHex "4444444444444444444444444444444444444444")
+        , gpPrims         = primHole :>: NilFL
+        , gpSigMorphism   = emptyMorphism
+        , gpVertexSpec    = vspec
+        }
+
+  evalIO $ Directory.createDirectoryIfMissing True testDir
+  evalIO $ writeGPatchBundle bundlePath sketch
+
+  -- Execute prepared sketch end-to-end
+  eResult <- evalIO $ executePreparedSketch testDir bundlePath
+  case eResult of
+    Right (Sealed2 sealed) -> do
+      gpPatchId sealed === PatchId "P-BUNDLE-TEST"
+    Left err -> fail (T.unpack err)
