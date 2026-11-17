@@ -35,6 +35,7 @@ common commons
         -Wpartial-fields
         -Wredundant-constraints
         -Werror
+        -Wno-error=pattern-namespace-specifier
 
 library
     import:           commons
