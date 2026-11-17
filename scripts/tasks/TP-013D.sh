@@ -178,13 +178,10 @@ import Gargamelle.Core.Institution.Liquid
   , LiquidPred (..)
   , LiquidSig (..)
   , LiquidSort (..)
+  , MeasureDecl (..)
   , RBase (..)
   , RelOp (..)
   , RType (..)
-  )
-import Gargamelle.FOL.LiquidHyperdoctrine
-  ( Context (..)
-  , QualifierBasis (..)
   )
 import Yamaarashi.Synthesis.Synquid
   ( SynEnv (..)
@@ -364,12 +361,28 @@ tryDeductiveSynthesis _rootDir relPath sym hId rschema _basis = do
   -- Inspect rschema for deductive patterns (e.g. variant exhaustion or scalar base)
   if "absurd" `T.isInfixOf` rschema || "variant" `T.isInfixOf` rschema || "exhaust" `T.isInfixOf` rschema
     then do
-      let env = SynEnv
-            { envSig        = LiquidSig Set.empty Map.empty [] Set.empty (Map.singleton "u" (RBScalar (RBase "u" (SortCustom "EmptyVariant") PTrue))) []
-            , envContext    = Context Map.empty
-            , envBasis      = QualifierBasis Set.empty
-            , envGoal       = RBScalar (RBase "v" SortInt PTrue)
-            , envSession    = Z3StreamSession
+      let sortTag = SortADT "PolytroposTag" []
+          varU = "u"
+          uType = RBScalar (RBase "v" (SortADT "VariantF_Row" []) PTrue)
+          vtagsDecl = MeasureDecl
+            { measureName        = "vtags"
+            , measureDomain      = SortADT "VariantF_Row" []
+            , measureRange       = SortSet sortTag
+            , measureWellFounded = False
+            }
+          pathCond = [PRel Eq (PMeasureApp "vtags" (PVar varU)) (PEmptySet sortTag)]
+          sig = LiquidSig
+            { sigSorts      = Set.fromList ["Int", "Bool", "PolytroposTag", "VariantF_Row"]
+            , sigMeasures   = Map.singleton "vtags" vtagsDecl
+            , sigCtorAxioms = []
+            , sigQualifiers = Set.empty
+            , sigEnv        = Map.singleton varU uType
+            , sigPathCond   = pathCond
+            }
+          env = SynEnv
+            { envSig        = sig
+            , envComponents = Map.empty
+            , envZ3Session  = Z3StreamSession
             , envMaxDepth   = 5
             , envMaxAbduct  = 2
             , envStateVar   = "st"
@@ -504,6 +517,7 @@ import qualified Data.ByteString as BS
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified Data.Text.IO as TIO
 import System.FilePath (takeBaseName, takeExtension)
 
 import Darcs.Patch.Witnesses (Sealed2 (..))
@@ -539,7 +553,7 @@ decodePacketResilient path
                 }
           pure (packet, Just path)
   | otherwise = do
-      content <- T.readFile path
+      content <- TIO.readFile path
       let baseId = T.pack (takeBaseName path)
           gpatchRef = findGpatchRef content
       pure (parseBasicYaml baseId content, gpatchRef)
@@ -590,37 +604,18 @@ parseBasicYaml fallbackId txt =
     }
 EOF
 
-# Update yamaarashi-flow.cabal to expose Yamaarashi.Flow.PacketCodec
-sed -i '/Yamaarashi.Flow.Ledger/a \        Yamaarashi.Flow.PacketCodec' "$FLOW_DIR/yamaarashi-flow.cabal" || true
+# Update yamaarashi-flow.cabal to expose Yamaarashi.Flow.PacketCodec (idempotent)
+if ! grep -q "Yamaarashi.Flow.PacketCodec" "$FLOW_DIR/yamaarashi-flow.cabal"; then
+  sed -i '/Yamaarashi.Flow.Ledger/a \        Yamaarashi.Flow.PacketCodec' "$FLOW_DIR/yamaarashi-flow.cabal"
+fi
 
-# 4. Add unit and property tests to test/Spec.hs in yamaarashi
+# 4. Add unit and property tests to test/Spec.hs in yamaarashi (idempotent)
+if ! grep -q "Yamaarashi.Patch.Prepared Tests" "$YAMA_DIR/test/Spec.hs"; then
 cat << 'EOF' >> "$YAMA_DIR/test/Spec.hs"
 
 --------------------------------------------------------------------------------
 -- Yamaarashi.Patch.Prepared Tests
 --------------------------------------------------------------------------------
-
-import Darcs.Patch.Witnesses (FL(..), Sealed2(..))
-import Darcs.Patch.Prim.Structural (SetOp(..))
-import Gargamelle.Evidence.Patch.Prim
-  ( PrimPatch(..)
-  , SymbolKey(..)
-  , HoleId(..)
-  , DPOSpan(..)
-  , PatchId(..)
-  )
-import Gargamelle.Evidence.Patch.Bundle (GPatch(..), writeGPatchBundle, readGPatchBundle)
-import Gargamelle.Evidence.GitBundle (TreeOid(..), OidHex(..))
-import Gargamelle.Core.Institution.Liquid (LiquidSigMorphism(..))
-import Gargamelle.Sheaf.LatticeCohomology (SheafVertexSpec(..))
-import Yamaarashi.Patch.Prepared
-  ( HoleSynthesisStatus(..)
-  , PrimHoleResolution(..)
-  , materializePreparedGPatch
-  , synthesizePreparedHoles
-  , sealCompletedGPatch
-  , executePreparedSketch
-  )
 
 prop_prepared_materialize_and_synthesize :: Property
 prop_prepared_materialize_and_synthesize = property $ do
@@ -723,7 +718,7 @@ prop_prepared_bundle_roundtrip = property $ do
     Left err -> fail (T.unpack err)
 EOF
 
-# Add the new properties to tests list in test/Spec.hs
 sed -i '/testGroup "Yamaarashi.Schedule.Quarantine"/i \  , testGroup "Yamaarashi.Patch.Prepared"\n      [ testProperty "materializes pre-staged primitives and deductively synthesizes PrimSynquidHoles" prop_prepared_materialize_and_synthesize\n      , testProperty "executes prepared .gpatch sketch bundle end-to-end and seals completed GPatch" prop_prepared_bundle_roundtrip\n      ]' "$YAMA_DIR/test/Spec.hs"
+fi
 
 echo "=== [TP-013D] Completed successfully ==="
