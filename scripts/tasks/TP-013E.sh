@@ -176,6 +176,7 @@ import Gargamelle.FOL.LiquidHyperdoctrine
 import Gargamelle.Sheaf.LatticeCohomology
   ( SheafVertexSpec (..)
   )
+import Unsafe.Coerce (unsafeCoerce)
 
 -- | Error during parallel wave reaping.
 data ReaperError
@@ -223,33 +224,14 @@ foldParallelGPatches _ [single] =
 foldParallelGPatches h (firstPatch : rest) = go firstPatch rest 1
   where
     go acc [] _ = pure $ Right acc
-    go (Sealed2 (pAcc :: GPatch wX wA)) (Sealed2 (pNext :: GPatch wX' wB) : ps) idx = do
-      -- Cast or assert matching base state wX
-      -- Under mergeGPatchParallel, pAcc :\/: pNext requires same base state wX
-      mMerged <- mergePairwiseGPatches h pAcc (unsafeCoerceBase pNext)
+    go (Sealed2 (pAcc :: GPatch wX wA)) (Sealed2 pNext : ps) idx = do
+      mMerged <- mergePairwiseGPatches h pAcc (unsafeCoerce pNext)
       case mMerged of
         Nothing ->
           pure $ Left (ReaperCohomologyObstruction
             ("mergeGPatchParallel failed with non-zero cohomology or syntactic conflict at index " <> T.pack (show idx)))
-        Just combined ->
-          go (seal2 combined) ps (idx + 1)
-
-    -- Unsafe coerce existential base witness so parallel worker outputs can be folded
-    unsafeCoerceBase :: GPatch wX' wB -> GPatch wX wB
-    unsafeCoerceBase (GPatch pId deps baseTree resTree prims morph spec) =
-      GPatch pId deps baseTree resTree (unsafeCoerceFL prims) morph spec
-
-    unsafeCoerceFL :: FL PrimPatch wA wB -> FL PrimPatch wX wB
-    unsafeCoerceFL NilFL = NilFL
-    unsafeCoerceFL (p :>: ps) = unsafeCoercePrim p :>: unsafeCoerceFL ps
-
-    unsafeCoercePrim :: PrimPatch wA wB -> PrimPatch wX wB
-    unsafeCoercePrim = \case
-      PrimCabalSet f s op v -> PrimCabalSet f s op v
-      PrimHsHeaderSet f s op v -> PrimHsHeaderSet f s op v
-      PrimAstDPO f s spanAST -> PrimAstDPO f s spanAST
-      PrimSynquidHole f s h r b -> PrimSynquidHole f s h r b
-      PrimLineHunk f off del add -> PrimLineHunk f off del add
+        Just combinedSealed ->
+          go combinedSealed ps (idx + 1)
 
 -- | Pairwise merge of two parallel GPatches under Hyperdoctrine.
 -- Combines their primitives, accumulates dependencies, and advances result tree.
@@ -258,7 +240,7 @@ mergePairwiseGPatches
   => h
   -> GPatch wX wA
   -> GPatch wX wB
-  -> IO (Maybe (GPatch wX AnyResult))
+  -> IO (Maybe (Sealed2 GPatch))
 mergePairwiseGPatches h p1 p2 = do
   mMerged <- mergeGPatchParallel h (p1 :\/: p2)
   case mMerged of
@@ -285,10 +267,7 @@ mergePairwiseGPatches h p1 p2 = do
             , gpSigMorphism   = gpSigMorphism p1
             , gpVertexSpec    = combinedSpec
             }
-      pure (Just combinedPatch)
-
--- Dummy type witness for combined state
-data AnyResult
+      pure (Just (seal2 combinedPatch))
 
 -- | Emit Git fast-import stream for a reaped GPatch bundle.
 emitReapedFastImportStream :: ByteString -> Sealed2 GPatch -> ByteString
