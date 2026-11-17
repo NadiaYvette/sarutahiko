@@ -9,6 +9,7 @@ import Control.Exception (SomeException, bracket, throwIO, try)
 import Control.Monad (filterM, forM_, when)
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as BSL
+import Data.Int (Int64)
 import Data.List (isPrefixOf, sortBy)
 import qualified Data.Map.Strict as Map
 import Data.Ord (comparing)
@@ -246,7 +247,52 @@ handleCampaignRun allowMetered matrixPath = do
                   else TIO.writeFile packetFile (ulpRawPacketYaml p)
               putStrLn $ "Emitted " ++ show (length packets) ++ " packet manifest(s) to " ++ genDir
 
-              runCampaignLoop allowMetered initialGraph genDir
+              -- Mark already-completed tasks in schedule graph so PERT execution skips them
+              completedPackets <- filterM (checkTaskAlreadyCompleted repoRoot) packets
+              forM_ completedPackets $ \cp ->
+                putStrLn $ "  [ALREADY DONE] Task " ++ T.unpack (ulpId cp) ++ " previously completed — marking satisfied in PERT schedule."
+              let initialGraphWithCompleted = foldl (\g cp -> fst (dynamicRecompute g (ulpId cp) TaskCompleted)) initialGraph completedPackets
+              let updatedMetrics = computePERTMetrics initialGraphWithCompleted
+              putStrLn $ "Active Remaining Tasks: " ++ show (length packets - length completedPackets)
+              putStrLn $ "Remaining Makespan:     " ++ show (pmProjectMakespan updatedMetrics)
+
+              runCampaignLoop allowMetered initialGraphWithCompleted genDir
+
+-- | Check if a task packet has already been executed to completion.
+-- Checks both the plans/tier2-yamaarashi/completed/ directory and the
+-- repository's SQLite task ledger (.yamaarashi/events.sqlite3).
+checkTaskAlreadyCompleted :: FilePath -> UnfoldedLeafPacket -> IO Bool
+checkTaskAlreadyCompleted repoRoot packet = do
+  let tid = T.unpack (ulpId packet)
+      completedDhall = "/home/nyc/src/plans/tier2-yamaarashi/completed" </> (tid ++ ".dhall")
+      completedYaml  = "/home/nyc/src/plans/tier2-yamaarashi/completed" </> (tid ++ ".yaml")
+  inCompletedDirDhall <- doesFileExist completedDhall
+  inCompletedDirYaml  <- doesFileExist completedYaml
+  if inCompletedDirDhall || inCompletedDirYaml
+    then pure True
+    else do
+      let candidateRepos =
+            [ ulpRepoDir packet
+            , repoRoot
+            , "/home/nyc/src/smirk"
+            , "/home/nyc/src/gargamelle"
+            , "/home/nyc/src/penelope"
+            ]
+      checkRepoEvents candidateRepos (ulpId packet)
+  where
+    checkRepoEvents [] _ = pure False
+    checkRepoEvents (r : rs) targetId = do
+      let dbPath = r </> ".yamaarashi" </> "events.sqlite3"
+      hasDb <- doesFileExist dbPath
+      if hasDb
+        then do
+          eEvents <- try (readAllTaskEvents dbPath) :: IO (Either SomeException [(Int64, Text, Text, Text)])
+          case eEvents of
+            Right rows ->
+              let completed = any (\(_, t, ev, _) -> t == targetId && ev == "TASK_COMPLETED") rows
+              in if completed then pure True else checkRepoEvents rs targetId
+            Left _ -> checkRepoEvents rs targetId
+        else checkRepoEvents rs targetId
 
 -- | Dynamic event loop: select parallel batches, execute in isolated worktrees, and recompute PERT graph.
 runCampaignLoop :: Bool -> ScheduleGraph -> FilePath -> IO ()
@@ -762,6 +808,23 @@ runTaskPacket cliAllowMetered path = do
     logEvent dbPath (packetId packet) "TASK_COMPLETED" ("Merged commit " <> commitHash)
     vacuumTaskLedger dbPath
     putStrLn $ "=== [yamaarashi-exec] Compacted task ledger database via VACUUM ==="
+
+    -- Auto-archive packet file from pending/ to completed/ in plans repo if present
+    let pendingDhall = "/home/nyc/src/plans/tier2-yamaarashi/pending" </> (tId ++ ".dhall")
+        pendingYaml  = "/home/nyc/src/plans/tier2-yamaarashi/pending" </> (tId ++ ".yaml")
+        completedDir = "/home/nyc/src/plans/tier2-yamaarashi/completed"
+    hasPendDhall <- doesFileExist pendingDhall
+    when hasPendDhall $ do
+      createDirectoryIfMissing True completedDir
+      copyFile pendingDhall (completedDir </> (tId ++ ".dhall"))
+      removeFile pendingDhall
+      putStrLn $ "=== [yamaarashi-exec] Auto-archived " ++ tId ++ ".dhall to " ++ completedDir ++ " ==="
+    hasPendYaml <- doesFileExist pendingYaml
+    when hasPendYaml $ do
+      createDirectoryIfMissing True completedDir
+      copyFile pendingYaml (completedDir </> (tId ++ ".yaml"))
+      removeFile pendingYaml
+      putStrLn $ "=== [yamaarashi-exec] Auto-archived " ++ tId ++ ".yaml to " ++ completedDir ++ " ==="
 
     -- Record institutional memory in ok memory
     let memText = "Task " ++ tId ++ " (" ++ T.unpack (packetTitle packet) ++ "): Completed successfully. Merged commit " ++ T.unpack commitHash ++ "."
