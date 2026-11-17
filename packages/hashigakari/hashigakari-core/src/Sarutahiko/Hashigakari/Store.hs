@@ -25,14 +25,14 @@ import qualified Data.Text as T
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 
-import Pukinos.Tree.BPlus
+import Pykinos.Tree.BPlus
   ( EpochId
   , BPlusMap
   , emptyBPlus
   , lookupBPlus
   )
-import Pukinos.Tree.FAST (lookupFAST)
-import Pukinos.Effect.Penelope
+import Pykinos.Tree.FAST (lookupFAST)
+import Pykinos.Effect.Penelope
   ( MVCCSnapshot(..)
   , withTransientEpoch
   , mvccSnapshot

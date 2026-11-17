@@ -55,8 +55,8 @@ library
         sarutahiko-fields,
         sarutahiko-records,
         sarutahiko-effect-signatures >= 0.1,
-        pukinos-core,
-        pukinos-penelope
+        pykinos-core,
+        pykinos-penelope
     hs-source-dirs:   src
 
 test-suite test-hashigakari-core
@@ -77,5 +77,5 @@ test-suite test-hashigakari-core
         tasty,
         hedgehog,
         tasty-hedgehog,
-        pukinos-core,
-        pukinos-penelope
+        pykinos-core,
+        pykinos-penelope
