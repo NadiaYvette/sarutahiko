@@ -75,7 +75,7 @@ import Gargamelle.Evidence.Patch.Prim
   , DPOSpan(..)
   , PatchId(..)
   )
-import Gargamelle.Evidence.Patch.Bundle (GPatch(..), writeGPatchBundle, readGPatchBundle)
+import Gargamelle.Evidence.Patch.Bundle (GPatch(..), writeGPatchBundle, readGPatchBundle, emptyMorphism)
 import Gargamelle.Evidence.GitBundle (TreeOid(..), OidHex(..))
 import Yamaarashi.Patch.Prepared
   ( HoleSynthesisStatus(..)

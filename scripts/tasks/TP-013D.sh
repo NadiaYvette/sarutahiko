@@ -728,7 +728,7 @@ import Gargamelle.Evidence.Patch.Prim\
   , DPOSpan(..)\
   , PatchId(..)\
   )\
-import Gargamelle.Evidence.Patch.Bundle (GPatch(..), writeGPatchBundle, readGPatchBundle)\
+import Gargamelle.Evidence.Patch.Bundle (GPatch(..), writeGPatchBundle, readGPatchBundle, emptyMorphism)\
 import Gargamelle.Evidence.GitBundle (TreeOid(..), OidHex(..))\
 import Yamaarashi.Patch.Prepared\
   ( HoleSynthesisStatus(..)\
@@ -769,7 +769,7 @@ prop_prepared_materialize_and_synthesize = property $ do
         , gpBaseTreeOid   = TreeOid (OidHex "1111111111111111111111111111111111111111")
         , gpResultTreeOid = TreeOid (OidHex "2222222222222222222222222222222222222222")
         , gpPrims         = prims
-        , gpSigMorphism   = LiquidSigMorphism Map.empty Map.empty Map.empty
+        , gpSigMorphism   = emptyMorphism
         , gpVertexSpec    = vspec
         }
 
@@ -832,7 +832,7 @@ prop_prepared_bundle_roundtrip = property $ do
         , gpBaseTreeOid   = TreeOid (OidHex "3333333333333333333333333333333333333333")
         , gpResultTreeOid = TreeOid (OidHex "4444444444444444444444444444444444444444")
         , gpPrims         = primHole :>: NilFL
-        , gpSigMorphism   = LiquidSigMorphism Map.empty Map.empty Map.empty
+        , gpSigMorphism   = emptyMorphism
         , gpVertexSpec    = vspec
         }
 
