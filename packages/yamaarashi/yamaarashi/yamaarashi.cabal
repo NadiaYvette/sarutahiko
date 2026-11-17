@@ -38,6 +38,7 @@ library
         Yamaarashi.Schedule.TropicalPERT
         Yamaarashi.Schedule.Quarantine
         Yamaarashi.Patch.Prepared
+        Yamaarashi.Patch.Reaper
     build-depends:
         base >= 4.20 && < 5,
         containers,

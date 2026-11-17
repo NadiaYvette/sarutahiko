@@ -149,6 +149,10 @@ tests = testGroup "Yamaarashi Suite"
       , testProperty "critical path first dispatch prioritizes lowest slack and gathers maximal independent batch" prop_pert_critical_path_first_dispatch
       , testProperty "dynamic recompute unblocks downstream tasks upon task quarantine" prop_pert_dynamic_recompute_quarantine
       ]
+  , testGroup "Yamaarashi.Patch.Reaper"
+      [ testProperty "reaps and merges parallel worker .gpatch bundles under Z3Hyperdoctrine" prop_reaper_parallel_merge
+      , testProperty "handles empty bundle list and edge cases gracefully" prop_reaper_edge_cases
+      ]
   , testGroup "Yamaarashi.Patch.Prepared"
       [ testProperty "materializes pre-staged primitives and deductively synthesizes PrimSynquidHoles" prop_prepared_materialize_and_synthesize
       , testProperty "executes prepared .gpatch sketch bundle end-to-end and seals completed GPatch" prop_prepared_bundle_roundtrip
@@ -951,3 +955,75 @@ prop_prepared_bundle_roundtrip = property $ do
     Right (Sealed2 sealed) -> do
       gpPatchId sealed === PatchId "P-BUNDLE-TEST"
     Left err -> fail (T.unpack err)
+
+--------------------------------------------------------------------------------
+-- Yamaarashi.Patch.Reaper Tests
+--------------------------------------------------------------------------------
+
+prop_reaper_parallel_merge :: Property
+prop_reaper_parallel_merge = property $ do
+  tmpRoot <- evalIO Directory.getTemporaryDirectory
+  t <- evalIO CPUTime.getCPUTime
+  let testDir = tmpRoot </> ("reaper-test-" ++ show t)
+      path1 = testDir </> "worker1.gpatch"
+      path2 = testDir </> "worker2.gpatch"
+      vspec1 = SheafVertexSpec
+        { svVertexId         = "v-worker1"
+        , svSig              = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+        , svContext          = Context Map.empty
+        , svBasis            = QualifierBasis Set.empty
+        , svLocalGuarantee   = FTrue
+        , svLocalRequirement = FTrue
+        }
+      vspec2 = SheafVertexSpec
+        { svVertexId         = "v-worker2"
+        , svSig              = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+        , svContext          = Context Map.empty
+        , svBasis            = QualifierBasis Set.empty
+        , svLocalGuarantee   = FTrue
+        , svLocalRequirement = FTrue
+        }
+      p1 = GPatch
+        { gpPatchId       = PatchId "W1"
+        , gpContextDeps   = Set.empty
+        , gpBaseTreeOid   = TreeOid (OidHex "1111111111111111111111111111111111111111")
+        , gpResultTreeOid = TreeOid (OidHex "2222222222222222222222222222222222222222")
+        , gpPrims         = PrimCabalSet "foo.cabal" "exposed-modules" SetInsert "Worker.One" :>: NilFL
+        , gpSigMorphism   = emptyMorphism
+        , gpVertexSpec    = vspec1
+        }
+      p2 = GPatch
+        { gpPatchId       = PatchId "W2"
+        , gpContextDeps   = Set.empty
+        , gpBaseTreeOid   = TreeOid (OidHex "1111111111111111111111111111111111111111")
+        , gpResultTreeOid = TreeOid (OidHex "3333333333333333333333333333333333333333")
+        , gpPrims         = PrimCabalSet "foo.cabal" "exposed-modules" SetInsert "Worker.Two" :>: NilFL
+        , gpSigMorphism   = emptyMorphism
+        , gpVertexSpec    = vspec2
+        }
+
+  evalIO $ Directory.createDirectoryIfMissing True testDir
+  evalIO $ writeGPatchBundle path1 p1
+  evalIO $ writeGPatchBundle path2 p2
+
+  -- 1. Reap parallel worker bundles under Z3Hyperdoctrine
+  eReaped <- evalIO $ reapParallelGPatchBundles Z3Hyperdoctrine [path1, path2]
+  case eReaped of
+    Left err -> fail (show err)
+    Right (Sealed2 reaped) -> do
+      gpPatchId reaped === PatchId "W1+W2"
+      Set.member (PatchId "W1") (gpContextDeps reaped) === True
+      Set.member (PatchId "W2") (gpContextDeps reaped) === True
+
+      -- 2. Validate fast-import stream emission
+      let stream = emitReapedFastImportStream "refs/heads/master" (Sealed2 reaped)
+      assert (BSC.isInfixOf "commit refs/heads/master" stream)
+      assert (BSC.isInfixOf "refs/gargamelle/gpatch/W1+W2" stream)
+
+prop_reaper_edge_cases :: Property
+prop_reaper_edge_cases = property $ do
+  -- Empty list returns ReaperIoError
+  eEmpty <- evalIO $ reapParallelGPatchBundles Z3Hyperdoctrine []
+  case eEmpty of
+    Left (ReaperIoError msg) -> assert (T.isInfixOf "No .gpatch bundles" msg)
+    _                        -> fail "Expected ReaperIoError on empty list"
