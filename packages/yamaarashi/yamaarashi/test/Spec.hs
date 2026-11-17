@@ -45,11 +45,13 @@ import Gargamelle.Sheaf.LatticeCohomology
   , H1QualifierConflict (..)
   , H1ConflictClassification (..)
   )
+import qualified Data.ByteString.Char8 as BSC
 import Gargamelle.FOL.LiquidHyperdoctrine
   ( Context (..)
   , FOLFormula (..)
   , QualifierBasis (..)
   , QualifierConj (..)
+  , Z3Hyperdoctrine (..)
   )
 import Yamaarashi.Synthesis.Synquid
   ( SynEnv (..)
@@ -84,6 +86,12 @@ import Yamaarashi.Patch.Prepared
   , synthesizePreparedHoles
   , sealCompletedGPatch
   , executePreparedSketch
+  )
+import Yamaarashi.Patch.Reaper
+  ( ReaperError(..)
+  , reapParallelGPatchBundles
+  , foldParallelGPatches
+  , emitReapedFastImportStream
   )
 
 main :: IO ()
