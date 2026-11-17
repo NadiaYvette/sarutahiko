@@ -66,6 +66,26 @@ import Yamaarashi.Synthesis.Synquid
   , tryVariantExhaustion
   )
 
+import Darcs.Patch.Witnesses (FL(..), Sealed2(..))
+import Darcs.Patch.Prim.Structural (SetOp(..))
+import Gargamelle.Evidence.Patch.Prim
+  ( PrimPatch(..)
+  , SymbolKey(..)
+  , HoleId(..)
+  , DPOSpan(..)
+  , PatchId(..)
+  )
+import Gargamelle.Evidence.Patch.Bundle (GPatch(..), writeGPatchBundle, readGPatchBundle)
+import Gargamelle.Evidence.GitBundle (TreeOid(..), OidHex(..))
+import Yamaarashi.Patch.Prepared
+  ( HoleSynthesisStatus(..)
+  , PrimHoleResolution(..)
+  , materializePreparedGPatch
+  , synthesizePreparedHoles
+  , sealCompletedGPatch
+  , executePreparedSketch
+  )
+
 main :: IO ()
 main = defaultMain tests
 

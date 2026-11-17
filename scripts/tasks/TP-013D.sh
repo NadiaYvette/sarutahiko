@@ -717,6 +717,29 @@ EOF
 
 # 4. Add unit and property tests to test/Spec.hs in yamaarashi (idempotent)
 if ! grep -q "Yamaarashi.Patch.Prepared Tests" "$YAMA_DIR/test/Spec.hs"; then
+  if ! grep -q "Gargamelle.Evidence.Patch.Bundle" "$YAMA_DIR/test/Spec.hs"; then
+    sed -i '/main :: IO ()/i \
+import Darcs.Patch.Witnesses (FL(..), Sealed2(..))\
+import Darcs.Patch.Prim.Structural (SetOp(..))\
+import Gargamelle.Evidence.Patch.Prim\
+  ( PrimPatch(..)\
+  , SymbolKey(..)\
+  , HoleId(..)\
+  , DPOSpan(..)\
+  , PatchId(..)\
+  )\
+import Gargamelle.Evidence.Patch.Bundle (GPatch(..), writeGPatchBundle, readGPatchBundle)\
+import Gargamelle.Evidence.GitBundle (TreeOid(..), OidHex(..))\
+import Yamaarashi.Patch.Prepared\
+  ( HoleSynthesisStatus(..)\
+  , PrimHoleResolution(..)\
+  , materializePreparedGPatch\
+  , synthesizePreparedHoles\
+  , sealCompletedGPatch\
+  , executePreparedSketch\
+  )\
+' "$YAMA_DIR/test/Spec.hs"
+  fi
 cat << 'EOF' >> "$YAMA_DIR/test/Spec.hs"
 
 --------------------------------------------------------------------------------
