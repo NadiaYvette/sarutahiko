@@ -507,7 +507,8 @@ cat << 'EOF' > "$FLOW_DIR/src/Yamaarashi/Flow/PacketCodec.hs"
 -- Dispatches YAML, Markdown, and Prepared .gpatch files resiliently into
 -- typed TaskPacket envelopes.
 module Yamaarashi.Flow.PacketCodec
-  ( decodePacketResilient
+  ( TaskPacket (..)
+  , decodePacketResilient
   , isGpatchFile
   ) where
 
@@ -524,6 +525,22 @@ import Darcs.Patch.Witnesses (Sealed2 (..))
 import Gargamelle.Evidence.Patch.Prim (unPatchId)
 import Gargamelle.Evidence.Patch.Bundle (GPatch (..), readGPatchBundle)
 import Yamaarashi.Flow.Types
+
+-- | Parsed task packet envelope.
+data TaskPacket = TaskPacket
+  { packetId                :: !Text
+  , packetTitle             :: !Text
+  , packetDescription       :: !Text
+  , packetPackages          :: ![Text]
+  , packetExecutor          :: !Text
+  , packetModel             :: !(Maybe Text)
+  , packetSkills            :: ![Text]
+  , packetMaxTurns          :: !(Maybe Int)
+  , packetRunBudget         :: !(Maybe Int)
+  , packetMaxRepairAttempts :: !(Maybe Int)
+  , packetAllowMetered      :: !Bool
+  , packetRawYaml           :: !Text
+  } deriving (Show, Eq)
 
 -- | Check whether a file is a .gpatch bundle.
 isGpatchFile :: FilePath -> Bool

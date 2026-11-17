@@ -53,22 +53,11 @@ import Yamaarashi.Flow.Ledger
   , renderKanbanAscii
   , vacuumTaskLedger
   )
-
--- | Parsed task packet envelope.
-data TaskPacket = TaskPacket
-  { packetId                :: !Text
-  , packetTitle             :: !Text
-  , packetDescription       :: !Text
-  , packetPackages          :: ![Text]
-  , packetExecutor          :: !Text
-  , packetModel             :: !(Maybe Text)
-  , packetSkills            :: ![Text]
-  , packetMaxTurns          :: !(Maybe Int)
-  , packetRunBudget         :: !(Maybe Int)
-  , packetMaxRepairAttempts :: !(Maybe Int)
-  , packetAllowMetered      :: !Bool
-  , packetRawYaml           :: !Text
-  } deriving (Show)
+import Yamaarashi.Flow.PacketCodec
+  ( TaskPacket (..)
+  , decodePacketResilient
+  , isGpatchFile
+  )
 
 -- | Metered environment variables that must be scrubbed from worker environments
 -- to enforce the quota firewall (TP-META-000).
