@@ -85,6 +85,7 @@ import System.Directory
   , doesFileExist
   , getHomeDirectory
   , listDirectory
+  , makeAbsolute
   )
 import System.FilePath (takeDirectory, takeExtension, takeFileName, (</>))
 import qualified Dhall.Import
@@ -913,7 +914,8 @@ parseSeedPacketDhallOrYaml arc idx defaultTurns defaultBudget fp content
             , ulpVerificationCmd   = pVerify
             , ulpRawPacketYaml     = content
             }
-        _ -> pure (parseSeedPacketFile arc idx defaultTurns defaultBudget content)
+        Right _ -> pure (parseSeedPacketFile arc idx defaultTurns defaultBudget content)
+        Left _  -> pure (parseSeedPacketFile arc idx defaultTurns defaultBudget content)
   | otherwise = pure (parseSeedPacketFile arc idx defaultTurns defaultBudget content)
 
 unfoldFromSeedPackets :: CampaignArc -> IO (Either Text [UnfoldedLeafPacket])
@@ -951,8 +953,9 @@ unfoldFromSeedPackets arc
         mFound <- findFirstExisting candidates
         case mFound of
           Just fp -> do
-            content <- TIO.readFile fp
-            parseSeedPacketDhallOrYaml arc idx defaultTurns defaultBudget fp content
+            absFp <- makeAbsolute fp
+            content <- TIO.readFile absFp
+            parseSeedPacketDhallOrYaml arc idx defaultTurns defaultBudget absFp content
           Nothing -> do
             let pid = arcId arc <> "-" <> T.pack (show (idx :: Int))
                 tMod = T.replace ".dhall" "" (T.replace ".md" "" (T.pack (takeFileName seedStr)))
