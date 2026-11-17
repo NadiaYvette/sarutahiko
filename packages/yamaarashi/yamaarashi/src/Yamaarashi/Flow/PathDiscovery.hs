@@ -54,7 +54,7 @@ getPlansDir = do
             eHomePlans <- doesDirectoryExist homePlans
             if eHomePlans
               then pure homePlans
-              else pure "/home/nyc/src/plans"
+              else pure homePlans
 
 -- | Get the parent src directory containing multi-repo checkouts (e.g. ~/src).
 getSrcDir :: IO FilePath
@@ -77,17 +77,13 @@ resolveRepoDir :: String -> IO FilePath
 resolveRepoDir repoName = do
   srcDir <- getSrcDir
   let candidate = srcDir </> repoName
-  exists <- doesDirectoryExist candidate
-  if exists
-    then pure candidate
-    else pure ("/home/nyc/src" </> repoName)
+  pure candidate
 
 -- | Locate the hls-autoheal binary dynamically.
 --
 -- Checks:
 -- 1. @PATH@ search via 'findExecutable'
 -- 2. @~/.local/bin/hls-autoheal@
--- 3. @/home/nyc/.local/bin/hls-autoheal@
 findHlsAutoheal :: IO (Maybe FilePath)
 findHlsAutoheal = do
   mInPath <- findExecutable "hls-autoheal"
@@ -97,12 +93,7 @@ findHlsAutoheal = do
       home <- getHomeDirectory
       let homeBin = home </> ".local" </> "bin" </> "hls-autoheal"
       eHomeBin <- doesFileExist homeBin
-      if eHomeBin
-        then pure (Just homeBin)
-        else do
-          let fallback = "/home/nyc/.local/bin/hls-autoheal"
-          eFallback <- doesFileExist fallback
-          if eFallback then pure (Just fallback) else pure Nothing
+      if eHomeBin then pure (Just homeBin) else pure Nothing
 
 -- | Get the pending queue directory for Tier-2 task packets.
 getPendingQueueDir :: IO FilePath
