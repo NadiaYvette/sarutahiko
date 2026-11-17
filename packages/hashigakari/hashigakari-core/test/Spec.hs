@@ -23,6 +23,7 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Hashigakari.Core
+import Sarutahiko.Hashigakari.Store
 
 type UserSchema = '[ "id" ':= Int64, "name" ':= Text, "active" ':= Bool ]
 
@@ -35,7 +36,8 @@ mkUser uid uname uact =
 
 main :: IO ()
 main = defaultMain $ testGroup "hashigakari-core tests"
-  [ testProperty "AST construction and composition" prop_ast_composition
+  [ testProperty "HashigakariStore Merkle region commit and MVCC lookup" prop_store_merkle_commit
+  , testProperty "AST construction and composition" prop_ast_composition
   , testProperty "TriState diff identical records yields all Keep" prop_diff_identical
   , testProperty "TriState diff modification and patch application round-trip" prop_diff_apply_patch
   , testProperty "SubRow projection preserves field values" prop_subrow_projection
@@ -89,3 +91,15 @@ prop_subrow_projection = property $ do
       proj = Anon.project user
   Anon.get #id proj === Identity uid
   Anon.get #name proj === Identity uname
+
+prop_store_merkle_commit :: Property
+prop_store_merkle_commit = property $ do
+  name <- forAll $ Gen.text (Range.linear 1 20) Gen.alpha
+  payload <- forAll $ Gen.text (Range.linear 1 50) Gen.alpha
+  let node1Id = computeMerkleDbId "Haskell" payload []
+      node1 = HyperNode node1Id name "Haskell" [] 42 payload
+      store0 = emptyHashigakariStore
+      (rootId, store1) = commitMerkleRegion True [node1] store0
+      snap = checkoutMVCCSnapshot store1
+  rootId === node1Id
+  lookupNodeById node1Id snap === Just node1

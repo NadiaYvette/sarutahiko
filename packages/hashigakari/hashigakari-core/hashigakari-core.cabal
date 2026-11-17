@@ -44,6 +44,7 @@ library
         Hashigakari.Core.Expr
         Hashigakari.Core.AST
         Hashigakari.Core.Patch
+        Sarutahiko.Hashigakari.Store
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,
@@ -52,7 +53,9 @@ library
         large-anon,
         sarutahiko-fields,
         sarutahiko-records,
-        sarutahiko-effect-signatures >= 0.1
+        sarutahiko-effect-signatures >= 0.1,
+        pukinos-core,
+        pukinos-penelope
     hs-source-dirs:   src
 
 test-suite test-hashigakari-core
@@ -72,4 +75,6 @@ test-suite test-hashigakari-core
         hashigakari-core,
         tasty,
         hedgehog,
-        tasty-hedgehog
+        tasty-hedgehog,
+        pukinos-core,
+        pukinos-penelope
