@@ -39,6 +39,7 @@ library
         Yamaarashi.Schedule.Quarantine
         Yamaarashi.Patch.Prepared
         Yamaarashi.Patch.Reaper
+        Yamaarashi.Campaign.Unfold
     build-depends:
         base >= 4.20 && < 5,
         containers,
@@ -48,6 +49,7 @@ library
         filepath,
         directory,
         process,
+        aeson,
         kagami-ita-observability,
         polytropos-core,
         gargamelle-core,
@@ -76,6 +78,7 @@ test-suite yamaarashi-test
         filepath,
         directory,
         process,
+        aeson,
         kagami-ita-observability,
         yamaarashi,
         polytropos-core,

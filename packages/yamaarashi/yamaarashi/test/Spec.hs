@@ -87,6 +87,7 @@ import Yamaarashi.Patch.Prepared
   , sealCompletedGPatch
   , executePreparedSketch
   )
+import qualified Yamaarashi.Campaign.Unfold as Unfold
 import Yamaarashi.Patch.Reaper
   ( ReaperError(..)
   , reapParallelGPatchBundles
@@ -148,6 +149,12 @@ tests = testGroup "Yamaarashi Suite"
       , testProperty "parallel independence respects disjoint files and commutative footprints" prop_pert_parallel_independence
       , testProperty "critical path first dispatch prioritizes lowest slack and gathers maximal independent batch" prop_pert_critical_path_first_dispatch
       , testProperty "dynamic recompute unblocks downstream tasks upon task quarantine" prop_pert_dynamic_recompute_quarantine
+      ]
+  , testGroup "Yamaarashi.Campaign.Unfold"
+      [ testProperty "loads november-constellation.dhall CampaignMatrix cleanly" prop_campaign_unfold_load_constellation
+      , testProperty "executes Phase-0 Recon pullback runner and extracts interface witnesses" prop_campaign_unfold_recon_runner
+      , testProperty "instantiates PushoutTemplate (B ⨿_C W) satisfying IsPrimitive <= 1 module constraint" prop_campaign_unfold_pushout_primitives
+      , testProperty "unfolds CampaignMatrix to ScheduleGraph and verifies Tropical PERT CPM makespan" prop_campaign_unfold_schedule_graph_cpm
       ]
   , testGroup "Yamaarashi.Patch.Reaper"
       [ testProperty "reaps and merges parallel worker .gpatch bundles under Z3Hyperdoctrine" prop_reaper_parallel_merge
@@ -1027,3 +1034,159 @@ prop_reaper_edge_cases = property $ do
   case eEmpty of
     Left (ReaperIoError msg) -> assert (T.isInfixOf "No .gpatch bundles" msg)
     _                        -> fail "Expected ReaperIoError on empty list"
+--------------------------------------------------------------------------------
+-- Campaign Unfold Tests (TP-014A)
+--------------------------------------------------------------------------------
+
+prop_campaign_unfold_load_constellation :: Property
+prop_campaign_unfold_load_constellation = property $ do
+  let dhallPath = "/home/nyc/src/plans/campaigns/november-constellation.dhall"
+  exists <- evalIO $ Directory.doesFileExist dhallPath
+  if exists
+    then do
+      eMatrix <- evalIO $ Unfold.loadCampaignMatrix dhallPath
+      case eMatrix of
+        Left err -> do
+          annotate (T.unpack err)
+          failure
+        Right matrix -> do
+          Unfold.matrixId matrix === "CAMPAIGN-2026-11-CONSTELLATION"
+          length (Unfold.matrixArcs matrix) === 5
+          Unfold.softThrottleBatteryPct (Unfold.matrixPowerPolicy matrix) === 15
+          Unfold.hardCheckpointBatteryPct (Unfold.matrixPowerPolicy matrix) === 7
+          let arcIds = map Unfold.arcId (Unfold.matrixArcs matrix)
+          assert ("ARC-SMIRK-EFFECTS" `elem` arcIds)
+          assert ("ARC-VCS-GPATCH" `elem` arcIds)
+    else do
+      let sampleJson = BSC.pack "{\"matrixId\":\"CAMPAIGN-TEST\",\"description\":\"Test\",\"axes\":[],\"powerPolicy\":{\"softThrottleBatteryPct\":15,\"hardCheckpointBatteryPct\":7,\"allowOnBattery\":true,\"maxParallelSandboxesAC\":4,\"maxParallelSandboxesBat\":1},\"defaultTriage\":{\"emitAxiomaticStub\":true},\"arcs\":[{\"arcId\":\"ARC-1\",\"title\":\"Arc 1\",\"gitBranch\":\"main\",\"pert\":{\"optimistic\":1,\"mostLikely\":2,\"pessimistic\":3},\"seedMetaPackets\":[\"test.dhall\"]}]}"
+      case Unfold.loadCampaignMatrixFromJson sampleJson of
+        Left err -> do
+          annotate (T.unpack err)
+          failure
+        Right matrix -> do
+          Unfold.matrixId matrix === "CAMPAIGN-TEST"
+          length (Unfold.matrixArcs matrix) === 1
+
+prop_campaign_unfold_recon_runner :: Property
+prop_campaign_unfold_recon_runner = property $ do
+  tmpDir <- evalIO $ do
+    baseTmp <- Directory.getTemporaryDirectory
+    let dir = baseTmp </> "test-recon-runner"
+    Directory.createDirectoryIfMissing True (dir </> "src")
+    TIO.writeFile (dir </> "src" </> "SampleModuleA.hs") $ T.unlines
+      [ "module SampleModuleA (funcA, TypeA) where"
+      , "data TypeA = TypeA"
+      , "funcA :: Int -> String"
+      , "funcA _ = \"hello\""
+      ]
+    TIO.writeFile (dir </> "src" </> "SampleModuleB.hs") $ T.unlines
+      [ "module SampleModuleB (funcB) where"
+      , "funcB :: String -> Bool"
+      , "funcB _ = True"
+      ]
+    pure dir
+  let recon = Unfold.ReconSpec
+        { Unfold.reconTargetRepoDir = tmpDir
+        , Unfold.reconInspectGlobs = ["src/*.hs"]
+        , Unfold.reconTreeSitterGrammar = "haskell"
+        , Unfold.reconOutputWitnessDhall = "witnesses/test-witness.dhall"
+        }
+  eWitness <- evalIO $ Unfold.runReconSpec recon
+  evalIO $ Directory.removeDirectoryRecursive tmpDir
+  case eWitness of
+    Left err -> do
+      annotate (T.unpack err)
+      failure
+    Right witness -> do
+      assert ("SampleModuleA" `elem` Unfold.iwModules witness)
+      assert ("SampleModuleB" `elem` Unfold.iwModules witness)
+      assert ("funcA" `elem` Unfold.iwExportedSymbols witness)
+      assert ("funcB" `elem` Unfold.iwExportedSymbols witness)
+      let sigMap = Map.fromList (Unfold.iwTypeSignatures witness)
+      Map.lookup "funcA" sigMap === Just "Int -> String"
+      Map.lookup "funcB" sigMap === Just "String -> Bool"
+
+prop_campaign_unfold_pushout_primitives :: Property
+prop_campaign_unfold_pushout_primitives = property $ do
+  let hostBase = Unfold.HostBase
+        { Unfold.hbRepoDir = "/tmp/host"
+        , Unfold.hbTargetModule = "Host.Kernel"
+        , Unfold.hbExistingSymbols = ["kernelInit", "allocPage"]
+        , Unfold.hbLiquidSig = Unfold.emptyLiquidSig
+        }
+      witness = Unfold.InterfaceWitness
+        { Unfold.iwInterfaceName = "HostVM.Sig"
+        , Unfold.iwTargetRepoDir = "/tmp/host"
+        , Unfold.iwModules = ["Host.Kernel"]
+        , Unfold.iwExportedSymbols = ["allocPage"]
+        , Unfold.iwTypeSignatures = [("allocPage", "Int -> Page")]
+        , Unfold.iwMeasures = []
+        , Unfold.iwQualifiers = []
+        , Unfold.iwLiquidSig = Unfold.emptyLiquidSig
+        }
+      pushout = Unfold.PushoutTemplate
+        { Unfold.pushoutSharedInterfaceSig = "HostVM.Sig"
+        , Unfold.pushoutWeaveSpecModule = "Pgcl.ClusterWeave"
+        , Unfold.pushoutRequiredMeasures = ["clusterOrder"]
+        , Unfold.pushoutRequiredQualifiers = ["v >= 0"]
+        }
+      arc = Unfold.CampaignArc
+        { Unfold.arcId = "ARC-PGCL-WEAVE"
+        , Unfold.arcTitle = "PGCL HostVM Weave Campaign"
+        , Unfold.arcCoordinates = [("Constellation", "Pgcl")]
+        , Unfold.arcGitBranch = "campaign/pgcl"
+        , Unfold.arcDependsOnArcs = []
+        , Unfold.arcSharedSheafEdges = ["e_pgcl_host"]
+        , Unfold.arcMode = Unfold.Autonomous
+        , Unfold.arcPert = Unfold.PertEstimate 2 4 8
+        , Unfold.arcRecon = Nothing
+        , Unfold.arcPushout = Just pushout
+        , Unfold.arcSeedMetaPackets = []
+        , Unfold.arcTriagePolicy = Unfold.QuarantineAndStub (Unfold.QuarantinePolicy True)
+        }
+  case Unfold.instantiatePushout hostBase witness pushout arc of
+    Left err -> do
+      annotate (T.unpack err)
+      failure
+    Right packets -> do
+      assert (not (null packets))
+      assert (all Unfold.isPrimitivePacket packets)
+      case packets of
+        (primary:_) -> do
+          Unfold.ulpTargetModule primary === "Pgcl.ClusterWeave"
+          Unfold.ulpRunBudgetSeconds primary === 4 * 120
+          assert ("clusterOrder" `elem` Unfold.ulpAssumedGuarantees primary)
+        [] -> failure
+
+prop_campaign_unfold_schedule_graph_cpm :: Property
+prop_campaign_unfold_schedule_graph_cpm = property $ do
+  let dhallPath = "/home/nyc/src/plans/campaigns/november-constellation.dhall"
+  exists <- evalIO $ Directory.doesFileExist dhallPath
+  matrix <- if exists
+    then do
+      eMat <- evalIO $ Unfold.loadCampaignMatrix dhallPath
+      case eMat of
+        Left err -> do
+          annotate (T.unpack err)
+          failure
+        Right m -> pure m
+    else do
+      let sampleJson = BSC.pack "{\"matrixId\":\"CAMPAIGN-TEST\",\"description\":\"Test\",\"axes\":[],\"powerPolicy\":{\"softThrottleBatteryPct\":15,\"hardCheckpointBatteryPct\":7,\"allowOnBattery\":true,\"maxParallelSandboxesAC\":4,\"maxParallelSandboxesBat\":1},\"defaultTriage\":{\"emitAxiomaticStub\":true},\"arcs\":[{\"arcId\":\"ARC-1\",\"title\":\"Arc 1\",\"gitBranch\":\"main\",\"pert\":{\"optimistic\":1,\"mostLikely\":2,\"pessimistic\":3},\"seedMetaPackets\":[\"test.dhall\"]}]}"
+      case Unfold.loadCampaignMatrixFromJson sampleJson of
+        Left err -> do
+          annotate (T.unpack err)
+          failure
+        Right m -> pure m
+  eGraph <- evalIO $ Unfold.unfoldToScheduleGraph matrix
+  case eGraph of
+    Left gErr -> do
+      annotate (T.unpack gErr)
+      failure
+    Right graph -> do
+      let makespan = PERT.projectMakespan graph
+      annotateShow makespan
+      assert (makespan > 0)
+      let metrics = PERT.computePERTMetrics graph
+      annotateShow (PERT.pmProjectMakespan metrics)
+      assert (PERT.pmProjectMakespan metrics > 0)
+      assert (not (null (PERT.pmCriticalPath metrics)))
