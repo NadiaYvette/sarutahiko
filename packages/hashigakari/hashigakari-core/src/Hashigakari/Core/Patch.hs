@@ -28,9 +28,9 @@ module Hashigakari.Core.Patch
   , applyPatch
   , patchModifiedCount
     -- * Pattern Synonyms for TriState
-  , Keep
-  , Clear
-  , Set
+  , pattern Keep
+  , pattern Clear
+  , pattern Set
   ) where
 
 import Data.Functor.Identity (Identity (..))
