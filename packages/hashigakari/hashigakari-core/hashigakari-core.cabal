@@ -45,6 +45,7 @@ library
         Hashigakari.Core.AST
         Hashigakari.Core.Patch
         Sarutahiko.Hashigakari.Store
+        Sarutahiko.Hashigakari.EditConeLSP
     build-depends:
         base >= 4.20 && < 5,
         bytestring >= 0.12,

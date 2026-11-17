@@ -24,6 +24,7 @@ import Test.Tasty.Hedgehog
 
 import Hashigakari.Core
 import Sarutahiko.Hashigakari.Store
+import Sarutahiko.Hashigakari.EditConeLSP
 
 type UserSchema = '[ "id" ':= Int64, "name" ':= Text, "active" ':= Bool ]
 
@@ -36,7 +37,8 @@ mkUser uid uname uact =
 
 main :: IO ()
 main = defaultMain $ testGroup "hashigakari-core tests"
-  [ testProperty "HashigakariStore Merkle region commit and MVCC lookup" prop_store_merkle_commit
+  [ testProperty "Hashigakari.EditConeLSP early cutoff" prop_edit_cone_early_cutoff
+  , testProperty "HashigakariStore Merkle region commit and MVCC lookup" prop_store_merkle_commit
   , testProperty "AST construction and composition" prop_ast_composition
   , testProperty "TriState diff identical records yields all Keep" prop_diff_identical
   , testProperty "TriState diff modification and patch application round-trip" prop_diff_apply_patch
@@ -103,3 +105,11 @@ prop_store_merkle_commit = property $ do
       snap = checkoutMVCCSnapshot store1
   rootId === node1Id
   lookupNodeById node1Id snap === Just node1
+
+prop_edit_cone_early_cutoff :: Property
+prop_edit_cone_early_cutoff = property $ do
+  name <- forAll $ Gen.text (Range.linear 1 20) Gen.alpha
+  let node1 = HyperNode (DbId 1) name "Haskell" [] 100 "body1"
+      node2 = HyperNode (DbId 2) name "Haskell" [] 100 "body2_edited"
+      edges = [SheafEdgeLink (DbId 99) (DbId 1) 100]
+  checkEarlyCutoffStalk node1 node2 edges === CutoffHaltAtNode (DbId 2)
