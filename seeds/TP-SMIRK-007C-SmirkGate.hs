@@ -109,7 +109,11 @@ synthesizeSmirkPipeline PortContract{..} = do
         , sigMeasures   = measures
         , sigCtorAxioms = []
         , sigQualifiers = Set.empty
-        , sigEnv        = Map.singleton "v_in" (RBScalar (RBase "v" pcInput pcPreCond))
+        , sigEnv        = Map.fromList
+            [ ("v_in", RBScalar (RBase "v" pcInput pcPreCond))
+            , ("v",    RBScalar (RBase "v" sortText PTrue))
+            , ("tail", RBScalar (RBase "tail" sortText PTrue))
+            ]
         , sigPathCond   = [pcPreCond]
         }
       env = SynEnv
