@@ -8,6 +8,7 @@
 -- typed TaskPacket envelopes.
 module Yamaarashi.Flow.PacketCodec
   ( TaskPacket (..)
+  , GitStrategy (..)
   , decodePacketResilient
   , isGpatchFile
   , isDhallFile
@@ -29,6 +30,20 @@ import Darcs.Patch.Witnesses (Sealed2 (..))
 import Gargamelle.Evidence.Patch.Prim (unPatchId)
 import Gargamelle.Evidence.Patch.Bundle (GPatch (..), readGPatchBundle)
 
+-- | Strategy for branch management and upstream authority isolation.
+data GitStrategy
+  = InTreeTrunk
+  | TopicBranch
+      { topicTargetBranch :: !Text
+      , topicBaseRef      :: !Text
+      , topicMergeBack    :: !Bool
+      }
+  | StackedBranch
+      { stackedTargetBranch :: !Text
+      , stackedParentBranch :: !Text
+      }
+  deriving (Show, Eq)
+
 -- | Parsed task packet envelope.
 data TaskPacket = TaskPacket
   { packetId                :: !Text
@@ -45,6 +60,8 @@ data TaskPacket = TaskPacket
   , packetSeedFiles         :: ![FilePath]
   , packetRepo              :: !(Maybe FilePath)
   , packetRawYaml           :: !Text
+  , packetGitStrategy       :: !(Maybe GitStrategy)
+  , packetEphemeralPaths    :: ![FilePath]
   } deriving (Show, Eq)
 
 -- | Check whether a file is a .gpatch bundle.
@@ -95,6 +112,8 @@ decodePacketResilient path
                 , packetSeedFiles         = []
                 , packetRepo              = Nothing
                 , packetRawYaml           = "id: \"" <> pId <> "\"\ngpatch: \"" <> T.pack path <> "\"\n"
+                , packetGitStrategy       = Nothing
+                , packetEphemeralPaths    = []
                 }
           pure (packet, Just path)
   | otherwise = do
@@ -146,6 +165,28 @@ decodePacketResilient path
                                       else r3
                             in if T.null val then Nothing else Just (T.unpack val)
                   rawYaml = TE.decodeUtf8 (BSL.toStrict (Aeson.encode (Aeson.Object obj)))
+                  pGitStrat = case KM.lookup "gitStrategy" obj of
+                    Just (Aeson.Object stratObj) ->
+                      case KM.lookup "TopicBranch" stratObj of
+                        Just (Aeson.Object tb) ->
+                          let tgt = case KM.lookup "targetBranch" tb of { Just (Aeson.String s) -> s; _ -> "" }
+                              base = case KM.lookup "baseRef" tb of { Just (Aeson.String s) -> s; _ -> "HEAD" }
+                              mb = case KM.lookup "mergeBack" tb of { Just (Aeson.Bool b) -> b; _ -> False }
+                          in if T.null tgt then Nothing else Just (TopicBranch tgt base mb)
+                        _ -> case KM.lookup "StackedBranch" stratObj of
+                          Just (Aeson.Object sb) ->
+                            let tgt = case KM.lookup "targetBranch" sb of { Just (Aeson.String s) -> s; _ -> "" }
+                                parent = case KM.lookup "parentBranch" sb of { Just (Aeson.String s) -> s; _ -> "HEAD" }
+                            in if T.null tgt then Nothing else Just (StackedBranch tgt parent)
+                          _ -> Just InTreeTrunk
+                    Just (Aeson.String s)
+                      | s == "InTreeTrunk" -> Just InTreeTrunk
+                    _ ->
+                      let tgt = extractTxt "targetBranch"
+                          base = let b = extractTxt "baseRef" in if T.null b then "HEAD" else b
+                          mb = extractBool "mergeBack" False
+                      in if not (T.null tgt) then Just (TopicBranch tgt base mb) else Nothing
+                  pEphemeralPaths = map T.unpack (extractListKey "ephemeralPaths" ++ extractListKey "ephemeral_paths")
                   pkt = TaskPacket
                     { packetId                = pId
                     , packetTitle             = pTitle
@@ -161,6 +202,8 @@ decodePacketResilient path
                     , packetSeedFiles         = pSeeds
                     , packetRepo              = rawRepo
                     , packetRawYaml           = rawYaml
+                    , packetGitStrategy       = pGitStrat
+                    , packetEphemeralPaths    = pEphemeralPaths
                     }
               pure (pkt, Nothing)
             _ -> fallbackYaml path content
@@ -225,4 +268,6 @@ parseBasicYaml fallbackId txt =
     , packetSeedFiles         = pSeeds
     , packetRepo              = rawRepo
     , packetRawYaml           = txt
+    , packetGitStrategy       = Nothing
+    , packetEphemeralPaths    = []
     }

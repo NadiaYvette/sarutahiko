@@ -25,6 +25,7 @@ import System.Directory
   , doesFileExist
   , findExecutable
   , listDirectory
+  , removeDirectoryRecursive
   , removeFile
   )
 import GHC.IO.Encoding (setLocaleEncoding, utf8)
@@ -58,6 +59,7 @@ import Yamaarashi.Flow.Ledger
   )
 import Yamaarashi.Flow.PacketCodec
   ( TaskPacket (..)
+  , GitStrategy (..)
   , decodePacketResilient
   )
 import Yamaarashi.Campaign.Unfold
@@ -707,7 +709,15 @@ runTaskPacket cliAllowMetered path = do
       dbDir    = repoRoot </> ".yamaarashi"
       dbPath   = dbDir </> "events.sqlite3"
       worktreeDir = srcDir </> (repoBase ++ "-wt-" ++ tId)
-      branchName  = "yamaarashi/task-" ++ tId
+      mGitStrat = packetGitStrategy packet
+      (worktreeBranch, baseRef, shouldMergeBack) = case mGitStrat of
+        Just (TopicBranch tgt base mb) ->
+          (T.unpack tgt, T.unpack base, mb)
+        Just (StackedBranch tgt parent) ->
+          (T.unpack tgt, T.unpack parent, False)
+        _ ->
+          ("yamaarashi/task-" ++ tId, "HEAD", True)
+      branchName  = worktreeBranch
 
   createDirectoryIfMissing True dbDir
   initEventDb dbPath
@@ -723,12 +733,14 @@ runTaskPacket cliAllowMetered path = do
   putStrLn $ "=== [yamaarashi-exec] Task: " ++ T.unpack (packetTitle packet) ++ " (" ++ tId ++ ") ==="
   putStrLn $ "=== [yamaarashi-exec] Provisioning isolated worktree at: " ++ worktreeDir ++ " ==="
 
-  -- Clean up any stale worktree or branch
+  -- Clean up any stale worktree
   _ <- runProcess (setWorkingDir repoRoot (proc "git" ["worktree", "remove", "--force", worktreeDir]))
-  _ <- runProcess (setWorkingDir repoRoot (proc "git" ["branch", "-D", branchName]))
+  when shouldMergeBack $ do
+    _ <- runProcess (setWorkingDir repoRoot (proc "git" ["branch", "-D", branchName]))
+    pure ()
 
   let provision = do
-        runProcess_ (setWorkingDir repoRoot (proc "git" ["worktree", "add", "-B", branchName, worktreeDir, "HEAD"]))
+        runProcess_ (setWorkingDir repoRoot (proc "git" ["worktree", "add", "-B", branchName, worktreeDir, baseRef]))
         hasTags <- doesFileExist (repoRoot </> "tags")
         when hasTags $ do
           copyFile (repoRoot </> "tags") (worktreeDir </> "tags")
@@ -775,7 +787,9 @@ runTaskPacket cliAllowMetered path = do
         _ <- runProcess (proc "rm" ["-f", wtDir </> "dist-newstyle"])
         _ <- runProcess (proc "rm" ["-rf", wtDir </> "seeds"])
         _ <- runProcess (setWorkingDir repoRoot (proc "git" ["worktree", "remove", "--force", wtDir]))
-        _ <- runProcess (setWorkingDir repoRoot (proc "git" ["branch", "-D", branchName]))
+        when shouldMergeBack $ do
+          _ <- runProcess (setWorkingDir repoRoot (proc "git" ["branch", "-D", branchName]))
+          pure ()
         logEvent dbPath (packetId packet) "WORKTREE_TEARDOWN" (T.pack wtDir)
 
   bracket provision teardown $ \wtDir -> do
@@ -846,16 +860,35 @@ runTaskPacket cliAllowMetered path = do
 
     actualExec <- loop 1 Nothing
 
+    -- Step 2.5: Strip ephemeral paths before commit
+    forM_ (packetEphemeralPaths packet) $ \ePath -> do
+      let fullE = wtDir </> ePath
+      isDir <- doesDirectoryExist fullE
+      isFile <- doesFileExist fullE
+      when isDir $ do
+        removeDirectoryRecursive fullE
+        putStrLn $ "=== [yamaarashi-exec] Stripped ephemeral directory: " ++ ePath ++ " ==="
+      when isFile $ do
+        removeFile fullE
+        putStrLn $ "=== [yamaarashi-exec] Stripped ephemeral file: " ++ ePath ++ " ==="
+      _ <- runProcess (setWorkingDir wtDir (proc "git" ["rm", "-rf", "--ignore-unmatch", ePath]))
+      pure ()
+
     -- Step 3: Git Commit
     putStrLn "=== [yamaarashi-exec] Creating git commit with attribution trailers ==="
     commitHash <- createGitCommit wtDir packet actualExec
     logEvent dbPath (packetId packet) "COMMIT_CREATED" commitHash
 
-    -- Step 4: Fast-forward merge into main repository
-    putStrLn $ "=== [yamaarashi-exec] Merging " ++ branchName ++ " into repository ==="
-    runProcess_ (setWorkingDir repoRoot (proc "git" ["merge", "--ff-only", branchName]))
+    -- Step 4: Fast-forward merge or preserve topic branch
+    if shouldMergeBack
+      then do
+        putStrLn $ "=== [yamaarashi-exec] Merging " ++ branchName ++ " into repository ==="
+        runProcess_ (setWorkingDir repoRoot (proc "git" ["merge", "--ff-only", branchName]))
+        logEvent dbPath (packetId packet) "TASK_COMPLETED" ("Merged commit " <> commitHash)
+      else do
+        putStrLn $ "=== [yamaarashi-exec] Preserved topic branch " ++ branchName ++ " without merging to trunk (upstream authority mode) ==="
+        logEvent dbPath (packetId packet) "TASK_COMPLETED" ("Committed topic branch " <> T.pack branchName <> " at " <> commitHash)
 
-    logEvent dbPath (packetId packet) "TASK_COMPLETED" ("Merged commit " <> commitHash)
     vacuumTaskLedger dbPath
     putStrLn $ "=== [yamaarashi-exec] Compacted task ledger database via VACUUM ==="
 
