@@ -57,6 +57,7 @@ import Gargamelle.Core.Institution.Liquid
   , MeasureDecl (..)
   , RBase (..)
   , RelOp (..)
+  , RSchema (..)
   , RType (..)
   )
 import Yamaarashi.Synthesis.Synquid
@@ -114,7 +115,7 @@ synthesizeSmirkPipeline PortContract{..} = do
       env = SynEnv
         { envSig        = sig
         , envComponents = Map.fromList
-            [ ("tail", RBScalar (RBase "v" sortText pcPostCond))
+            [ ("tail", RSchema [] (RBScalar (RBase "v" sortText pcPostCond)))
             ]
         , envZ3Session  = Z3StreamSession
         , envMaxDepth   = 4
