@@ -53,6 +53,7 @@ import Gargamelle.FOL.LiquidHyperdoctrine
   , QualifierConj (..)
   , Z3Hyperdoctrine (..)
   )
+import qualified Yamaarashi.Synthesis.SmirkGate as SmirkGate
 import Yamaarashi.Synthesis.Synquid
   ( SynEnv (..)
   , SynM
@@ -110,6 +111,8 @@ tests = testGroup "Yamaarashi Suite"
       , testProperty "stepper unrolling matches drainStepper" prop_stepper_parity
       , testProperty "stepper teardown executed upon exhaustion" prop_stepper_teardown
       ]
+  , testGroup "Yamaarashi.Synthesis.SmirkGate"
+      [ testProperty "deductively synthesizes Penelope regex pipeline from PortSig contract" prop_smirkGate_synthesize ]
   , testGroup "Yamaarashi.Synthesis.Synquid"
       [ testProperty "termToLiquidPred correctly projects getF_ and matchTagF_ spines" prop_termToLiquidPred
       , testProperty "extVarMorphism and extPathMorphism correctly extend signatures" prop_sigMorphisms
@@ -1190,3 +1193,10 @@ prop_campaign_unfold_schedule_graph_cpm = property $ do
       annotateShow (PERT.pmProjectMakespan metrics)
       assert (PERT.pmProjectMakespan metrics > 0)
       assert (not (null (PERT.pmCriticalPath metrics)))
+
+
+prop_smirkGate_synthesize :: Property
+prop_smirkGate_synthesize = property $ do
+  res <- evalIO SmirkGate.runSmirkSynthesisBenchmark
+  SmirkGate.brSuccess res === True
+  SmirkGate.brSynthesizedAST res /== Nothing

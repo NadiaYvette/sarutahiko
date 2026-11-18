@@ -30,6 +30,7 @@ library
     exposed-modules:
         Yamaarashi
         Yamaarashi.Synthesis.Synquid
+        Yamaarashi.Synthesis.SmirkGate
         Yamaarashi.Context.BlastShield
         Yamaarashi.Context.TailExcision
         Yamaarashi.Sandbox.Airgap
@@ -100,3 +101,13 @@ test-suite yamaarashi-test
         tasty,
         hedgehog,
         tasty-hedgehog
+
+executable yamaarashi-smirk-synth-bench
+    import:           commons
+    main-is:          SmirkSynthBench.hs
+    hs-source-dirs:   bench
+    build-depends:
+        base >= 4.20 && < 5,
+        containers,
+        text,
+        yamaarashi
