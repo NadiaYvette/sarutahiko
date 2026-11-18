@@ -108,7 +108,7 @@ executable yamaarashi-smirk-synth-bench
 	if !strings.Contains(specStr, "Yamaarashi.Synthesis.SmirkGate") {
 		specStr = strings.Replace(specStr,
 			"import Yamaarashi.Synthesis.Synquid\n",
-			"import Yamaarashi.Synthesis.Synquid\nimport qualified Yamaarashi.Synthesis.SmirkGate as SmirkGate\n", 1)
+			"import qualified Yamaarashi.Synthesis.SmirkGate as SmirkGate\nimport Yamaarashi.Synthesis.Synquid\n", 1)
 
 		gatePropSnippet := `
 prop_smirkGate_synthesize :: Property
