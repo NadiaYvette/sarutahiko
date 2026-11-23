@@ -26,8 +26,9 @@ module Yamaarashi.Scheduler.ConcurrentZ3Pool
     -- * 4. Concurrent Phase 5: Parallel Ambiguity Quotienting Tournament
   , runParallelAmbiguityCheck
   , parallelSemanticQuotient
-    -- * 5. Concurrent State-Machine Step Replacement
-  , stepConcurrentCoEvolutionMachine
+    -- * 5. Vertex Synthesis Bundle & Pareto Extraction
+  , VertexSynthesisBundle (..)
+  , extractParetoDecisionTrees
   ) where
 
 import Control.Concurrent.Async (Concurrently (..), replicateConcurrently, runConcurrently)
@@ -94,16 +95,10 @@ import Gargamelle.Model.AmbiguityOracle
   , partitionIntoSemanticQuotients
   )
 import Gargamelle.Sheaf.LatticeCohomology (VertexId)
-import Sarutahiko.Orchestrator.CoEvolutionLoop
-  ( CoEvolutionPhase (..)
-  , LLMTheoryOracle (..)
-  , OrchestratorConfig (..)
-  , OrchestratorMetrics (..)
-  , OrchestratorState (..)
-  , VertexSynthesisBundle (..)
-  , extractParetoDecisionTrees
-  , stepCoEvolutionMachine
-  )
+import Control.Monad (forM)
+import Data.Maybe (catMaybes)
+import Gargamelle.Core.Institution.Liquid (RSchema, SymName)
+import Gargamelle.Equational.AbductiveEGraph (DPORule (..), EClassId (..), extractVerifiedDecisionTree)
 
 --------------------------------------------------------------------------------
 -- 1. Warm Z3 Streaming Session Pool & STM Galois Separator Bus
@@ -548,56 +543,45 @@ runParallelAmbiguityCheck proxy pool bundles = do
   pure (updatedMap, queries)
 
 --------------------------------------------------------------------------------
--- 5. Concurrent State-Machine Step Replacement
+-- 5. Vertex Synthesis Bundle & Multi-Cover Pareto Extraction
 --------------------------------------------------------------------------------
 
--- | Drop-in concurrent replacement for `stepCoEvolutionMachine` routing `PhaseVertexAbductiveSynthesis`
--- and `PhaseAmbiguityCheck` through the concurrent worker pool.
-stepConcurrentCoEvolutionMachine
+data VertexSynthesisBundle = VertexSynthesisBundle
+  { vsbVertexId        :: VertexId
+  , vsbRootClass       :: EClassId
+  , vsbGoalBase        :: RBase
+  , vsbEGraph          :: AbductiveEGraph
+  , vsbDPORules        :: [DPORule]
+  , vsbComponents      :: Map SymName RSchema
+  , vsbInventedSeps    :: [SeparatorSynthesisResult]
+  , vsbCandidateTrees  :: [(SynTerm, Int)]
+  , vsbDisambiguated   :: Maybe SynTerm
+  , vsbZ3QueryCount    :: !Int
+  } deriving stock (Generic)
+
+extractParetoDecisionTrees
   :: (Hyperdoctrine h, LiquidSubHyperdoctrine h)
   => h
-  -> Z3SessionPool
-  -> OrchestratorConfig
-  -> LLMTheoryOracle
-  -> OrchestratorState
-  -> IO OrchestratorState
-stepConcurrentCoEvolutionMachine proxy pool cfg@OrchestratorConfig{..} oracle st@OrchestratorState{..} =
-  case ostPhase of
-    PhaseVertexAbductiveSynthesis _edgeSections -> do
-      (synthesizedVertices, addedMeasures) <-
-        runParallelVertexAbductiveSynthesis
-          proxy
-          pool
-          cfgMaxGaloisRepairs
-          cfgFrontierPropSteps
-          ostVertices
-      let metrics' = ostMetrics
-            { metGaloisMeasuresAdded =
-                metGaloisMeasuresAdded ostMetrics + addedMeasures
-            }
-      pure st
-        { ostPhase    = PhaseAmbiguityCheck
-        , ostVertices = synthesizedVertices
-        , ostMetrics  = metrics'
-        }
-    PhaseAmbiguityCheck -> do
-      (updatedVertices, ambiguities) <-
-        runParallelAmbiguityCheck proxy pool ostVertices
-      if null ambiguities
-        then pure st
-          { ostPhase    = PhaseSleepCrystallizationAndCodeGen
-          , ostVertices = updatedVertices
-          }
-        else pure st
-          { ostPhase    = PhaseAwaitLLMAmbiguityPin ambiguities
-          , ostVertices = updatedVertices
-          }
-    _ ->
-      let baseSig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
-      in withLeasedZ3Session pool baseSig $ \rawSession ->
-        stepCoEvolutionMachine
-          proxy
-          rawSession
-          cfg
-          oracle
-          st
+  -> Z3StreamSession
+  -> EClassId
+  -> RBase
+  -> AbductiveEGraph
+  -> IO [(SynTerm, Int)]
+extractParetoDecisionTrees proxy session rootCid@(EClassId cid) goalBase eg = do
+  mPrimary <- extractVerifiedDecisionTree proxy session rootCid goalBase eg
+  case mPrimary of
+    Nothing -> pure []
+    Just primaryTree -> do
+      let rootFrontier = maybe [] ecFrontier (IntMap.lookup cid (egClasses eg))
+      altTrees <- fmap catMaybes $ forM [0 .. min 3 (length rootFrontier - 1)] $ \dropIdx -> do
+        let maskedFrontier =
+              [ c | (i, c) <- zip [0..] rootFrontier, i /= dropIdx ]
+            egMasked = eg
+              { egClasses = IntMap.adjust
+                  (\ec -> ec { ecFrontier = maskedFrontier })
+                  cid
+                  (egClasses eg)
+              }
+        mAlt <- extractVerifiedDecisionTree proxy session rootCid goalBase egMasked
+        pure $ fmap (\t -> (t, 10 + dropIdx)) mAlt
+      pure ((primaryTree, 1) : altTrees)

@@ -23,8 +23,8 @@ import Test.Tasty
 import Test.Tasty.Hedgehog
 
 import Hashigakari.Core
-import Sarutahiko.Hashigakari.Store
-import Sarutahiko.Hashigakari.EditConeLSP
+import Hashigakari.Store
+import Hashigakari.EditConeLSP
 
 type UserSchema = '[ "id" ':= Int64, "name" ':= Text, "active" ':= Bool ]
 

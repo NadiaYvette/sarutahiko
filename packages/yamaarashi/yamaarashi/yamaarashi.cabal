@@ -37,6 +37,7 @@ library
         Yamaarashi.Executor.DeterministicSplicer
         Yamaarashi.Daemon.PowerAndWAL
         Yamaarashi.Schedule.TropicalPERT
+        Yamaarashi.Scheduler.ConcurrentZ3Pool
         Yamaarashi.Schedule.Quarantine
         Yamaarashi.Patch.Prepared
         Yamaarashi.Patch.Reaper
@@ -59,6 +60,9 @@ library
         gargamelle-sheaf,
         gargamelle-evidence,
         gargamelle-equational,
+        gargamelle-model,
+        stm,
+        async,
         darcs-witnesses,
         darcs-prim-structural,
         git-bundle-pure,
@@ -91,6 +95,9 @@ test-suite yamaarashi-test
         gargamelle-sheaf,
         gargamelle-evidence,
         gargamelle-equational,
+        gargamelle-model,
+        stm,
+        async,
         darcs-witnesses,
         darcs-prim-structural,
         git-bundle-pure,

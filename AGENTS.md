@@ -7,6 +7,24 @@ when this file and a canonical document disagree, the canonical document wins.
 
 ## What this repository is
 
+## Architectural Invariant: 3-Level Package Hierarchy
+
+All Haskell packages in this repository MUST reside strictly in the 3-level directory layout:
+    $REPO/packages/$COMPONENT/$PKG/
+
+Recognized components:
+- `hashigakari` — database adapters, row ASTs, and storage drivers
+- `hokora` — pure reducer slices and local reactive machines
+- `kagami-ita` — observability, metrics, tracing, and token logging
+- `kogaki` — Unicode/i18n codecs, tokenizers, and LLM wire serializers
+- `sarutahiko` — agent core, hooks, plugins, surfaces, and session actors
+- `spikes` — experimental architectural spikes and prototypes
+- `utai` — LLM substrate, mock engines, and provider bindings
+- `yamaarashi` — streaming kernels, schedulers, and autonomous workflow runners
+
+Never place `.cabal` files directly at root or under a flat 2-level `packages/<pkg>/` directory.
+
+
 `sarutahiko` — a Haskell program reimplementing an AI-assistance ecosystem (agent
 core, surfaces, protocols, formats, code intelligence, database access) on
 extensible records (large-anon/large-records), row-typed algebraic effects, and the

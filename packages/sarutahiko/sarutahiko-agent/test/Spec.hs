@@ -92,6 +92,7 @@ import Sarutahiko.Orchestrator.CoEvolutionLoop
   , isAutoRepairable
   , runCoEvolutionLoop
   , stepCoEvolutionMachine
+  , stepConcurrentCoEvolutionMachine
   )
 import Gargamelle.Model.AmbiguityOracle
   ( AmbiguityQuery (..)
@@ -104,7 +105,6 @@ import Yamaarashi.Scheduler.ConcurrentZ3Pool
   , initZ3SessionPool
   , pullLatestSeparators
   , runLPTWorkerPool
-  , stepConcurrentCoEvolutionMachine
   , withLeasedZ3Session
   )
 

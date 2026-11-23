@@ -21,3 +21,6 @@ To avoid quota drain, airgap timeouts, and broken MCP stalls:
    `yamaarashi-exec` merges fast-forward into `master`. Ensure the main repository working tree has 0 uncommitted changes prior to launch.
 4. **Physical Gate Verification:**
    All task packets must pass all 5 physical quality gates via `./bin/tengri-verify` (HLint, tests, Tagref, linkcheck, CLOC >= 50.0%) prior to final fast-forward merge.
+
+5. **Mandatory 3-Level Package Layout:**
+   All modules and packages must reside strictly in `$REPO/packages/$COMPONENT/$PKG/`. Never scaffold root packages or 2-level flat structures.

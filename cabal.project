@@ -1,5 +1,4 @@
 packages:
-    .
     packages/kogaki/kogaki-core
     packages/kogaki/kogaki-wire
     packages/sarutahiko/sarutahiko-fields
@@ -51,10 +50,10 @@ source-repository-package
         large-records
         typelet
 
--- Local prometheus-client source package
+-- Upstream prometheus-client source package
 source-repository-package
     type: git
-    location: file:///home/nyc/src/prometheus-haskell
+    location: https://github.com/fimad/prometheus-haskell.git
     tag: master
     subdir:
         prometheus-client
@@ -67,4 +66,4 @@ package servant
 package servant-server
   ghc-options: -Wno-deriving-typeable -Wno-missing-methods -Wno-deprecations
 
-write-ghc-environment-files: always
+write-ghc-environment-files: never

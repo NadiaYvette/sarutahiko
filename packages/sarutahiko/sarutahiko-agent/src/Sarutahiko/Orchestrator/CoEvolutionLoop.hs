@@ -19,6 +19,7 @@ module Sarutahiko.Orchestrator.CoEvolutionLoop
   , CoEvolutionResult (..)
     -- * State-Machine Step & Driver Loop
   , stepCoEvolutionMachine
+  , stepConcurrentCoEvolutionMachine
   , runCoEvolutionLoop
     -- * Multi-Cover Pareto Extraction for Ambiguity Detection
   , extractParetoDecisionTrees
@@ -36,7 +37,6 @@ import qualified Data.IntMap.Strict as IntMap
 import Data.List (partition)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (catMaybes)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -50,19 +50,13 @@ import Gargamelle.Core.Institution.Liquid
   , LiquidSort (..)
   , MeasureDecl (..)
   , RBase (..)
-  , RSchema
-  , SymName
   , SynTerm (..)
   )
 import Gargamelle.Core.Institution.Liquid.Instance (translatePred)
 import Gargamelle.Equational.AbductiveEGraph
   ( AbductiveEGraph (..)
-  , DPORule (..)
-  , EClassData (..)
-  , EClassId (..)
   , Z3StreamSession
   , applyAbductiveDPORule
-  , extractVerifiedDecisionTree
   , propagateGuardedFrontiers
   )
 import Gargamelle.FOL.GaloisSeparator
@@ -76,6 +70,14 @@ import Gargamelle.FOL.LiquidHyperdoctrine
   , LiquidSubHyperdoctrine (..)
   , QualifierBasis (..)
   , QualifierConj (..)
+  )
+import Yamaarashi.Scheduler.ConcurrentZ3Pool
+  ( VertexSynthesisBundle (..)
+  , Z3SessionPool (..)
+  , extractParetoDecisionTrees
+  , runParallelAmbiguityCheck
+  , runParallelVertexAbductiveSynthesis
+  , withLeasedZ3Session
   )
 import Gargamelle.Model.AmbiguityOracle
   ( AmbiguityQuery (..)
@@ -130,18 +132,6 @@ data LLMTheoryOracle = LLMTheoryOracle
 
 -- | Holds the local AbductiveEGraph, active DPO rewrite laws, goal refinement,
 -- and accumulated Galois separator inventions for a single sheaf vertex stalk.
-data VertexSynthesisBundle = VertexSynthesisBundle
-  { vsbVertexId        :: VertexId
-  , vsbRootClass       :: EClassId
-  , vsbGoalBase        :: RBase
-  , vsbEGraph          :: AbductiveEGraph
-  , vsbDPORules        :: [DPORule]
-  , vsbComponents      :: Map SymName RSchema
-  , vsbInventedSeps    :: [SeparatorSynthesisResult]
-  , vsbCandidateTrees  :: [(SynTerm, Int)]
-  , vsbDisambiguated   :: Maybe SynTerm
-  , vsbZ3QueryCount    :: !Int
-  } deriving stock (Generic)
 
 data CoEvolutionPhase
   = PhaseWakeLibraryInjection
@@ -486,32 +476,6 @@ synthesizeVertexWithGaloisCEGAR proxy session maxRepairs propSteps bundle0 =
                 }
           cegarLoop (attempt + 1) bundleRepaired
 
-extractParetoDecisionTrees
-  :: (Hyperdoctrine h, LiquidSubHyperdoctrine h)
-  => h
-  -> Z3StreamSession
-  -> EClassId
-  -> RBase
-  -> AbductiveEGraph
-  -> IO [(SynTerm, Int)]
-extractParetoDecisionTrees proxy session rootCid@(EClassId cid) goalBase eg = do
-  mPrimary <- extractVerifiedDecisionTree proxy session rootCid goalBase eg
-  case mPrimary of
-    Nothing -> pure []
-    Just primaryTree -> do
-      let rootFrontier = maybe [] ecFrontier (IntMap.lookup cid (egClasses eg))
-      altTrees <- fmap catMaybes $ forM [0 .. min 3 (length rootFrontier - 1)] $ \dropIdx -> do
-        let maskedFrontier =
-              [ c | (i, c) <- zip [0..] rootFrontier, i /= dropIdx ]
-            egMasked = eg
-              { egClasses = IntMap.adjust
-                  (\ec -> ec { ecFrontier = maskedFrontier })
-                  cid
-                  (egClasses eg)
-              }
-        mAlt <- extractVerifiedDecisionTree proxy session rootCid goalBase egMasked
-        pure $ fmap (\t -> (t, 10 + dropIdx)) mAlt
-      pure ((primaryTree, 1) : altTrees)
 
 buildCollisionFromEGraph :: AbductiveEGraph -> GaloisCollision
 buildCollisionFromEGraph AbductiveEGraph{..} =
@@ -656,3 +620,54 @@ applyResolutionToState queryMap (sh, vbs) res@AmbiguityResolution{..} =
          , Map.insert arVertexId bundle' vbs
          )
     _ -> (sh, vbs)
+
+-- | Drop-in concurrent replacement for `stepCoEvolutionMachine` routing `PhaseVertexAbductiveSynthesis`
+-- and `PhaseAmbiguityCheck` through the concurrent worker pool.
+stepConcurrentCoEvolutionMachine
+  :: (Hyperdoctrine h, LiquidSubHyperdoctrine h)
+  => h
+  -> Z3SessionPool
+  -> OrchestratorConfig
+  -> LLMTheoryOracle
+  -> OrchestratorState
+  -> IO OrchestratorState
+stepConcurrentCoEvolutionMachine proxy pool cfg@OrchestratorConfig{..} oracle st@OrchestratorState{..} =
+  case ostPhase of
+    PhaseVertexAbductiveSynthesis _edgeSections -> do
+      (synthesizedVertices, addedMeasures) <-
+        runParallelVertexAbductiveSynthesis
+          proxy
+          pool
+          cfgMaxGaloisRepairs
+          cfgFrontierPropSteps
+          ostVertices
+      let metrics' = ostMetrics
+            { metGaloisMeasuresAdded =
+                metGaloisMeasuresAdded ostMetrics + addedMeasures
+            }
+      pure st
+        { ostPhase    = PhaseAmbiguityCheck
+        , ostVertices = synthesizedVertices
+        , ostMetrics  = metrics'
+        }
+    PhaseAmbiguityCheck -> do
+      (updatedVertices, ambiguities) <-
+        runParallelAmbiguityCheck proxy pool ostVertices
+      if null ambiguities
+        then pure st
+          { ostPhase    = PhaseSleepCrystallizationAndCodeGen
+          , ostVertices = updatedVertices
+          }
+        else pure st
+          { ostPhase    = PhaseAwaitLLMAmbiguityPin ambiguities
+          , ostVertices = updatedVertices
+          }
+    _ ->
+      let baseSig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
+      in withLeasedZ3Session pool baseSig $ \rawSession ->
+        stepCoEvolutionMachine
+          proxy
+          rawSession
+          cfg
+          oracle
+          st

@@ -47,7 +47,6 @@ library
         Sarutahiko.Agent.Live
         Sarutahiko.Controller.TheoryDriver
         Sarutahiko.Orchestrator.CoEvolutionLoop
-        Yamaarashi.Scheduler.ConcurrentZ3Pool
     build-depends:
         base >= 4.20 && < 5,
         async >= 2.2,

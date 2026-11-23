@@ -44,6 +44,8 @@ library
         Hashigakari.Core.Expr
         Hashigakari.Core.AST
         Hashigakari.Core.Patch
+        Hashigakari.Store
+        Hashigakari.EditConeLSP
         Sarutahiko.Hashigakari.Store
         Sarutahiko.Hashigakari.EditConeLSP
     build-depends:
