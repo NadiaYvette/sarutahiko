@@ -4,9 +4,9 @@
 
 module Main (main) where
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (forkFinally, newEmptyMVar, putMVar, takeMVar, threadDelay)
 import Control.Exception (SomeException, bracket, throwIO, try)
-import Control.Monad (filterM, forM_, when)
+import Control.Monad (filterM, forM, forM_, when)
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as BSL
 import Data.Int (Int64)
@@ -310,6 +310,19 @@ checkTaskAlreadyCompleted repoRoot packet = do
             Left _ -> checkRepoEvents rs targetId
         else checkRepoEvents rs targetId
 
+-- | Execute an IO action for each element concurrently across worker threads,
+-- collecting all results and rethrowing the first exception if any worker failed.
+concurrentForM_ :: [a] -> (a -> IO ()) -> IO ()
+concurrentForM_ xs action = do
+  mvars <- forM xs $ \x -> do
+    var <- newEmptyMVar
+    _ <- forkFinally (action x) (putMVar var)
+    pure var
+  results <- forM mvars takeMVar
+  case [err | Left err <- results] of
+    []             -> pure ()
+    (firstErr : _) -> throwIO firstErr
+
 -- | Dynamic event loop: select parallel batches, execute in isolated worktrees, and recompute PERT graph.
 runCampaignLoop :: Bool -> ScheduleGraph -> FilePath -> IO ()
 runCampaignLoop allowMetered currentGraph genDir = do
@@ -340,7 +353,7 @@ runCampaignLoop allowMetered currentGraph genDir = do
       putStrLn $ "=== [yamaarashi-exec] Executing Parallel Batch (" ++ show (length batch) ++ " task(s)) ==="
       pendingDir <- getPendingQueueDir
       completedDir <- getCompletedQueueDir
-      forM_ batch $ \t -> do
+      concurrentForM_ batch $ \t -> do
         let tid = tvId t
             tidStr = T.unpack tid
             candidatePaths =
@@ -355,7 +368,7 @@ runCampaignLoop allowMetered currentGraph genDir = do
         let packetPath = case mPacketPath of
               Just p  -> p
               Nothing -> genDir </> (tidStr ++ ".dhall")
-        putStrLn $ "  -> Dispatching task: " ++ tidStr ++ " (manifest: " ++ packetPath ++ ")"
+        putStrLn $ "  -> Dispatching task concurrently: " ++ tidStr ++ " (manifest: " ++ packetPath ++ ")"
         runTaskPacket allowMetered packetPath
 
       -- Update completed tasks in schedule graph and dynamically recompute
