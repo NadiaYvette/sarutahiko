@@ -86,7 +86,6 @@ import Yamaarashi.Flow.PathDiscovery
   , getPendingQueueDir
   , getPlansDir
   , getSeedsDir
-  , getSrcDir
   , resolveRepoDir
   )
 
