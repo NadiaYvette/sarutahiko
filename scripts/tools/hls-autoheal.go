@@ -1,3 +1,5 @@
+//go:build ignore
+
 // #!/usr/bin/env yaegi
 // hls-autoheal: Automated GHC / HLS diagnostics auto-healer for agentic Haskell workflows.
 // Repairs common mechanical failures without burning LLM turn context:
