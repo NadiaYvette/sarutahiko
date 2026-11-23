@@ -67,7 +67,7 @@ old_import = """import Sarutahiko.Orchestrator.CoEvolutionLoop
 new_import = """import Control.Monad (forM)
 import Data.Maybe (catMaybes)
 import Gargamelle.Core.Institution.Liquid (RSchema, SymName)
-import Gargamelle.Equational.AbductiveEGraph (DPORule (..), EClassData (..), extractVerifiedDecisionTree)"""
+import Gargamelle.Equational.AbductiveEGraph (DPORule (..), EClassData (..), EClassId (..), extractVerifiedDecisionTree)"""
 
 if old_import in pool_code:
     pool_code = pool_code.replace(old_import, new_import)
