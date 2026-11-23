@@ -147,6 +147,15 @@ if e_start != -1:
         e_end += len("      pure ((primaryTree, 1) : altTrees)\n")
         loop_code = loop_code[:e_start] + loop_code[e_end:]
 
+# Prune unused imports caused by decoupling
+loop_code = loop_code.replace("import Data.Maybe (catMaybes)\n", "")
+loop_code = loop_code.replace("  , RSchema\n", "")
+loop_code = loop_code.replace("  , SymName\n", "")
+loop_code = loop_code.replace("  , DPORule (..)\n", "")
+loop_code = loop_code.replace("  , EClassData (..)\n", "")
+loop_code = loop_code.replace("  , EClassId (..)\n", "")
+loop_code = loop_code.replace("  , extractVerifiedDecisionTree\n", "")
+
 # Add stepConcurrentCoEvolutionMachine to export list
 if "  , stepCoEvolutionMachine" in loop_code and "  , stepConcurrentCoEvolutionMachine" not in loop_code:
     loop_code = loop_code.replace("  , stepCoEvolutionMachine", "  , stepCoEvolutionMachine\n  , stepConcurrentCoEvolutionMachine")
