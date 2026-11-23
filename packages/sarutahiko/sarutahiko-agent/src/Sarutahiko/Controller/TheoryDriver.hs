@@ -237,8 +237,7 @@ executeTheoryCommandsAndSynthesize proxy session sheaf0 vertexGraphs0 cmds = do
 -- | Synthesizes a single vertex using AbductiveEGraph Set-Cover extraction,
 -- automatically running `synthesizeSeparator` + basis repair if a Galois collision occurs.
 synthesizeVertexWithAutoMeasure
-  :: LiquidSubHyperdoctrine h
-  => h
+  :: h
   -> Z3StreamSession
   -> (VertexId, (EClassId, RBase, AbductiveEGraph))
   -> IO (VertexId, SynTerm)

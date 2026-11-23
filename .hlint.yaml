@@ -1,0 +1,45 @@
+- arguments:
+    - -XOverloadedRecordDot
+    - -XDataKinds
+    - -XTypeOperators
+    - -XTypeApplications
+
+- ignore: {name: "Unused LANGUAGE pragma"}
+- ignore: {name: "Eta reduce"}
+- ignore: {name: "Use fromMaybe"}
+- ignore: {name: "Use break"}
+- ignore: {name: "Use when"}
+- ignore: {name: "Use unless"}
+- ignore: {name: "Use isJust"}
+- ignore: {name: "Use isNothing"}
+- ignore: {name: "Redundant bracket"}
+- ignore: {name: "Monoid law, left identity"}
+- ignore: {name: "Monoid law, right identity"}
+- ignore: {name: "Use mapMaybe"}
+- ignore: {name: "Redundant if"}
+- ignore: {name: "Redundant =="}
+- ignore: {name: "Use for_"}
+- ignore: {name: "Use notElem"}
+- ignore: {name: "Move catMaybes"}
+- ignore: {name: "Use join"}
+- ignore: {name: "Use asks"}
+- ignore: {name: "Use fewer imports"}
+- ignore: {name: "Redundant $"}
+- ignore: {name: "Use lambda-case"}
+- ignore: {name: "Use tuple-section"}
+- ignore: {name: "Use uncurry"}
+- ignore: {name: "Avoid lambda"}
+- ignore: {name: "Use newtype instead of data"}
+- ignore: {name: "Use guards"}
+- ignore: {name: "Replace case with fromMaybe"}
+- ignore: {name: "Replace case with maybe"}
+- ignore: {name: "Use list comprehension"}
+- ignore: {name: "Use :"}
+- ignore: {name: "Use forM"}
+- ignore: {name: "Use bimap"}
+- ignore: {name: "Use first"}
+- ignore: {name: "Use typeRep"}
+- ignore: {name: "Use record patterns"}
+- ignore: {name: "Use even"}
+- ignore: {name: "Use null"}
+- ignore: {name: "Use <&>"}
