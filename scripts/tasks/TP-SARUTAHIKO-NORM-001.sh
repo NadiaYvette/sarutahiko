@@ -323,8 +323,8 @@ test_spec = "packages/hashigakari/hashigakari-core/test/Spec.hs"
 with open(test_spec, "r", encoding="utf-8") as f:
     t_content = f.read()
 
-t_content = t_content.replace("import Sarutahiko.Hashigakari.Store", "import Hashigakari.Store\nimport Sarutahiko.Hashigakari.Store")
-t_content = t_content.replace("import Sarutahiko.Hashigakari.EditConeLSP", "import Hashigakari.EditConeLSP\nimport Sarutahiko.Hashigakari.EditConeLSP")
+t_content = t_content.replace("import Sarutahiko.Hashigakari.Store", "import Hashigakari.Store")
+t_content = t_content.replace("import Sarutahiko.Hashigakari.EditConeLSP", "import Hashigakari.EditConeLSP")
 with open(test_spec, "w", encoding="utf-8") as f:
     f.write(t_content)
 EOF
