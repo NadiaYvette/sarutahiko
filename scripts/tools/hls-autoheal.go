@@ -34,6 +34,7 @@ var (
 type Edit struct {
 	File        string
 	LineNum     int // 1-based
+	ColNum      int // 1-based
 	OldText     string
 	NewText     string
 	Action      string // "replace", "delete", "insert_pragma"
@@ -154,6 +155,27 @@ func autoHealLog(logText string, dryRun bool) int {
 		})
 	}
 
+	// 1b. Redundant individual import symbol: GHC-38856
+	// Example:
+	// packages/smirk/src/Smirk/Core/Budget.hs:68:18: warning: [GHC-38856] [-Wunused-imports]
+	//     The import of ‘readIORef’ from module ‘Data.IORef’ is redundant
+	reUnusedSym := regexp.MustCompile(`(?m)^([^\s:]+\.hs):(\d+):(\d+):\s*(?:warning|error):\s*\[GHC-38856\]\s*\[-Wunused-imports\][\s\S]*?The import of ‘([^’]+)’(?:\s*from module ‘([^’]+)’)?(?:\s*is redundant)`)
+	for _, match := range reUnusedSym.FindAllStringSubmatch(logText, -1) {
+		file := match[1]
+		line, _ := strconv.Atoi(match[2])
+		col, _ := strconv.Atoi(match[3])
+		sym := match[4]
+		editsByFile[file] = append(editsByFile[file], Edit{
+			File:        file,
+			LineNum:     line,
+			ColNum:      col,
+			Action:      "trim_import_symbol",
+			NewText:     sym,
+			Description: fmt.Sprintf("Remove redundant import symbol ‘%s’ (GHC-38856)", sym),
+		})
+	}
+
+
 	// 2. Deprecated pattern namespace specifier: GHC-68383
 	// Standard GHC format:
 	// test/ParserSpec.hs:9:42: warning: [GHC-68383] [-Wpattern-namespace-specifier]
@@ -240,6 +262,26 @@ func autoHealLog(logText string, dryRun bool) int {
 		})
 	}
 
+	
+	// 6. Unused record wildcard: GHC-83475
+	// Example:
+	// packages/smirk/src/Smirk/Sheaf/Parallel.hs:80:24: warning: [GHC-83475] [-Wunused-record-wildcards]
+	//     No variables bound in the record pattern are used
+	//     Suggested fix: Remove ‘..’ or use a wild card pattern
+	reUnusedWildcard := regexp.MustCompile(`(?m)^([^\s:]+\.hs):(\d+):(\d+):\s*(?:warning|error):\s*\[GHC-83475\]\s*\[-Wunused-record-wildcards\]`)
+	for _, match := range reUnusedWildcard.FindAllStringSubmatch(logText, -1) {
+		file := match[1]
+		line, _ := strconv.Atoi(match[2])
+		col, _ := strconv.Atoi(match[3])
+		editsByFile[file] = append(editsByFile[file], Edit{
+			File:        file,
+			LineNum:     line,
+			ColNum:      col,
+			Action:      "replace_wildcard",
+			Description: fmt.Sprintf("Replace unused record wildcard {..} with {} (GHC-83475) on line %d", line),
+		})
+	}
+
 	totalApplied := 0
 	for file, edits := range editsByFile {
 		applied := applyFileEdits(file, edits, dryRun)
@@ -318,9 +360,137 @@ func applyFileEdits(filePath string, edits []Edit, dryRun bool) int {
 
 		case "delete_or_trim_import":
 			line := lines[idx]
-			if strings.HasPrefix(strings.TrimSpace(line), "import ") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "import ") {
 				fmt.Printf("  [+] %s:%d: %s\n", filePath, edit.LineNum, edit.Description)
 				linesToDelete[idx] = true
+				depth := 0
+				sawParen := false
+				for _, ch := range line {
+					if ch == '(' {
+						depth++
+						sawParen = true
+					} else if ch == ')' {
+						depth--
+					}
+				}
+				if sawParen && depth > 0 {
+					for j := idx + 1; j < len(lines); j++ {
+						linesToDelete[j] = true
+						for _, ch := range lines[j] {
+							if ch == '(' {
+								depth++
+							} else if ch == ')' {
+								depth--
+							}
+						}
+						if depth <= 0 {
+							break
+						}
+					}
+				} else if !sawParen {
+					// Check if next line continues the import
+					for j := idx + 1; j < len(lines); j++ {
+						nxtTrim := strings.TrimSpace(lines[j])
+						if nxtTrim == "" || strings.HasPrefix(nxtTrim, "import ") || (!strings.HasPrefix(lines[j], " ") && !strings.HasPrefix(lines[j], "\t")) {
+							break
+						}
+						for _, ch := range lines[j] {
+							if ch == '(' {
+								depth++
+								sawParen = true
+							} else if ch == ')' {
+								depth--
+							}
+						}
+						linesToDelete[j] = true
+						if sawParen && depth <= 0 {
+							break
+						}
+					}
+				}
+				appliedCount++
+				modified = true
+			}
+
+		case "trim_import_symbol":
+			sym := strings.TrimSpace(edit.NewText)
+			symBase := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(sym, "(..)"), " "))
+			symPattern := `\b` + regexp.QuoteMeta(symBase) + `(?:\s*\(\.\.\))?`
+
+			importStart := idx
+			for importStart > 0 && !strings.HasPrefix(strings.TrimSpace(lines[importStart]), "import ") {
+				importStart--
+			}
+			importEnd := idx
+			depth := 0
+			sawParen := false
+			for j := importStart; j < len(lines); j++ {
+				for _, ch := range lines[j] {
+					if ch == '(' {
+						depth++
+						sawParen = true
+					} else if ch == ')' {
+						depth--
+					}
+				}
+				importEnd = j
+				if sawParen && depth <= 0 {
+					break
+				}
+				if !sawParen && j > importStart {
+					nxtTrim := strings.TrimSpace(lines[j])
+					if nxtTrim == "" || (!strings.HasPrefix(lines[j], " ") && !strings.HasPrefix(lines[j], "\t")) {
+						importEnd = j - 1
+						break
+					}
+				}
+			}
+
+			var importSlice []string
+			for k := importStart; k <= importEnd; k++ {
+				importSlice = append(importSlice, lines[k])
+			}
+			fullImport := strings.Join(importSlice, "\n")
+
+			reOnly := regexp.MustCompile(`\(\s*` + symPattern + `\s*\)`)
+			if reOnly.MatchString(fullImport) {
+				fmt.Printf("  [+] %s:%d: %s (only symbol: deleting entire import)\n", filePath, edit.LineNum, edit.Description)
+				for k := importStart; k <= importEnd; k++ {
+					linesToDelete[k] = true
+				}
+				appliedCount++
+				modified = true
+			} else {
+				curLine := lines[idx]
+				reTrailing := regexp.MustCompile(symPattern + `\s*,\s*`)
+				reLeading := regexp.MustCompile(`,\s*` + symPattern)
+				reLineOnly := regexp.MustCompile(`^\s*(?:,\s*)?` + symPattern + `\s*(?:,\s*)?$`)
+
+				if reLineOnly.MatchString(curLine) && importStart != importEnd {
+					fmt.Printf("  [+] %s:%d: %s (removing symbol line)\n", filePath, edit.LineNum, edit.Description)
+					linesToDelete[idx] = true
+					appliedCount++
+					modified = true
+				} else if reTrailing.MatchString(curLine) {
+					fmt.Printf("  [+] %s:%d: %s (trimming trailing comma)\n", filePath, edit.LineNum, edit.Description)
+					lines[idx] = reTrailing.ReplaceAllString(curLine, "")
+					appliedCount++
+					modified = true
+				} else if reLeading.MatchString(curLine) {
+					fmt.Printf("  [+] %s:%d: %s (trimming leading comma)\n", filePath, edit.LineNum, edit.Description)
+					lines[idx] = reLeading.ReplaceAllString(curLine, "")
+					appliedCount++
+					modified = true
+				}
+			}
+
+		case "replace_wildcard":
+			line := lines[idx]
+			reWC := regexp.MustCompile(`\{\s*\.\.\s*\}`)
+			if reWC.MatchString(line) {
+				fmt.Printf("  [+] %s:%d: %s\n", filePath, edit.LineNum, edit.Description)
+				lines[idx] = reWC.ReplaceAllString(line, "{}")
 				appliedCount++
 				modified = true
 			}
