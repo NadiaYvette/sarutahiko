@@ -73,10 +73,98 @@ if old_import in pool_code:
     pool_code = pool_code.replace(old_import, new_import)
 
 # Replace Section 5 with definitions of VertexSynthesisBundle and extractParetoDecisionTrees
-old_sec5 = """--------------------------------------------------------------------------------
--- 5. Concurrent State-Machine Step Replacement
+sec5_marker = "--------------------------------------------------------------------------------\n-- 5. Concurrent State-Machine Step Replacement"
+
+new_sec5 = r"""--------------------------------------------------------------------------------
+-- 5. Vertex Synthesis Bundle & Multi-Cover Pareto Extraction
 --------------------------------------------------------------------------------
 
+data VertexSynthesisBundle = VertexSynthesisBundle
+  { vsbVertexId        :: VertexId
+  , vsbRootClass       :: EClassId
+  , vsbGoalBase        :: RBase
+  , vsbEGraph          :: AbductiveEGraph
+  , vsbDPORules        :: [DPORule]
+  , vsbComponents      :: Map SymName RSchema
+  , vsbInventedSeps    :: [SeparatorSynthesisResult]
+  , vsbCandidateTrees  :: [(SynTerm, Int)]
+  , vsbDisambiguated   :: Maybe SynTerm
+  , vsbZ3QueryCount    :: !Int
+  } deriving stock (Generic)
+
+extractParetoDecisionTrees
+  :: (Hyperdoctrine h, LiquidSubHyperdoctrine h)
+  => h
+  -> Z3StreamSession
+  -> EClassId
+  -> RBase
+  -> AbductiveEGraph
+  -> IO [(SynTerm, Int)]
+extractParetoDecisionTrees proxy session rootCid@(EClassId cid) goalBase eg = do
+  mPrimary <- extractVerifiedDecisionTree proxy session rootCid goalBase eg
+  case mPrimary of
+    Nothing -> pure []
+    Just primaryTree -> do
+      let rootFrontier = maybe [] ecFrontier (IntMap.lookup cid (egClasses eg))
+      altTrees <- fmap catMaybes $ forM [0 .. min 3 (length rootFrontier - 1)] $ \dropIdx -> do
+        let maskedFrontier =
+              [ c | (i, c) <- zip [0..] rootFrontier, i /= dropIdx ]
+            egMasked = eg
+              { egClasses = IntMap.adjust
+                  (\ec -> ec { ecFrontier = maskedFrontier })
+                  cid
+                  (egClasses eg)
+              }
+        mAlt <- extractVerifiedDecisionTree proxy session rootCid goalBase egMasked
+        pure $ fmap (\t -> (t, 10 + dropIdx)) mAlt
+      pure ((primaryTree, 1) : altTrees)"""
+
+pos = pool_code.find(sec5_marker)
+if pos != -1:
+    pool_code = pool_code[:pos] + new_sec5 + "\n"
+
+with open(pool_path, "w", encoding="utf-8") as f:
+    f.write(pool_code)
+
+# 2. Update sarutahiko-agent CoEvolutionLoop.hs to import ConcurrentZ3Pool and provide stepConcurrentCoEvolutionMachine
+loop_path = "packages/sarutahiko/sarutahiko-agent/src/Sarutahiko/Orchestrator/CoEvolutionLoop.hs"
+with open(loop_path, "r", encoding="utf-8") as f:
+    loop_code = f.read()
+
+# Remove duplicate data VertexSynthesisBundle
+v_start = loop_code.find("data VertexSynthesisBundle = VertexSynthesisBundle")
+if v_start != -1:
+    v_end = loop_code.find("deriving stock (Generic)\n", v_start)
+    if v_end != -1:
+        v_end += len("deriving stock (Generic)\n")
+        loop_code = loop_code[:v_start] + loop_code[v_end:]
+
+# Remove duplicate extractParetoDecisionTrees
+e_start = loop_code.find("extractParetoDecisionTrees\n  :: (Hyperdoctrine h, LiquidSubHyperdoctrine h)")
+if e_start != -1:
+    e_end = loop_code.find("      pure ((primaryTree, 1) : altTrees)\n", e_start)
+    if e_end != -1:
+        e_end += len("      pure ((primaryTree, 1) : altTrees)\n")
+        loop_code = loop_code[:e_start] + loop_code[e_end:]
+
+# Add stepConcurrentCoEvolutionMachine to export list
+if "  , stepCoEvolutionMachine" in loop_code and "  , stepConcurrentCoEvolutionMachine" not in loop_code:
+    loop_code = loop_code.replace("  , stepCoEvolutionMachine", "  , stepCoEvolutionMachine\n  , stepConcurrentCoEvolutionMachine")
+
+# Add import of Yamaarashi.Scheduler.ConcurrentZ3Pool
+if "import Yamaarashi.Scheduler.ConcurrentZ3Pool" not in loop_code:
+    loop_code = loop_code.replace("import Gargamelle.Model.AmbiguityOracle", """import Yamaarashi.Scheduler.ConcurrentZ3Pool
+  ( VertexSynthesisBundle (..)
+  , Z3SessionPool (..)
+  , extractParetoDecisionTrees
+  , runParallelAmbiguityCheck
+  , runParallelVertexAbductiveSynthesis
+  , withLeasedZ3Session
+  )
+import Gargamelle.Model.AmbiguityOracle""")
+
+# Add stepConcurrentCoEvolutionMachine implementation
+step_impl = r"""
 -- | Drop-in concurrent replacement for `stepCoEvolutionMachine` routing `PhaseVertexAbductiveSynthesis`
 -- and `PhaseAmbiguityCheck` through the concurrent worker pool.
 stepConcurrentCoEvolutionMachine
@@ -121,128 +209,6 @@ stepConcurrentCoEvolutionMachine proxy pool cfg@OrchestratorConfig{..} oracle st
     _ ->
       let baseSig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
       in withLeasedZ3Session pool baseSig $ \rawSession ->
-        stepCoEvolutionMachine
-          proxy
-          rawSession
-          cfg
-          oracle
-          st"""
-
-new_sec5 = """--------------------------------------------------------------------------------
--- 5. Vertex Synthesis Bundle & Multi-Cover Pareto Extraction
---------------------------------------------------------------------------------
-
-data VertexSynthesisBundle = VertexSynthesisBundle
-  { vsbVertexId        :: VertexId
-  , vsbRootClass       :: EClassId
-  , vsbGoalBase        :: RBase
-  , vsbEGraph          :: AbductiveEGraph
-  , vsbDPORules        :: [DPORule]
-  , vsbComponents      :: Map SymName RSchema
-  , vsbInventedSeps    :: [SeparatorSynthesisResult]
-  , vsbCandidateTrees  :: [(SynTerm, Int)]
-  , vsbDisambiguated   :: Maybe SynTerm
-  , vsbZ3QueryCount    :: !Int
-  } deriving stock (Generic)
-
-extractParetoDecisionTrees
-  :: (Hyperdoctrine h, LiquidSubHyperdoctrine h)
-  => h
-  -> Z3StreamSession
-  -> EClassId
-  -> RBase
-  -> AbductiveEGraph
-  -> IO [(SynTerm, Int)]
-extractParetoDecisionTrees proxy session rootCid@(EClassId cid) goalBase eg = do
-  mPrimary <- extractVerifiedDecisionTree proxy session rootCid goalBase eg
-  case mPrimary of
-    Nothing -> pure []
-    Just primaryTree -> do
-      let rootFrontier = maybe [] ecFrontier (IntMap.lookup cid (egClasses eg))
-      altTrees <- fmap catMaybes $ forM [0 .. min 3 (length rootFrontier - 1)] $ \dropIdx -> do
-        let maskedFrontier =
-              [ c | (i, c) <- zip [0..] rootFrontier, i /= dropIdx ]
-            egMasked = eg
-              { egClasses = IntMap.adjust
-                  (\\ec -> ec { ecFrontier = maskedFrontier })
-                  cid
-                  (egClasses eg)
-              }
-        mAlt <- extractVerifiedDecisionTree proxy session rootCid goalBase egMasked
-        pure $ fmap (\\t -> (t, 10 + dropIdx)) mAlt
-      pure ((primaryTree, 1) : altTrees)"""
-
-if old_sec5 in pool_code:
-    pool_code = pool_code.replace(old_sec5, new_sec5)
-
-with open(pool_path, "w", encoding="utf-8") as f:
-    f.write(pool_code)
-
-# 2. Update sarutahiko-agent CoEvolutionLoop.hs to import ConcurrentZ3Pool and provide stepConcurrentCoEvolutionMachine
-loop_path = "packages/sarutahiko/sarutahiko-agent/src/Sarutahiko/Orchestrator/CoEvolutionLoop.hs"
-with open(loop_path, "r", encoding="utf-8") as f:
-    loop_code = f.read()
-
-# Add stepConcurrentCoEvolutionMachine to export list
-if "  , stepCoEvolutionMachine" in loop_code and "  , stepConcurrentCoEvolutionMachine" not in loop_code:
-    loop_code = loop_code.replace("  , stepCoEvolutionMachine", "  , stepCoEvolutionMachine\n  , stepConcurrentCoEvolutionMachine")
-
-# Add import of Yamaarashi.Scheduler.ConcurrentZ3Pool
-if "import Yamaarashi.Scheduler.ConcurrentZ3Pool" not in loop_code:
-    loop_code = loop_code.replace("import Gargamelle.Model.AmbiguityOracle", """import Yamaarashi.Scheduler.ConcurrentZ3Pool
-  ( Z3SessionPool (..)
-  , runParallelAmbiguityCheck
-  , runParallelVertexAbductiveSynthesis
-  , withLeasedZ3Session
-  )
-import Gargamelle.Model.AmbiguityOracle""")
-
-# Add stepConcurrentCoEvolutionMachine implementation
-step_impl = """
--- | Drop-in concurrent replacement for `stepCoEvolutionMachine` routing `PhaseVertexAbductiveSynthesis`
--- and `PhaseAmbiguityCheck` through the concurrent worker pool.
-stepConcurrentCoEvolutionMachine
-  :: (Hyperdoctrine h, LiquidSubHyperdoctrine h)
-  => h
-  -> Z3SessionPool
-  -> OrchestratorConfig
-  -> LLMTheoryOracle
-  -> OrchestratorState
-  -> IO OrchestratorState
-stepConcurrentCoEvolutionMachine proxy pool cfg@OrchestratorConfig{..} oracle st@OrchestratorState{..} =
-  case ostPhase of
-    PhaseVertexAbductiveSynthesis _edgeSections -> do
-      (synthesizedVertices, addedMeasures) <-
-        runParallelVertexAbductiveSynthesis
-          proxy
-          pool
-          cfgMaxGaloisRepairs
-          cfgFrontierPropSteps
-          ostVertices
-      let metrics' = ostMetrics
-            { metGaloisMeasuresAdded =
-                metGaloisMeasuresAdded ostMetrics + addedMeasures
-            }
-      pure st
-        { ostPhase    = PhaseAmbiguityCheck
-        , ostVertices = synthesizedVertices
-        , ostMetrics  = metrics'
-        }
-    PhaseAmbiguityCheck -> do
-      (updatedVertices, ambiguities) <-
-        runParallelAmbiguityCheck proxy pool ostVertices
-      if null ambiguities
-        then pure st
-          { ostPhase    = PhaseSleepCrystallizationAndCodeGen
-          , ostVertices = updatedVertices
-          }
-        else pure st
-          { ostPhase    = PhaseAwaitLLMAmbiguityPin ambiguities
-          , ostVertices = updatedVertices
-          }
-    _ ->
-      let baseSig = LiquidSig Set.empty Map.empty [] Set.empty Map.empty []
-      in withLeasedZ3Session pool baseSig $ \\rawSession ->
         stepCoEvolutionMachine
           proxy
           rawSession
