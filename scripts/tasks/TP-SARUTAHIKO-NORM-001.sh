@@ -265,6 +265,16 @@ ca_content = ca_content.replace("        Yamaarashi.Scheduler.ConcurrentZ3Pool,\
 with open(cabal_agent, "w", encoding="utf-8") as f:
     f.write(ca_content)
 
+# Update sarutahiko-agent test/Spec.hs to import stepConcurrentCoEvolutionMachine from CoEvolutionLoop
+agent_spec = "packages/sarutahiko/sarutahiko-agent/test/Spec.hs"
+with open(agent_spec, "r", encoding="utf-8") as f:
+    as_content = f.read()
+as_content = as_content.replace("  , stepConcurrentCoEvolutionMachine\n", "")
+if "  , stepConcurrentCoEvolutionMachine" not in as_content:
+    as_content = as_content.replace("  , stepCoEvolutionMachine\n", "  , stepCoEvolutionMachine\n  , stepConcurrentCoEvolutionMachine\n")
+with open(agent_spec, "w", encoding="utf-8") as f:
+    f.write(as_content)
+
 # 4. Update yamaarashi.cabal: add Yamaarashi.Scheduler.ConcurrentZ3Pool and dependencies
 cabal_yama = "packages/yamaarashi/yamaarashi/yamaarashi.cabal"
 with open(cabal_yama, "r", encoding="utf-8") as f:
@@ -327,7 +337,7 @@ core_cabal = "packages/hashigakari/hashigakari-core/hashigakari-core.cabal"
 with open(core_cabal, "r", encoding="utf-8") as f:
     content = f.read()
 
-if "Hashigakari.Store" not in content:
+if "        Hashigakari.Store\n" not in content:
     content = content.replace("        Sarutahiko.Hashigakari.Store", "        Hashigakari.Store\n        Hashigakari.EditConeLSP\n        Sarutahiko.Hashigakari.Store")
 
 with open(core_cabal, "w", encoding="utf-8") as f:
