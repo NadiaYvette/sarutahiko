@@ -26,7 +26,6 @@ module Fluent.Penelope
 import Data.Kind (Type)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Text (Text)
 import Fluent.Polytropos.Schema (CatalogSchema (..))
 import Kogaki.Ontology
   ( LocaleTag (..)
