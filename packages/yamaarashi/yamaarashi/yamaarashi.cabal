@@ -43,6 +43,7 @@ library
         Yamaarashi.Patch.Reaper
         Yamaarashi.Campaign.Unfold
         Yamaarashi.Flow.PathDiscovery
+        Yamaarashi.WorkDAG.Ingest
     build-depends:
         base >= 4.20 && < 5,
         containers,

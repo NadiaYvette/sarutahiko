@@ -39,6 +39,7 @@ import qualified Yamaarashi.Executor.DeterministicSplicer as Splicer
 import qualified Yamaarashi.Daemon.PowerAndWAL as PowerWAL
 import qualified Yamaarashi.Schedule.TropicalPERT as PERT
 import qualified Yamaarashi.Schedule.Quarantine as Quarantine
+import qualified Yamaarashi.WorkDAG.Ingest as Ingest
 import Gargamelle.Core.Institution.Liquid (LiquidModel (..), LiquidVal (..))
 import Gargamelle.Sheaf.LatticeCohomology
   ( SheafVertexSpec (..)
@@ -171,6 +172,11 @@ tests = testGroup "Yamaarashi Suite"
       [ testProperty "shouldQuarantine enforces repair attempt threshold" prop_quarantine_threshold
       , testProperty "synthesizeAxiomaticStub synthesizes compileable Liquid assume contracts and error stubs" prop_quarantine_synthesis
       , testProperty "quarantineVertex records triage report, counterexample model, and writes stub module" prop_quarantine_vertex_execution
+      ]
+  , testGroup "Yamaarashi.WorkDAG.Ingest"
+      [ testProperty "reconcilePacketSnapshot is idempotent on unchanged snapshot" prop_workdag_reconcile_idempotent
+      , testProperty "readyPackets selects pending packets with satisfied dependencies" prop_workdag_ready_packets
+      , testProperty "detectCycles catches 2-node and 3-node dependency cycles" prop_workdag_detect_cycles
       ]
   ]
 
@@ -1200,3 +1206,35 @@ prop_smirkGate_synthesize = property $ do
   res <- evalIO SmirkGate.runSmirkSynthesisBenchmark
   SmirkGate.brSuccess res === True
   SmirkGate.brSynthesizedAST res /== Nothing
+
+---------------------------------------------------------------------------------
+-- WorkDAG Ingest Properties (TP-YAMAARASHI-INGEST-001)
+---------------------------------------------------------------------------------
+
+prop_workdag_reconcile_idempotent :: Property
+prop_workdag_reconcile_idempotent = property $ do
+  let nodeA = Ingest.PacketNode "TP-A" "/repo" "pending/TP-A.dhall" [] Ingest.StatusPending "hashA"
+      nodeB = Ingest.PacketNode "TP-B" "/repo" "completed/TP-B.dhall" [] Ingest.StatusCompleted "hashB"
+      nodes = [nodeA, nodeB]
+      (st1, delta1) = Ingest.reconcilePacketSnapshot nodes Ingest.emptyWorkDag
+  Ingest.idAdded delta1 === ["TP-A", "TP-B"]
+  let (st2, delta2) = Ingest.reconcilePacketSnapshot nodes st1
+  Ingest.idAdded delta2 === []
+  Ingest.idUpdated delta2 === []
+
+prop_workdag_ready_packets :: Property
+prop_workdag_ready_packets = property $ do
+  let nodeDone = Ingest.PacketNode "TP-001" "/repo" "completed/TP-001.dhall" [] Ingest.StatusCompleted "hash1"
+      nodeReady = Ingest.PacketNode "TP-002" "/repo" "pending/TP-002.dhall" ["TP-001"] Ingest.StatusPending "hash2"
+      nodeBlocked = Ingest.PacketNode "TP-003" "/repo" "pending/TP-003.dhall" ["TP-999"] Ingest.StatusPending "hash3"
+      (st, _) = Ingest.reconcilePacketSnapshot [nodeDone, nodeReady, nodeBlocked] Ingest.emptyWorkDag
+      ready = Ingest.readyPackets st
+  map Ingest.pnId ready === ["TP-002"]
+
+prop_workdag_detect_cycles :: Property
+prop_workdag_detect_cycles = property $ do
+  let nodeX = Ingest.PacketNode "TP-X" "/repo" "pending/TP-X.dhall" ["TP-Y"] Ingest.StatusPending "hashX"
+      nodeY = Ingest.PacketNode "TP-Y" "/repo" "pending/TP-Y.dhall" ["TP-X"] Ingest.StatusPending "hashY"
+      (st, _delta) = Ingest.reconcilePacketSnapshot [nodeX, nodeY] Ingest.emptyWorkDag
+      cycles = Ingest.detectCycles st
+  assert (not (null cycles))
