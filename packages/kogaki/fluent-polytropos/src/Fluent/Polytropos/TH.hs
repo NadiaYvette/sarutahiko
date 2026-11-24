@@ -11,7 +11,6 @@ module Fluent.Polytropos.TH
   ( deriveFluentCatalog
   ) where
 
-import Control.Monad (forM)
 import Data.Char (toLower)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -29,7 +28,6 @@ import Language.Haskell.TH
   , Dec (..)
   , Exp (..)
   , Lit (..)
-  , Name
   , Pat (..)
   , Q
   , TyLit (..)

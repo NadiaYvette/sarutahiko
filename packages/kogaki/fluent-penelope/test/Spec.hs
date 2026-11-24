@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Main (main) where
 
@@ -24,11 +25,11 @@ main = do
 
   putStrLn "--- Section 1: Pure Localize Effect Queries ---"
   let env0 = emptyLocalizationEnv
-  let (loc, env1) = runLocalizePure (\_ -> Plain "stub") GetActiveLocale env0
+  let (loc, env1) = runLocalizePure @'[] (\_ -> Plain "stub") GetActiveLocale env0
   assert "GetActiveLocale returns default en" $
     loc == LocaleTag "en"
 
-  let (tier, _) = runLocalizePure (\_ -> Plain "stub") GetActiveTier env1
+  let (tier, _) = runLocalizePure @'[] (\_ -> Plain "stub") GetActiveTier env1
   assert "GetActiveTier returns default Tier0" $
     tier == Tier0
 

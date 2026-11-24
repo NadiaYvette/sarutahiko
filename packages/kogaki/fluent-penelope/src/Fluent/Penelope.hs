@@ -33,10 +33,10 @@ import Kogaki.Ontology
   , SemanticTag (..)
   , Tier (..)
   )
-import Polytropos (Variant)
+import Polytropos (SumRow, Variant)
 
 -- | First-order localization effect parameterized over catalog @cat@.
-data Localize (cat :: Type) :: Type -> Type where
+data Localize (cat :: SumRow) :: Type -> Type where
   -- | Resolves and formats a message variant into structured 'RichText'.
   LocalizeMessage :: Variant cat -> Localize cat (RichText SemanticTag)
   -- | Queries the active locale tag.
@@ -45,7 +45,7 @@ data Localize (cat :: Type) :: Type -> Type where
   GetActiveTier   :: Localize cat Tier
 
 -- | Scoped multi-locale effect for switching or querying fallback cascades.
-data MultiLocale (cat :: Type) :: Type -> Type where
+data MultiLocale (cat :: SumRow) :: Type -> Type where
   -- | Temporarily sets the active locale during computation.
   WithLocale    :: LocaleTag -> m a -> MultiLocale cat (m a)
   -- | Inspects available localized catalogs.
