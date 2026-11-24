@@ -1,3 +1,5 @@
+//go:build ignore
+
 // nadiverse-profile: Profiling-informed benchmarking analyzer mapping GHC -pj JSON,
 // +RTS -s output, and Linux perf stat -j counters onto the 6-layer Performance Chu Space.
 package main

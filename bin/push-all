@@ -18,3 +18,8 @@ echo "==> Pushing master to Radicle..."
 git push rad master || echo "Warning: rad push encountered an issue, check radicle node status"
 
 echo "==> Batched push fan-out complete."
+
+if [[ "${NADIVERSE_ROLLUP:-0}" == "1" ]] && command -v nadiverse-rollup >/dev/null 2>&1; then
+  echo "==> Triggering Nadiverse live notebook Google Doc rollup..."
+  nadiverse-rollup -repo . -tier arch || echo "Warning: nadiverse-rollup failed"
+fi
