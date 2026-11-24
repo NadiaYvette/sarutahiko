@@ -1,0 +1,51 @@
+cabal-version: 3.0
+name: fluent-polytropos-core
+version: 0.1.0.0
+synopsis: Pure Project Fluent (.ftl) catalog schema IR and diffing engine
+description:
+  Pure representation of Project Fluent catalog schemas, extracting message
+  identifiers, typed parameter annotations (# @param $var :: Type), Stratum 4
+  inline semantic tag multisets, and computing structural catalog diffs.
+license: EUPL-1.2 OR Apache-2.0
+license-file: LICENSE
+author: Nadia Yvette Chambers
+maintainer: nadia.yvette.chambers@ik.me
+category: Localization, Text
+homepage: https://github.com/NadiaYvette/sarutahiko
+bug-reports: https://github.com/NadiaYvette/sarutahiko/issues
+extra-doc-files:
+  README.md
+  CHANGELOG.md
+build-type: Simple
+tested-with: GHC == 9.14.1, GHC == 9.12.4
+
+source-repository head
+  type: git
+  location: https://github.com/NadiaYvette/sarutahiko
+  subdir: packages/kogaki/fluent-polytropos-core
+
+library
+  exposed-modules:
+    Fluent.Polytropos.Schema
+  hs-source-dirs: src
+  default-language: GHC2024
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wredundant-constraints
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    text >= 2.0 && < 2.2
+
+test-suite fluent-polytropos-core-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  default-language: GHC2024
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    text >= 2.0 && < 2.2,
+    fluent-polytropos-core

@@ -1,0 +1,57 @@
+cabal-version: 3.0
+name: fluent-penelope
+version: 0.1.0.0
+synopsis: Localize and MultiLocale effect signatures over Penelope and Kogaki
+description:
+  Typed effect carriers for Project Fluent catalogs over Penelope and Kogaki,
+  supporting runtime locale fallback cascades, reliability tier tracking,
+  and rich semantic markup.
+license: EUPL-1.2 OR Apache-2.0
+license-file: LICENSE
+author: Nadia Yvette Chambers
+maintainer: nadia.yvette.chambers@ik.me
+category: Localization, Text
+homepage: https://github.com/NadiaYvette/sarutahiko
+bug-reports: https://github.com/NadiaYvette/sarutahiko/issues
+extra-doc-files:
+  README.md
+  CHANGELOG.md
+build-type: Simple
+tested-with: GHC == 9.14.1, GHC == 9.12.4
+
+source-repository head
+  type: git
+  location: https://github.com/NadiaYvette/sarutahiko
+  subdir: packages/kogaki/fluent-penelope
+
+library
+  exposed-modules:
+    Fluent.Penelope
+  hs-source-dirs: src
+  default-language: GHC2024
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wredundant-constraints
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    fluent-polytropos-core >= 0.1.0.0 && < 0.2,
+    kogaki-core >= 0.1.0.0 && < 0.2,
+    polytropos-core >= 0.1.1.0 && < 0.2,
+    text >= 2.0 && < 2.2
+
+test-suite fluent-penelope-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  default-language: GHC2024
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    fluent-penelope,
+    fluent-polytropos-core,
+    kogaki-core,
+    polytropos-core,
+    text >= 2.0 && < 2.2

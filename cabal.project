@@ -1,6 +1,9 @@
 packages:
     packages/kogaki/kogaki-core
     packages/kogaki/kogaki-wire
+    packages/kogaki/fluent-polytropos-core
+    packages/kogaki/fluent-polytropos
+    packages/kogaki/fluent-penelope
     packages/sarutahiko/sarutahiko-fields
     packages/sarutahiko/sarutahiko-records
     packages/sarutahiko/sarutahiko-jsonrpc

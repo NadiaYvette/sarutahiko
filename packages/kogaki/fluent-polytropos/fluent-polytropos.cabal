@@ -1,0 +1,56 @@
+cabal-version: 3.0
+name: fluent-polytropos
+version: 0.1.0.0
+synopsis: Template Haskell deriveFluentCatalog generating closed polytropos SumRow types
+description:
+  Template Haskell code generation extracting Project Fluent (.ftl) catalog
+  schemas into closed polytropos SumRow types and runtime schema witnesses.
+license: EUPL-1.2 OR Apache-2.0
+license-file: LICENSE
+author: Nadia Yvette Chambers
+maintainer: nadia.yvette.chambers@ik.me
+category: Localization, Text
+homepage: https://github.com/NadiaYvette/sarutahiko
+bug-reports: https://github.com/NadiaYvette/sarutahiko/issues
+extra-doc-files:
+  README.md
+  CHANGELOG.md
+build-type: Simple
+tested-with: GHC == 9.14.1, GHC == 9.12.4
+
+source-repository head
+  type: git
+  location: https://github.com/NadiaYvette/sarutahiko
+  subdir: packages/kogaki/fluent-polytropos
+
+library
+  exposed-modules:
+    Fluent.Polytropos.TH
+  hs-source-dirs: src
+  default-language: GHC2024
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wredundant-constraints
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    fluent-polytropos-core >= 0.1.0.0 && < 0.2,
+    polytropos-core >= 0.1.1.0 && < 0.2,
+    template-haskell >= 2.20 && < 2.25,
+    text >= 2.0 && < 2.2,
+    time >= 1.12 && < 1.15
+
+test-suite fluent-polytropos-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  default-language: GHC2024
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    fluent-polytropos,
+    fluent-polytropos-core,
+    polytropos-core,
+    text >= 2.0 && < 2.2
