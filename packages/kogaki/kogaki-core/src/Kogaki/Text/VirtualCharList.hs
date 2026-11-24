@@ -4,8 +4,10 @@
 -- TARGET_FILES:
 --   src/Kogaki/Text/VirtualCharList.hs
 
-{-# LANGUAGE BangPatterns, MagicHash, PatternSynonyms, ViewPatterns #-}
+{-# LANGUAGE BangPatterns, CPP, MagicHash, PatternSynonyms, ViewPatterns #-}
+#if __GLASGOW_HASKELL__ >= 914
 {-# OPTIONS_GHC -Wno-pattern-namespace-specifier #-}
+#endif
 
 module Kogaki.Text.VirtualCharList
   ( UTF8Slice(..)
