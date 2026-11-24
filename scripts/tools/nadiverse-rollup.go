@@ -1,5 +1,7 @@
 // nadiverse-rollup: Roll git repositories into structured Markdown digests and
 // update linked Google Docs in place for Gemini Notebook auto-sync.
+// Supports whole-file directory-grouped auto-sharding with a Cross-Shard TOC
+// in part-01 so large repos stay strictly beneath Google Docs' 1.02M char cap.
 package main
 
 import (
@@ -17,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -29,6 +32,8 @@ type RollupConfig struct {
 	DocTitle      string
 	Tier          string // "arch" or "full"
 	MaxChars      int
+	AutoShard     bool
+	Exclude       string // comma-separated extra exclude patterns
 	OutFile       string
 	MapFile       string
 	DryRun        bool
@@ -45,6 +50,27 @@ type RollupStats struct {
 	Words     int
 }
 
+type fileEntry struct {
+	path    string
+	content string
+}
+
+type fileBlock struct {
+	path     string // original relative path (or path + " [chunk i/n]" if oversized)
+	rendered string
+	runes    int
+}
+
+type RollupShard struct {
+	Index    int // 1-based
+	Total    int
+	Key      string
+	Title    string
+	Markdown string
+	Stats    RollupStats
+	Blocks   []fileBlock
+}
+
 func main() {
 	cfg := RollupConfig{}
 	flag.StringVar(&cfg.RepoDir, "repo", ".", "Path to git repository")
@@ -52,11 +78,13 @@ func main() {
 	flag.StringVar(&cfg.Key, "key", "", "Lookup key in -map-file (default: repo or repo:prefix)")
 	flag.StringVar(&cfg.DocTitle, "title", "", "Google Doc title when creating a new doc")
 	flag.StringVar(&cfg.Tier, "tier", "arch", "Digest tier: 'arch' (interfaces+docs) or 'full'")
-	flag.IntVar(&cfg.MaxChars, "max-chars", 950000, "Max Unicode character count (Google Docs cap ~1.02M)")
-	flag.StringVar(&cfg.OutFile, "out", "", "Optional local path to write Markdown digest")
+	flag.IntVar(&cfg.MaxChars, "max-chars", 800000, "Max Unicode character count per doc (Google Docs cap ~1.02M)")
+	flag.BoolVar(&cfg.AutoShard, "auto-shard", true, "Automatically bin-pack into whole-file part-01..part-NN docs when exceeding -max-chars")
+	flag.StringVar(&cfg.Exclude, "exclude", "", "Comma-separated extra exclude patterns (e.g. 'examples/,witnesses/,scripts/tasks/')")
+	flag.StringVar(&cfg.OutFile, "out", "", "Optional local path to write Markdown digest (multi-shard inserts .part-NN before ext)")
 	flag.StringVar(&cfg.MapFile, "map-file", defaultMapPath(), "JSON file mapping rollup keys to Drive Doc IDs")
 	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Build digest locally without calling Google Drive API")
-	flag.BoolVar(&cfg.CreateMissing, "create-missing", false, "Create a new Google Doc if key is absent from -map-file")
+	flag.BoolVar(&cfg.CreateMissing, "create-missing", false, "Create new Google Doc(s) if key is absent from -map-file")
 	flag.StringVar(&cfg.UploadBaseURL, "upload-base", "https://www.googleapis.com/upload/drive/v3", "Drive upload API base URL")
 	flag.StringVar(&cfg.TokenURL, "token-url", "https://oauth2.googleapis.com/token", "OAuth2 token endpoint")
 	flag.Parse()
@@ -93,48 +121,103 @@ func runRollup(cfg RollupConfig) error {
 		cfg.DocTitle = fmt.Sprintf("Rollup: %s (%s)", cfg.Key, cfg.Tier)
 	}
 
-	md, stats, err := buildMarkdownRollup(cfg, repoName, cleanPrefix)
+	shards, err := buildRollupShards(cfg, repoName, cleanPrefix)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("[nadiverse-rollup] key=%s tier=%s commit=%s files=%d runes=%d words=%d bytes=%d\n",
-		cfg.Key, cfg.Tier, stats.CommitSHA, stats.Files, stats.Runes, stats.Words, stats.Bytes)
 
-	if cfg.MaxChars > 0 && stats.Runes > cfg.MaxChars {
-		return fmt.Errorf("digest has %d characters, exceeding -max-chars=%d (split with -prefix or use -tier=arch)",
-			stats.Runes, cfg.MaxChars)
+	totalFiles, totalRunes, totalWords := 0, 0, 0
+	for _, sh := range shards {
+		totalFiles += sh.Stats.Files
+		totalRunes += sh.Stats.Runes
+		totalWords += sh.Stats.Words
+		fmt.Printf("[nadiverse-rollup] key=%s part=%02d/%02d tier=%s commit=%s files=%d runes=%d words=%d bytes=%d\n",
+			sh.Key, sh.Index, sh.Total, cfg.Tier, sh.Stats.CommitSHA, sh.Stats.Files, sh.Stats.Runes, sh.Stats.Words, sh.Stats.Bytes)
+
+		if cfg.MaxChars > 0 && sh.Stats.Runes > cfg.MaxChars {
+			return fmt.Errorf("shard %s (%02d/%02d) has %d characters, exceeding -max-chars=%d",
+				sh.Key, sh.Index, sh.Total, sh.Stats.Runes, cfg.MaxChars)
+		}
+	}
+	if len(shards) > 1 {
+		fmt.Printf("[nadiverse-rollup] total shards=%d blocks=%d runes=%d words=%d\n",
+			len(shards), totalFiles, totalRunes, totalWords)
 	}
 
 	if cfg.OutFile != "" {
-		if err := os.MkdirAll(filepath.Dir(cfg.OutFile), 0o755); err != nil {
-			return err
+		for _, sh := range shards {
+			outPath := shardOutPath(cfg.OutFile, sh.Index, sh.Total)
+			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(outPath, []byte(sh.Markdown), 0o644); err != nil {
+				return err
+			}
+			fmt.Printf("[nadiverse-rollup] wrote %s\n", outPath)
 		}
-		if err := os.WriteFile(cfg.OutFile, []byte(md), 0o644); err != nil {
-			return err
-		}
-		fmt.Printf("[nadiverse-rollup] wrote %s\n", cfg.OutFile)
 	}
 
 	if cfg.DryRun {
 		return nil
 	}
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: 90 * time.Second}
 	token, err := resolveAccessToken(client, cfg.TokenURL)
 	if err != nil {
 		return err
 	}
 
-	docID, created, err := upsertGoogleDoc(client, cfg, token, md)
-	if err != nil {
-		return err
+	for _, sh := range shards {
+		docID, created, err := upsertGoogleDoc(client, cfg, sh.Key, sh.Title, token, sh.Markdown)
+		if err != nil {
+			return fmt.Errorf("uploading %s: %w", sh.Key, err)
+		}
+		action := "updated in place"
+		if created {
+			action = "created (attach once to Gemini Notebook)"
+		}
+		fmt.Printf("[nadiverse-rollup] %s [%s]: https://docs.google.com/document/d/%s/edit\n", action, sh.Title, docID)
 	}
-	action := "updated in place"
-	if created {
-		action = "created (attach once to Gemini Notebook)"
-	}
-	fmt.Printf("[nadiverse-rollup] %s: https://docs.google.com/document/d/%s/edit\n", action, docID)
+
+	warnStaleShards(cfg.MapFile, cfg.Key, len(shards))
 	return nil
+}
+
+func shardOutPath(basePath string, idx, total int) string {
+	if total <= 1 {
+		return basePath
+	}
+	ext := filepath.Ext(basePath)
+	stem := strings.TrimSuffix(basePath, ext)
+	return fmt.Sprintf("%s.part-%02d%s", stem, idx, ext)
+}
+
+func warnStaleShards(mapFile, baseKey string, activeCount int) {
+	data, err := os.ReadFile(mapFile)
+	if err != nil {
+		return
+	}
+	mapData := make(map[string]string)
+	if err := json.Unmarshal(data, &mapData); err != nil {
+		return
+	}
+	partPrefix := baseKey + ":part-"
+	var stale []string
+	for k := range mapData {
+		if !strings.HasPrefix(k, partPrefix) {
+			continue
+		}
+		numStr := strings.TrimPrefix(k, partPrefix)
+		n, err := strconv.Atoi(numStr)
+		if err == nil && n > activeCount {
+			stale = append(stale, k)
+		}
+	}
+	sort.Strings(stale)
+	if len(stale) > 0 {
+		fmt.Printf("[nadiverse-rollup] note: %s still maps older unused shard key(s): %s\n",
+			mapFile, strings.Join(stale, ", "))
+	}
 }
 
 func gitCmd(repoDir string, args ...string) (string, error) {
@@ -150,19 +233,25 @@ func gitCmd(repoDir string, args ...string) (string, error) {
 	return out.String(), nil
 }
 
-func loadRollupIgnore(repoDir string) []string {
-	ignorePath := filepath.Join(repoDir, ".rollupignore")
-	data, err := os.ReadFile(ignorePath)
-	if err != nil {
-		return nil
-	}
+func loadRollupIgnore(repoDir string, extraCSV string) []string {
 	var patterns []string
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+	ignorePath := filepath.Join(repoDir, ".rollupignore")
+	if data, err := os.ReadFile(ignorePath); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			patterns = append(patterns, line)
 		}
-		patterns = append(patterns, line)
+	}
+	if extraCSV != "" {
+		for _, part := range strings.Split(extraCSV, ",") {
+			p := strings.TrimSpace(part)
+			if p != "" {
+				patterns = append(patterns, p)
+			}
+		}
 	}
 	return patterns
 }
@@ -186,6 +275,10 @@ func matchesPattern(path, pat string) bool {
 }
 
 func shouldExclude(relPath string, ignorePatterns []string) bool {
+	base := filepath.Base(relPath)
+	if base == "package-lock.json" || base == "Cargo.lock" || base == "flake.lock" {
+		return true
+	}
 	clean := filepath.ToSlash(relPath)
 	if strings.HasPrefix(clean, "dist-newstyle/") || strings.Contains(clean, "/dist-newstyle/") {
 		return true
@@ -198,7 +291,7 @@ func shouldExclude(relPath string, ignorePatterns []string) bool {
 	}
 	ext := filepath.Ext(clean)
 	switch ext {
-	case ".patch", ".hi", ".o", ".tix", ".mix":
+	case ".patch", ".hi", ".lock", ".o", ".tix", ".mix":
 		return true
 	}
 	for _, pat := range ignorePatterns {
@@ -222,16 +315,15 @@ func isArchCandidate(relPath string) bool {
 	if strings.HasPrefix(base, "cabal.project") || strings.HasSuffix(base, ".cabal") {
 		return true
 	}
-	if base == "README.md" || base == "PLAN.md" || base == "STATE.md" {
+	if base == "README.md" || base == "PLAN.md" || base == "STATE.md" ||
+		base == "ROADMAP.md" || base == "LICENSES-THIRD-PARTY.md" || base == "CREDITS.md" {
 		return true
 	}
-	if strings.HasPrefix(clean, "docs/notes/") && strings.HasSuffix(base, ".md") {
+	if strings.HasPrefix(clean, "docs/") && strings.HasSuffix(base, ".md") {
 		return true
 	}
-	if strings.HasSuffix(base, ".dhall") {
-		return true
-	}
-	if strings.HasSuffix(base, ".hs") {
+	if strings.HasSuffix(base, ".dhall") || strings.HasSuffix(base, ".hs") ||
+		strings.HasSuffix(base, ".hsig") || strings.HasSuffix(base, ".h") {
 		return true
 	}
 	return false
@@ -249,7 +341,6 @@ func extractArchSummaryHS(content string) string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Block comments / Haddock
 		if strings.HasPrefix(trimmed, "{-|") || strings.HasPrefix(trimmed, "{- |") {
 			inBlockDoc = true
 			result = append(result, line)
@@ -266,7 +357,6 @@ func extractArchSummaryHS(content string) string {
 			continue
 		}
 
-		// Module header: from 'module ...' up to 'where'
 		if strings.HasPrefix(line, "module ") {
 			inModuleHeader = true
 			result = append(result, line)
@@ -283,13 +373,11 @@ func extractArchSummaryHS(content string) string {
 			continue
 		}
 
-		// Docstrings
 		if strings.HasPrefix(trimmed, "-- |") || strings.HasPrefix(trimmed, "-- ^") || strings.HasPrefix(trimmed, "-- *") {
 			result = append(result, line)
 			continue
 		}
 
-		// Check if top-level declaration starting at column 0
 		if len(line) > 0 && (line[0] != ' ' && line[0] != '\t') {
 			if strings.HasPrefix(line, "data ") ||
 				strings.HasPrefix(line, "newtype ") ||
@@ -315,10 +403,275 @@ func extractArchSummaryHS(content string) string {
 	return strings.Join(result, "\n")
 }
 
-func buildMarkdownRollup(cfg RollupConfig, repoName, prefix string) (string, RollupStats, error) {
+func fenceLang(relPath string) string {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(relPath), "."))
+	switch ext {
+	case "hs", "hsig":
+		return "haskell"
+	case "md":
+		return "markdown"
+	case "rs":
+		return "rust"
+	case "py":
+		return "python"
+	case "sh":
+		return "bash"
+	case "h":
+		return "c"
+	case "ml", "mli":
+		return "ocaml"
+	case "scm", "sld":
+		return "scheme"
+	case "f90", "f95":
+		return "fortran"
+	case "v":
+		return "coq"
+	case "s":
+		return "asm"
+	default:
+		return ext
+	}
+}
+
+func renderFileBlock(path, content string) fileBlock {
+	lang := fenceLang(path)
+	body := strings.TrimRight(content, "\n")
+	// Use a 4-backtick fence if the file itself contains triple backticks (e.g. Markdown docs).
+	fence := "```"
+	if strings.Contains(body, "```") {
+		fence = "````"
+	}
+	rendered := fmt.Sprintf("## File: %s\n\n%s%s\n%s\n%s\n\n", path, fence, lang, body, fence)
+	return fileBlock{
+		path:     path,
+		rendered: rendered,
+		runes:    utf8.RuneCountInString(rendered),
+	}
+}
+
+func entriesToBlocks(entries []fileEntry, maxChars int, autoShard bool) []fileBlock {
+	var blocks []fileBlock
+	// Leave headroom for shard header/TOC; only split a single file if it cannot fit alone.
+	singleFileCap := maxChars - 8192
+	for _, entry := range entries {
+		blk := renderFileBlock(entry.path, entry.content)
+		if !autoShard || maxChars <= 0 || singleFileCap <= 4096 || blk.runes <= singleFileCap {
+			blocks = append(blocks, blk)
+			continue
+		}
+		// Oversized single file: split cleanly on line boundaries.
+		lines := strings.Split(entry.content, "\n")
+		var rawChunks []string
+		var cur strings.Builder
+		curRunes := 0
+		chunkBudget := singleFileCap - 256
+		for _, line := range lines {
+			lr := utf8.RuneCountInString(line) + 1
+			if curRunes > 0 && curRunes+lr > chunkBudget {
+				rawChunks = append(rawChunks, cur.String())
+				cur.Reset()
+				curRunes = 0
+			}
+			cur.WriteString(line)
+			cur.WriteByte('\n')
+			curRunes += lr
+		}
+		if cur.Len() > 0 {
+			rawChunks = append(rawChunks, cur.String())
+		}
+		fmt.Fprintf(os.Stderr, "[nadiverse-rollup] note: oversized file %s (%d runes) split into %d chunks\n",
+			entry.path, blk.runes, len(rawChunks))
+		for ci, chunk := range rawChunks {
+			label := fmt.Sprintf("%s [chunk %d/%d]", entry.path, ci+1, len(rawChunks))
+			blocks = append(blocks, renderFileBlock(label, chunk))
+		}
+	}
+	return blocks
+}
+
+func renderCrossShardTOC(baseKey string, groups [][]fileBlock) string {
+	var sb strings.Builder
+	sb.WriteString("## Cross-Shard Table of Contents\n\n")
+	sb.WriteString(fmt.Sprintf("This digest is split across **%d shards** (`part-01` .. `part-%02d`) using whole-file directory-grouped bin-packing.\n\n",
+		len(groups), len(groups)))
+	sb.WriteString("| Shard | Key | Files | Body Runes | First File | Last File |\n")
+	sb.WriteString("| :--- | :--- | ---: | ---: | :--- | :--- |\n")
+	for i, g := range groups {
+		sumRunes := 0
+		for _, b := range g {
+			sumRunes += b.runes
+		}
+		first, last := "(index-only)", "(index-only)"
+		if len(g) > 0 {
+			first = "`" + g[0].path + "`"
+			last = "`" + g[len(g)-1].path + "`"
+		}
+		sb.WriteString(fmt.Sprintf("| `part-%02d` | `%s:part-%02d` | %d | %d | %s | %s |\n",
+			i+1, baseKey, i+1, len(g), sumRunes, first, last))
+	}
+	sb.WriteString("\n### Master File Index (`filepath -> shard`)\n\n```\n")
+	for i, g := range groups {
+		for _, b := range g {
+			sb.WriteString(fmt.Sprintf("part-%02d  %8d runes  %s\n", i+1, b.runes, b.path))
+		}
+	}
+	sb.WriteString("```\n\n")
+	return sb.String()
+}
+
+func renderShardMarkdown(
+	cfg RollupConfig,
+	repoName, prefix, commitSHA, commitTime string,
+	shardIdx, totalShards int,
+	blocks []fileBlock,
+	crossTOC string,
+) string {
+	var sb strings.Builder
+	if totalShards > 1 {
+		sb.WriteString(fmt.Sprintf("# Monorepo Digest: %s (Part %02d/%02d)\n\n", cfg.Key, shardIdx, totalShards))
+	} else {
+		sb.WriteString(fmt.Sprintf("# Monorepo Digest: %s\n\n", cfg.Key))
+	}
+	sb.WriteString(fmt.Sprintf("- **Repository:** `%s`\n", repoName))
+	if prefix != "" {
+		sb.WriteString(fmt.Sprintf("- **Prefix:** `%s`\n", prefix))
+	}
+	sb.WriteString(fmt.Sprintf("- **Commit:** `%s` (%s)\n", commitSHA, commitTime))
+	sb.WriteString(fmt.Sprintf("- **Tier:** `%s`\n", cfg.Tier))
+	if totalShards > 1 {
+		sb.WriteString(fmt.Sprintf("- **Shard:** `%02d / %02d` (Master Cross-Shard TOC is in `part-01`)\n", shardIdx, totalShards))
+	}
+	sb.WriteString(fmt.Sprintf("- **Files in This Digest:** %d\n\n", len(blocks)))
+
+	if crossTOC != "" {
+		sb.WriteString(crossTOC)
+	}
+
+	sb.WriteString("## Tracked File Tree (This Shard)\n\n```\n")
+	for _, b := range blocks {
+		sb.WriteString(b.path + "\n")
+	}
+	sb.WriteString("```\n\n")
+
+	for _, b := range blocks {
+		sb.WriteString(b.rendered)
+	}
+	return sb.String()
+}
+
+func packBlocksIntoShards(
+	cfg RollupConfig,
+	repoName, prefix, commitSHA, commitTime string,
+	blocks []fileBlock,
+) []RollupShard {
+	if !cfg.AutoShard || cfg.MaxChars <= 0 {
+		md := renderShardMarkdown(cfg, repoName, prefix, commitSHA, commitTime, 1, 1, blocks, "")
+		return []RollupShard{makeShard(cfg, 1, 1, commitSHA, blocks, md)}
+	}
+
+	// Fast path: try single unsharded document first.
+	singleMD := renderShardMarkdown(cfg, repoName, prefix, commitSHA, commitTime, 1, 1, blocks, "")
+	if utf8.RuneCountInString(singleMD) <= cfg.MaxChars {
+		return []RollupShard{makeShard(cfg, 1, 1, commitSHA, blocks, singleMD)}
+	}
+
+	// Multi-shard fixed-point packing: reserve space for Cross-Shard TOC in part-01.
+	const baseHeaderMargin = 1024
+	tocReserve := 0
+	var groups [][]fileBlock
+	var crossTOC string
+
+	for pass := 0; pass < 6; pass++ {
+		groups = nil
+		var cur []fileBlock
+		curBodyRunes := 0
+		curTreeRunes := 0
+
+		flush := func() {
+			if len(cur) > 0 {
+				groups = append(groups, cur)
+				cur = nil
+				curBodyRunes = 0
+				curTreeRunes = 0
+			}
+		}
+
+		// If the TOC alone nearly fills shard 0, emit shard 0 as a dedicated index-only shard.
+		indexOnlyFirst := tocReserve > 0 && tocReserve+baseHeaderMargin >= cfg.MaxChars-4096
+		if indexOnlyFirst {
+			groups = append(groups, nil)
+		}
+
+		for _, b := range blocks {
+			extra := 0
+			if len(groups) == 0 && !indexOnlyFirst {
+				extra = tocReserve
+			}
+			treeAdd := utf8.RuneCountInString(b.path) + 1
+			projected := baseHeaderMargin + extra + curTreeRunes + treeAdd + curBodyRunes + b.runes
+			if len(cur) > 0 && projected > cfg.MaxChars {
+				flush()
+			}
+			cur = append(cur, b)
+			curBodyRunes += b.runes
+			curTreeRunes += treeAdd
+		}
+		flush()
+
+		if len(groups) == 0 {
+			groups = [][]fileBlock{nil}
+		}
+
+		crossTOC = renderCrossShardTOC(cfg.Key, groups)
+		actualTOCRunes := utf8.RuneCountInString(crossTOC)
+		md0 := renderShardMarkdown(cfg, repoName, prefix, commitSHA, commitTime, 1, len(groups), groups[0], crossTOC)
+		if actualTOCRunes <= tocReserve && utf8.RuneCountInString(md0) <= cfg.MaxChars {
+			break
+		}
+		tocReserve = actualTOCRunes + 512
+	}
+
+	total := len(groups)
+	shards := make([]RollupShard, 0, total)
+	for i, g := range groups {
+		toc := ""
+		if i == 0 && total > 1 {
+			toc = crossTOC
+		}
+		md := renderShardMarkdown(cfg, repoName, prefix, commitSHA, commitTime, i+1, total, g, toc)
+		shards = append(shards, makeShard(cfg, i+1, total, commitSHA, g, md))
+	}
+	return shards
+}
+
+func makeShard(cfg RollupConfig, idx, total int, commitSHA string, blocks []fileBlock, md string) RollupShard {
+	key := cfg.Key
+	title := cfg.DocTitle
+	if total > 1 {
+		key = fmt.Sprintf("%s:part-%02d", cfg.Key, idx)
+		title = fmt.Sprintf("%s [part %02d/%02d]", cfg.DocTitle, idx, total)
+	}
+	return RollupShard{
+		Index:    idx,
+		Total:    total,
+		Key:      key,
+		Title:    title,
+		Markdown: md,
+		Blocks:   blocks,
+		Stats: RollupStats{
+			CommitSHA: commitSHA,
+			Files:     len(blocks),
+			Bytes:     len(md),
+			Runes:     utf8.RuneCountInString(md),
+			Words:     len(strings.Fields(md)),
+		},
+	}
+}
+
+func buildRollupShards(cfg RollupConfig, repoName, prefix string) ([]RollupShard, error) {
 	shaOut, err := gitCmd(cfg.RepoDir, "rev-parse", "--short=12", "HEAD")
 	if err != nil {
-		return "", RollupStats{}, fmt.Errorf("git rev-parse HEAD: %w", err)
+		return nil, fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
 	commitSHA := strings.TrimSpace(shaOut)
 
@@ -331,45 +684,37 @@ func buildMarkdownRollup(cfg RollupConfig, repoName, prefix string) (string, Rol
 	}
 	lsOut, err := gitCmd(cfg.RepoDir, lsArgs...)
 	if err != nil {
-		return "", RollupStats{}, fmt.Errorf("git ls-files: %w", err)
+		return nil, fmt.Errorf("git ls-files: %w", err)
 	}
 
-	rawFiles := strings.Split(strings.TrimSpace(lsOut), "\n")
 	var trackedFiles []string
-	for _, f := range rawFiles {
+	for _, f := range strings.Split(strings.TrimSpace(lsOut), "\n") {
 		f = strings.TrimSpace(f)
 		if f != "" {
 			trackedFiles = append(trackedFiles, f)
 		}
 	}
+	// Lexicographic path sort naturally keeps sibling directory modules contiguous.
 	sort.Strings(trackedFiles)
 
-	ignorePatterns := loadRollupIgnore(cfg.RepoDir)
+	ignorePatterns := loadRollupIgnore(cfg.RepoDir, cfg.Exclude)
 
-	var selectedFiles []string
-	type fileEntry struct {
-		path    string
-		content string
-	}
 	var entries []fileEntry
-
 	for _, f := range trackedFiles {
 		if shouldExclude(f, ignorePatterns) {
 			continue
 		}
-
 		fullPath := filepath.Join(cfg.RepoDir, f)
-		data, err := os.ReadFile(fullPath)
-		if err != nil {
+		fi, err := os.Stat(fullPath)
+		if err != nil || fi.IsDir() {
 			continue
 		}
-
-		if isBinaryOrInvalidUTF8(data) {
+		data, err := os.ReadFile(fullPath)
+		if err != nil || isBinaryOrInvalidUTF8(data) {
 			continue
 		}
 
 		strContent := string(data)
-
 		if cfg.Tier == "arch" {
 			if !isArchCandidate(f) {
 				continue
@@ -381,48 +726,11 @@ func buildMarkdownRollup(cfg RollupConfig, repoName, prefix string) (string, Rol
 				strContent = extractArchSummaryHS(strContent)
 			}
 		}
-
-		selectedFiles = append(selectedFiles, f)
 		entries = append(entries, fileEntry{path: f, content: strContent})
 	}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# Monorepo Digest: %s\n\n", cfg.Key))
-	sb.WriteString(fmt.Sprintf("- **Repository:** `%s`\n", repoName))
-	if prefix != "" {
-		sb.WriteString(fmt.Sprintf("- **Prefix:** `%s`\n", prefix))
-	}
-	sb.WriteString(fmt.Sprintf("- **Commit:** `%s` (%s)\n", commitSHA, commitTime))
-	sb.WriteString(fmt.Sprintf("- **Tier:** `%s`\n", cfg.Tier))
-	sb.WriteString(fmt.Sprintf("- **Tracked Files:** %d\n\n", len(selectedFiles)))
-
-	sb.WriteString("## Tracked File Tree\n\n```\n")
-	for _, f := range selectedFiles {
-		sb.WriteString(f + "\n")
-	}
-	sb.WriteString("```\n\n")
-
-	for _, entry := range entries {
-		ext := filepath.Ext(entry.path)
-		lang := strings.TrimPrefix(ext, ".")
-		if lang == "hs" {
-			lang = "haskell"
-		} else if lang == "md" {
-			lang = "markdown"
-		}
-		sb.WriteString(fmt.Sprintf("## File: %s\n\n```%s\n%s\n```\n\n", entry.path, lang, strings.TrimRight(entry.content, "\n")))
-	}
-
-	md := sb.String()
-	stats := RollupStats{
-		CommitSHA: commitSHA,
-		Files:     len(selectedFiles),
-		Bytes:     len(md),
-		Runes:     utf8.RuneCountInString(md),
-		Words:     len(strings.Fields(md)),
-	}
-
-	return md, stats, nil
+	blocks := entriesToBlocks(entries, cfg.MaxChars, cfg.AutoShard)
+	return packBlocksIntoShards(cfg, repoName, prefix, commitSHA, commitTime, blocks), nil
 }
 
 func resolveAccessToken(client *http.Client, tokenURL string) (string, error) {
@@ -472,13 +780,13 @@ func resolveAccessToken(client *http.Client, tokenURL string) (string, error) {
 	return tr.AccessToken, nil
 }
 
-func upsertGoogleDoc(client *http.Client, cfg RollupConfig, token string, md string) (string, bool, error) {
+func upsertGoogleDoc(client *http.Client, cfg RollupConfig, mapKey, docTitle, token, md string) (string, bool, error) {
 	mapData := make(map[string]string)
 	if data, err := os.ReadFile(cfg.MapFile); err == nil {
 		_ = json.Unmarshal(data, &mapData)
 	}
 
-	docID := mapData[cfg.Key]
+	docID := mapData[mapKey]
 	if docID != "" {
 		patchURL := fmt.Sprintf("%s/files/%s?uploadType=media", strings.TrimRight(cfg.UploadBaseURL, "/"), docID)
 		req, err := http.NewRequest("PATCH", patchURL, strings.NewReader(md))
@@ -502,7 +810,7 @@ func upsertGoogleDoc(client *http.Client, cfg RollupConfig, token string, md str
 	}
 
 	if !cfg.CreateMissing {
-		return "", false, fmt.Errorf("no doc_id mapped for key %q in %s; pass -create-missing to create one", cfg.Key, cfg.MapFile)
+		return "", false, fmt.Errorf("no doc_id mapped for key %q in %s; pass -create-missing to create one", mapKey, cfg.MapFile)
 	}
 
 	createURL := fmt.Sprintf("%s/files?uploadType=multipart", strings.TrimRight(cfg.UploadBaseURL, "/"))
@@ -516,7 +824,7 @@ func upsertGoogleDoc(client *http.Client, cfg RollupConfig, token string, md str
 		return "", false, err
 	}
 	metaJSON, _ := json.Marshal(map[string]string{
-		"name":     cfg.DocTitle,
+		"name":     docTitle,
 		"mimeType": "application/vnd.google-apps.document",
 	})
 	if _, err := metaPart.Write(metaJSON); err != nil {
@@ -565,7 +873,7 @@ func upsertGoogleDoc(client *http.Client, cfg RollupConfig, token string, md str
 		return "", false, errors.New("drive create returned empty file ID")
 	}
 
-	mapData[cfg.Key] = cr.ID
+	mapData[mapKey] = cr.ID
 	if err := os.MkdirAll(filepath.Dir(cfg.MapFile), 0o755); err == nil {
 		if outBytes, err := json.MarshalIndent(mapData, "", "  "); err == nil {
 			_ = os.WriteFile(cfg.MapFile, outBytes, 0o644)
