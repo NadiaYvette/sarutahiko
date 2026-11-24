@@ -16,11 +16,13 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Data.Time (UTCTime)
 import Fluent.Polytropos.Schema
   ( CatalogSchema (..)
   , MessageSchema (..)
   , ParamType (..)
   , extractInlineTags
+  , mkEmptyCatalog
   , parseParamAnnotations
   )
 import Language.Haskell.TH
@@ -79,10 +81,10 @@ buildParamsRow params = foldr consParam PromotedNilT (Map.toList params)
       in AppT (AppT PromotedConsT pairTy) rest
 
 paramTypeToHaskell :: ParamType -> Type
-paramTypeToHaskell ParamText        = ConT (mkName "Data.Text.Text")
-paramTypeToHaskell ParamVerbatim    = ConT (mkName "Data.Text.Text")
-paramTypeToHaskell ParamNumber      = ConT (mkName "Prelude.Int")
-paramTypeToHaskell ParamDateTime    = ConT (mkName "Data.Time.UTCTime")
+paramTypeToHaskell ParamText        = ConT ''Text
+paramTypeToHaskell ParamVerbatim    = ConT ''Text
+paramTypeToHaskell ParamNumber      = ConT ''Int
+paramTypeToHaskell ParamDateTime    = ConT ''UTCTime
 paramTypeToHaskell (ParamCustom ty) = ConT (mkName (T.unpack ty))
 
 -- | Very minimal pure FTL line parser for catalog schemas.
@@ -109,5 +111,5 @@ parseFtlCatalog loc raw =
 
 reifyCatalogExp :: CatalogSchema -> Exp
 reifyCatalogExp (CatalogSchema loc _ _) =
-  AppE (VarE (mkName "Fluent.Polytropos.Schema.mkEmptyCatalog"))
-    (AppE (VarE (mkName "Data.Text.pack")) (LitE (StringL (T.unpack loc))))
+  AppE (VarE 'mkEmptyCatalog)
+    (AppE (VarE 'T.pack) (LitE (StringL (T.unpack loc))))
