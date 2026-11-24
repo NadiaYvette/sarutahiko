@@ -1,0 +1,68 @@
+cabal-version: 3.0
+name: kogaki-qa
+version: 0.1.0.0
+synopsis: Structural catalog linting and gate validator for Fluent catalogs
+description:
+  Validation gate for Project Fluent (.ftl) translation catalogs enforcing
+  schema compatibility, NoMT provenance guards on endangered languages,
+  complete CLDR plural categories, and rejecting raw terminal escapes.
+license: EUPL-1.2 OR Apache-2.0
+license-file: LICENSE
+author: Nadia Yvette Chambers
+maintainer: nadia.yvette.chambers@ik.me
+category: Localization, Quality
+homepage: https://github.com/NadiaYvette/sarutahiko
+bug-reports: https://github.com/NadiaYvette/sarutahiko/issues
+extra-doc-files:
+  README.md
+  CHANGELOG.md
+build-type: Simple
+tested-with: GHC == 9.14.1, GHC == 9.12.4
+
+source-repository head
+  type: git
+  location: https://github.com/NadiaYvette/sarutahiko
+  subdir: packages/kogaki/kogaki-qa
+
+library
+  exposed-modules:
+    Kogaki.QA
+  hs-source-dirs: src
+  default-language: GHC2024
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wredundant-constraints
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    fluent-polytropos-core >= 0.1.0.0 && < 0.2,
+    kogaki-core >= 0.1.0.0 && < 0.2,
+    kogaki-locales >= 0.1.0.0 && < 0.2,
+    text >= 2.0 && < 2.2
+
+executable kogaki-qa
+  main-is: Main.hs
+  hs-source-dirs: app
+  default-language: GHC2024
+  ghc-options: -Wall -Wcompat -rtsopts
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    kogaki-qa,
+    text >= 2.0 && < 2.2
+
+test-suite kogaki-qa-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  default-language: GHC2024
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    fluent-polytropos-core,
+    kogaki-core,
+    kogaki-locales,
+    kogaki-qa,
+    text >= 2.0 && < 2.2

@@ -1,0 +1,53 @@
+cabal-version: 3.0
+name: kogaki-locales
+version: 0.1.0.0
+synopsis: Pure-Haskell CLDR cardinal plural rules with zero C dependencies
+description:
+  Pure Haskell implementation of Unicode LDML Part 3 cardinal plural evaluation,
+  regional fallback chains, and writing mode registry with zero libicu dependency.
+license: EUPL-1.2 OR Apache-2.0
+license-file: LICENSE
+author: Nadia Yvette Chambers
+maintainer: nadia.yvette.chambers@ik.me
+category: Localization, Text
+homepage: https://github.com/NadiaYvette/sarutahiko
+bug-reports: https://github.com/NadiaYvette/sarutahiko/issues
+extra-doc-files:
+  README.md
+  CHANGELOG.md
+build-type: Simple
+tested-with: GHC == 9.14.1, GHC == 9.12.4
+
+source-repository head
+  type: git
+  location: https://github.com/NadiaYvette/sarutahiko
+  subdir: packages/kogaki/kogaki-locales
+
+library
+  exposed-modules:
+    Kogaki.Locales.Plurals
+    Kogaki.Locales.Registry
+  hs-source-dirs: src
+  default-language: GHC2024
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wredundant-constraints
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    kogaki-core >= 0.1.0.0 && < 0.2,
+    text >= 2.0 && < 2.2
+
+test-suite kogaki-locales-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: test
+  default-language: GHC2024
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+    base >= 4.18 && < 5,
+    containers >= 0.6 && < 0.9,
+    kogaki-core,
+    kogaki-locales,
+    text >= 2.0 && < 2.2

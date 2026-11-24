@@ -4,6 +4,8 @@ packages:
     packages/kogaki/fluent-polytropos-core
     packages/kogaki/fluent-polytropos
     packages/kogaki/fluent-penelope
+    packages/kogaki/kogaki-locales
+    packages/kogaki/kogaki-qa
     packages/sarutahiko/sarutahiko-fields
     packages/sarutahiko/sarutahiko-records
     packages/sarutahiko/sarutahiko-jsonrpc
