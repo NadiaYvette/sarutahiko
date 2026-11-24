@@ -11,8 +11,8 @@ module Kogaki.Text.VirtualCharList
   , UTF8Rope(..)
   , CharListPrism(..)
   , charListPrism
-  , pattern VNil
-  , pattern (:>)
+  , data VNil
+  , data (:>)
   , unconsVirtualChar
   , consVirtualChar
   , appendRopeInPlace

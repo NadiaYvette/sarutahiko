@@ -19,6 +19,7 @@ module Kogaki.Effect.TextLayout
   ) where
 
 import Data.Char (ord, isDigit, isAsciiUpper, isAsciiLower)
+import Data.Kind (Type)
 import Kogaki.Text.VirtualCharList
   ( UTF8Rope
   , unconsVirtualChar
@@ -54,7 +55,7 @@ newtype GraphemeCluster = GraphemeCluster { unGrapheme :: UTF8Rope }
   deriving (Show, Eq)
 
 -- | First-order Penelope effect signature (`OpF #TextLayout`) for i18n text layout.
-data TextLayoutF (ins :: [*]) (exits :: [[*]]) where
+data TextLayoutF (ins :: [Type]) (exits :: [[Type]]) where
   OpSegmentGraphemes
     :: !UTF8Rope
     -> TextLayoutF '[UTF8Rope] '[ '[ [GraphemeCluster] ] ]
@@ -82,7 +83,7 @@ segmentGraphemes !rope =
         Nothing ->
           [GraphemeCluster (packUTF8Literal (reverse accCluster))]
         Just (!c, !rest')
-          | c == '\n' && head accCluster == '\r' ->
+          | c == '\n', ('\r':_) <- accCluster ->
               GraphemeCluster (packUTF8Literal (reverse (c : accCluster)))
                 : segmentGraphemes rest'
           | c == '\x200D' ->
