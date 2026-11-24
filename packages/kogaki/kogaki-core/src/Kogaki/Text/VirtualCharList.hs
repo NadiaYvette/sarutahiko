@@ -5,14 +5,15 @@
 --   src/Kogaki/Text/VirtualCharList.hs
 
 {-# LANGUAGE BangPatterns, MagicHash, PatternSynonyms, ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-pattern-namespace-specifier #-}
 
 module Kogaki.Text.VirtualCharList
   ( UTF8Slice(..)
   , UTF8Rope(..)
   , CharListPrism(..)
   , charListPrism
-  , data VNil
-  , data (:>)
+  , pattern VNil
+  , pattern (:>)
   , unconsVirtualChar
   , consVirtualChar
   , appendRopeInPlace
