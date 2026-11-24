@@ -15,7 +15,7 @@ description:
     .
     See NOTICE.md at the repository root for complete intellectual provenance,
     conceptual lineage, and licensing acknowledgments.
-license:            BSD-3-Clause
+license:            EUPL-1.2 OR Apache-2.0
 license-file:       LICENSE
 author:             Nadia Yvette Chambers
 maintainer:         nadia.yvette.chambers@ik.me
@@ -41,12 +41,16 @@ library
         Kogaki.Effect.TextLayout
         Kogaki.Core
         Kogaki.Core.String
+        Kogaki.Ontology
+        Kogaki.Input
     build-depends:
         base >= 4.20 && < 5,
         text >= 2.1,
         bytestring >= 0.12,
         primitive >= 0.9,
-        mono-traversable >= 1.0.17
+        mono-traversable >= 1.0.17,
+        containers >= 0.6 && < 0.9,
+        scientific >= 0.3 && < 0.4
     hs-source-dirs:   src
 
 test-suite test-kogaki-core
@@ -59,8 +63,11 @@ test-suite test-kogaki-core
         base >= 4.20 && < 5,
         text >= 2.1,
         bytestring >= 0.12,
-        kogaki-core,
+        tasty >= 1.4,
+        tasty-hedgehog >= 1.4,
+        tasty-hunit >= 0.10,
+        hedgehog >= 1.2,
+        containers >= 0.6 && < 0.9,
+        scientific >= 0.3 && < 0.4,
         mono-traversable >= 1.0.17,
-        tasty,
-        hedgehog,
-        tasty-hedgehog
+        kogaki-core
