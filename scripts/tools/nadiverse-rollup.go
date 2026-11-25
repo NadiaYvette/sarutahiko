@@ -1,7 +1,6 @@
-// nadiverse-rollup: Roll git repositories into structured Markdown digests and
-// update linked Google Docs in place for Gemini Notebook auto-sync.
-// Supports whole-file directory-grouped auto-sharding with a Cross-Shard TOC
-// in part-01 so large repos stay strictly beneath Google Docs' 1.02M char cap.
+// nadiverse-rollup: Roll git repositories (working tree, worktree-safe branch
+// snapshots, single branch deltas, or auto-discovered multi-branch deltas) into
+// structured Markdown digests with dual char/word auto-sharding and Cross-Shard TOC.
 package main
 
 import (
@@ -22,24 +21,37 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
 type RollupConfig struct {
-	RepoDir       string
-	Prefix        string
-	Key           string
-	DocTitle      string
-	Tier          string // "arch" or "full"
-	MaxChars      int
-	AutoShard     bool
-	Exclude       string // comma-separated extra exclude patterns
-	OutFile       string
-	MapFile       string
-	DryRun        bool
-	CreateMissing bool
-	UploadBaseURL string
-	TokenURL      string
+	RepoDir           string
+	Prefix            string
+	Ref               string // Optional git ref/branch (reads object DB without touching worktree)
+	Base              string // Optional base ref/tag (or "auto"); enables branch-delta mode
+	AllBranches       bool   // Auto-discover all relevant local branches and pack their deltas into one sharded digest
+	ListBranches      bool   // Print discovered branch selection/skip table and exit
+	BranchInclude     string // Optional comma-separated glob whitelist for -all-branches
+	BranchExclude     string // Comma-separated glob blacklist for -all-branches
+	MaxDeltaCommits   int    // Skip branches with >N commits ahead of base in -all-branches (0 disables)
+	StackAncestors    bool   // In -all-branches, diff descendants against nearest selected ancestor branch
+	DiffContext       int    // Unified diff context lines for modified files in delta mode
+	DeltaFullModified bool   // Emit full file contents instead of unified diffs for modified files in delta mode
+	Key               string
+	DocTitle          string
+	Tier              string // "arch" or "full"
+	MaxChars          int
+	MaxWords          int
+	AutoShard         bool
+	Exclude           string // comma-separated extra file exclude patterns
+	NoDefaultExcludes bool
+	OutFile           string
+	MapFile           string
+	DryRun            bool
+	CreateMissing     bool
+	UploadBaseURL     string
+	TokenURL          string
 }
 
 type RollupStats struct {
@@ -50,19 +62,32 @@ type RollupStats struct {
 	Words     int
 }
 
+type RollupMeta struct {
+	RepoName     string
+	Prefix       string
+	Ref          string
+	Base         string
+	MergeBaseSHA string
+	CommitSHA    string
+	CommitTime   string
+	Mode         string // "worktree", "branch-snapshot", "branch-delta", or "all-branches-delta"
+}
+
 type fileEntry struct {
-	path    string
-	content string
+	path         string
+	content      string
+	langOverride string
 }
 
 type fileBlock struct {
-	path     string // original relative path (or path + " [chunk i/n]" if oversized)
+	path     string
 	rendered string
 	runes    int
+	words    int
 }
 
 type RollupShard struct {
-	Index    int // 1-based
+	Index    int
 	Total    int
 	Key      string
 	Title    string
@@ -71,16 +96,61 @@ type RollupShard struct {
 	Blocks   []fileBlock
 }
 
+type rawBranch struct {
+	Name       string
+	OID        string
+	Upstream   string
+	IsHead     bool
+	Subject    string
+}
+
+type selectedBranch struct {
+	Name          string
+	OID           string
+	Aliases       []string
+	IsHead        bool
+	Subject       string
+	RootBase      string
+	BaseRef       string
+	MergeBaseFull string
+	Ahead         int
+	StackedOn     string
+}
+
+type skippedBranch struct {
+	Name   string
+	OID    string
+	Reason string
+}
+
+type branchPlan struct {
+	DefaultBase string
+	Selected    []selectedBranch
+	Skipped     []skippedBranch
+}
+
 func main() {
 	cfg := RollupConfig{}
 	flag.StringVar(&cfg.RepoDir, "repo", ".", "Path to git repository")
-	flag.StringVar(&cfg.Prefix, "prefix", "", "Optional tracked path prefix (e.g. packages/kogaki)")
-	flag.StringVar(&cfg.Key, "key", "", "Lookup key in -map-file (default: repo or repo:prefix)")
+	flag.StringVar(&cfg.Prefix, "prefix", "", "Optional tracked path prefix (e.g. packages/kogaki or mm/)")
+	flag.StringVar(&cfg.Ref, "ref", "", "Optional git ref/branch to snapshot directly from git object DB (worktree-safe)")
+	flag.StringVar(&cfg.Base, "base", "", "Optional upstream base ref/tag (or 'auto'); enables branch-delta mode")
+	flag.BoolVar(&cfg.AllBranches, "all-branches", false, "Auto-discover relevant local branches and pack their deltas into one sharded digest")
+	flag.BoolVar(&cfg.ListBranches, "list-branches", false, "Discover and print selected/skipped branches for -repo and exit")
+	flag.StringVar(&cfg.BranchInclude, "branch-include", "", "Optional comma-separated glob whitelist for -all-branches (e.g. 'nadia.*,juli-*')")
+	flag.StringVar(&cfg.BranchExclude, "branch-exclude", "backup/*,pre-rebase*,*-backup,debug/*,akpm/*", "Comma-separated glob blacklist for -all-branches")
+	flag.IntVar(&cfg.MaxDeltaCommits, "max-delta-commits", 400, "Skip branches with more than N commits ahead of base in -all-branches (0 disables)")
+	flag.BoolVar(&cfg.StackAncestors, "stack-ancestors", true, "In -all-branches, diff descendant branches against their nearest selected ancestor to avoid duplicate diffs")
+	flag.IntVar(&cfg.DiffContext, "diff-context", 8, "Unified diff context lines for modified files in delta mode")
+	flag.BoolVar(&cfg.DeltaFullModified, "delta-full-modified", false, "In delta mode, emit full contents of modified files instead of unified diffs")
+	flag.StringVar(&cfg.Key, "key", "", "Lookup key in -map-file (default derived from repo, ref, and prefix)")
 	flag.StringVar(&cfg.DocTitle, "title", "", "Google Doc title when creating a new doc")
 	flag.StringVar(&cfg.Tier, "tier", "arch", "Digest tier: 'arch' (interfaces+docs) or 'full'")
-	flag.IntVar(&cfg.MaxChars, "max-chars", 800000, "Max Unicode character count per doc (Google Docs cap ~1.02M)")
-	flag.BoolVar(&cfg.AutoShard, "auto-shard", true, "Automatically bin-pack into whole-file part-01..part-NN docs when exceeding -max-chars")
-	flag.StringVar(&cfg.Exclude, "exclude", "", "Comma-separated extra exclude patterns (e.g. 'examples/,witnesses/,scripts/tasks/')")
+	flag.IntVar(&cfg.MaxChars, "max-chars", 800000, "Max Unicode character count per shard (0 disables; Google Docs cap ~1.02M)")
+	flag.IntVar(&cfg.MaxWords, "max-words", 400000, "Max word count per shard (0 disables; Gemini Notebook cap ~500K)")
+	flag.BoolVar(&cfg.AutoShard, "auto-shard", true, "Automatically bin-pack into whole-file part-01..part-NN shards when exceeding caps")
+	flag.StringVar(&cfg.Exclude, "exclude", "", "Comma-separated extra file exclude patterns (e.g. 'examples/,witnesses/')")
+	flag.BoolVar(&cfg.NoDefaultExcludes, "no-default-excludes", false, "Include default-excluded bulk assets (*.min.js, *.min.css, docs/transcripts/, corpus/, LaTeX aux)")
 	flag.StringVar(&cfg.OutFile, "out", "", "Optional local path to write Markdown digest (multi-shard inserts .part-NN before ext)")
 	flag.StringVar(&cfg.MapFile, "map-file", defaultMapPath(), "JSON file mapping rollup keys to Drive Doc IDs")
 	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Build digest locally without calling Google Drive API")
@@ -102,6 +172,20 @@ func defaultMapPath() string {
 	return ".rollup-map.json"
 }
 
+func countWords(s string) int {
+	n := 0
+	inWord := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			inWord = false
+		} else if !inWord {
+			inWord = true
+			n++
+		}
+	}
+	return n
+}
+
 func runRollup(cfg RollupConfig) error {
 	absRepo, err := filepath.Abs(cfg.RepoDir)
 	if err != nil {
@@ -110,18 +194,65 @@ func runRollup(cfg RollupConfig) error {
 	cfg.RepoDir = absRepo
 	repoName := filepath.Base(absRepo)
 	cleanPrefix := strings.Trim(filepath.ToSlash(cfg.Prefix), "/")
-	if cfg.Key == "" {
-		if cleanPrefix == "" {
-			cfg.Key = repoName
-		} else {
-			cfg.Key = repoName + ":" + cleanPrefix
+
+	if cfg.ListBranches {
+		plan, err := discoverRelevantBranches(cfg)
+		if err != nil {
+			return err
 		}
-	}
-	if cfg.DocTitle == "" {
-		cfg.DocTitle = fmt.Sprintf("Rollup: %s (%s)", cfg.Key, cfg.Tier)
+		fmt.Printf("=== %s (default base: %s) ===\n", repoName, plan.DefaultBase)
+		fmt.Printf("Selected (%d):\n", len(plan.Selected))
+		for _, b := range plan.Selected {
+			headMark := " "
+			if b.IsHead {
+				headMark = "*"
+			}
+			aliasStr := ""
+			if len(b.Aliases) > 0 {
+				aliasStr = " [aliases: " + strings.Join(b.Aliases, ", ") + "]"
+			}
+			stackStr := ""
+			if b.StackedOn != "" {
+				stackStr = fmt.Sprintf(" (stacked on %s)", b.StackedOn)
+			}
+			fmt.Printf("  %s %-46s %s  +%d vs %s%s%s\n",
+				headMark, b.Name, shortSHA(b.OID), b.Ahead, b.BaseRef, stackStr, aliasStr)
+		}
+		fmt.Printf("Skipped (%d):\n", len(plan.Skipped))
+		for _, s := range plan.Skipped {
+			fmt.Printf("  - %-46s %s  (%s)\n", s.Name, shortSHA(s.OID), s.Reason)
+		}
+		return nil
 	}
 
-	shards, err := buildRollupShards(cfg, repoName, cleanPrefix)
+	if cfg.Key == "" {
+		key := repoName
+		if cfg.AllBranches {
+			key += ":branches"
+		} else if cfg.Ref != "" {
+			key += "@" + cfg.Ref
+		}
+		if cleanPrefix != "" {
+			key += ":" + cleanPrefix
+		}
+		cfg.Key = key
+	}
+	if cfg.DocTitle == "" {
+		switch {
+		case cfg.AllBranches:
+			cfg.DocTitle = fmt.Sprintf("Rollup: %s (all branches delta)", cfg.Key)
+		case cfg.Base != "":
+			targetRef := cfg.Ref
+			if targetRef == "" {
+				targetRef = "HEAD"
+			}
+			cfg.DocTitle = fmt.Sprintf("Rollup: %s (delta %s..%s)", cfg.Key, cfg.Base, targetRef)
+		default:
+			cfg.DocTitle = fmt.Sprintf("Rollup: %s (%s)", cfg.Key, cfg.Tier)
+		}
+	}
+
+	shards, meta, err := buildRollupShards(cfg, repoName, cleanPrefix)
 	if err != nil {
 		return err
 	}
@@ -131,12 +262,16 @@ func runRollup(cfg RollupConfig) error {
 		totalFiles += sh.Stats.Files
 		totalRunes += sh.Stats.Runes
 		totalWords += sh.Stats.Words
-		fmt.Printf("[nadiverse-rollup] key=%s part=%02d/%02d tier=%s commit=%s files=%d runes=%d words=%d bytes=%d\n",
-			sh.Key, sh.Index, sh.Total, cfg.Tier, sh.Stats.CommitSHA, sh.Stats.Files, sh.Stats.Runes, sh.Stats.Words, sh.Stats.Bytes)
+		fmt.Printf("[nadiverse-rollup] key=%s mode=%s part=%02d/%02d tier=%s commit=%s files=%d runes=%d words=%d bytes=%d\n",
+			sh.Key, meta.Mode, sh.Index, sh.Total, cfg.Tier, sh.Stats.CommitSHA, sh.Stats.Files, sh.Stats.Runes, sh.Stats.Words, sh.Stats.Bytes)
 
 		if cfg.MaxChars > 0 && sh.Stats.Runes > cfg.MaxChars {
 			return fmt.Errorf("shard %s (%02d/%02d) has %d characters, exceeding -max-chars=%d",
 				sh.Key, sh.Index, sh.Total, sh.Stats.Runes, cfg.MaxChars)
+		}
+		if cfg.MaxWords > 0 && sh.Stats.Words > cfg.MaxWords {
+			return fmt.Errorf("shard %s (%02d/%02d) has %d words, exceeding -max-words=%d",
+				sh.Key, sh.Index, sh.Total, sh.Stats.Words, cfg.MaxWords)
 		}
 	}
 	if len(shards) > 1 {
@@ -183,6 +318,13 @@ func runRollup(cfg RollupConfig) error {
 	return nil
 }
 
+func shortSHA(oid string) string {
+	if len(oid) > 12 {
+		return oid[:12]
+	}
+	return oid
+}
+
 func shardOutPath(basePath string, idx, total int) string {
 	if total <= 1 {
 		return basePath
@@ -220,7 +362,7 @@ func warnStaleShards(mapFile, baseKey string, activeCount int) {
 	}
 }
 
-func gitCmd(repoDir string, args ...string) (string, error) {
+func gitCmdBytes(repoDir string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = repoDir
 	var out bytes.Buffer
@@ -228,16 +370,391 @@ func gitCmd(repoDir string, args ...string) (string, error) {
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(errOut.String()))
+		return nil, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(errOut.String()))
 	}
-	return out.String(), nil
+	return out.Bytes(), nil
 }
 
-func loadRollupIgnore(repoDir string, extraCSV string) []string {
+func gitCmd(repoDir string, args ...string) (string, error) {
+	b, err := gitCmdBytes(repoDir, args...)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func splitCSV(csv string) []string {
+	if strings.TrimSpace(csv) == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(csv, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func matchBranchGlob(branch, pat string) bool {
+	if strings.HasSuffix(pat, "/*") {
+		prefix := strings.TrimSuffix(pat, "*")
+		if strings.HasPrefix(branch, prefix) {
+			return true
+		}
+	}
+	if strings.HasPrefix(pat, "*") && !strings.Contains(pat[1:], "*") {
+		return strings.HasSuffix(branch, pat[1:])
+	}
+	if strings.HasSuffix(pat, "*") && !strings.Contains(pat[:len(pat)-1], "*") {
+		return strings.HasPrefix(branch, pat[:len(pat)-1])
+	}
+	ok, err := filepath.Match(pat, branch)
+	return err == nil && ok
+}
+
+func matchesAnyBranchGlob(branch string, pats []string) bool {
+	for _, p := range pats {
+		if matchBranchGlob(branch, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// detectPersonalRemotes identifies mirror remotes (github, sourcehut, etc.)
+// and marks origin as personal iff its fetch URL matches any known mirror URL.
+func detectPersonalRemotes(repoDir string) map[string]bool {
+	personal := map[string]bool{
+		"github":    true,
+		"gitlab":    true,
+		"sourcehut": true,
+		"disroot":   true,
+		"framagit":  true,
+		"atom":      true,
+		"rad":       true,
+		"all":       true,
+	}
+	out, err := gitCmd(repoDir, "remote", "-v")
+	if err != nil {
+		return personal
+	}
+	mirrorURLs := make(map[string]bool)
+	var originURLs []string
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		rem, rawURL := fields[0], strings.TrimSuffix(fields[1], ".git")
+		if personal[rem] {
+			mirrorURLs[rawURL] = true
+		} else if rem == "origin" {
+			originURLs = append(originURLs, rawURL)
+		}
+	}
+	for _, u := range originURLs {
+		if mirrorURLs[u] {
+			personal["origin"] = true
+			break
+		}
+	}
+	return personal
+}
+
+func resolveDefaultBase(repoDir, requested string) (string, error) {
+	if requested != "" && requested != "auto" {
+		if _, err := gitCmd(repoDir, "rev-parse", "--verify", "--quiet", requested+"^{commit}"); err != nil {
+			return "", fmt.Errorf("requested -base %q is not a valid commit ref: %w", requested, err)
+		}
+		return requested, nil
+	}
+	if sym, err := gitCmd(repoDir, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		s := strings.TrimSpace(sym)
+		if s != "" {
+			if _, err := gitCmd(repoDir, "rev-parse", "--verify", "--quiet", s+"^{commit}"); err == nil {
+				return s, nil
+			}
+		}
+	}
+	candidates := []string{"origin/master", "origin/main", "master", "main"}
+	for _, c := range candidates {
+		if _, err := gitCmd(repoDir, "rev-parse", "--verify", "--quiet", c+"^{commit}"); err == nil {
+			return c, nil
+		}
+	}
+	return "", errors.New("could not auto-detect default base ref (tried origin/HEAD, origin/master, origin/main, master, main); pass -base explicitly")
+}
+
+func listLocalBranches(repoDir string) ([]rawBranch, error) {
+	out, err := gitCmd(repoDir, "for-each-ref",
+		"--format=%(refname:short)%00%(objectname)%00%(upstream:short)%00%(HEAD)%00%(subject)",
+		"refs/heads")
+	if err != nil {
+		return nil, fmt.Errorf("git for-each-ref: %w", err)
+	}
+	var branches []rawBranch
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\x00")
+		if len(parts) < 5 {
+			continue
+		}
+		branches = append(branches, rawBranch{
+			Name:     parts[0],
+			OID:      parts[1],
+			Upstream: parts[2],
+			IsHead:   strings.TrimSpace(parts[3]) == "*",
+			Subject:  parts[4],
+		})
+	}
+	return branches, nil
+}
+
+func revListCount(repoDir, revRange string) (int, error) {
+	out, err := gitCmd(repoDir, "rev-list", "--count", revRange)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(out))
+}
+
+func isStrictAncestor(repoDir, ancOID, descOID string) bool {
+	if ancOID == descOID {
+		return false
+	}
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", ancOID, descOID)
+	cmd.Dir = repoDir
+	return cmd.Run() == nil
+}
+
+func branchPriorityLess(a, b rawBranch) bool {
+	if a.IsHead != b.IsHead {
+		return a.IsHead
+	}
+	aNadia := strings.HasPrefix(a.Name, "nadia.")
+	bNadia := strings.HasPrefix(b.Name, "nadia.")
+	if aNadia != bNadia {
+		return aNadia
+	}
+	if len(a.Name) != len(b.Name) {
+		return len(a.Name) < len(b.Name)
+	}
+	return a.Name < b.Name
+}
+
+func discoverRelevantBranches(cfg RollupConfig) (branchPlan, error) {
+	defaultBase, err := resolveDefaultBase(cfg.RepoDir, cfg.Base)
+	if err != nil {
+		return branchPlan{}, err
+	}
+	personalRemotes := detectPersonalRemotes(cfg.RepoDir)
+	includePats := splitCSV(cfg.BranchInclude)
+	excludePats := splitCSV(cfg.BranchExclude)
+
+	raws, err := listLocalBranches(cfg.RepoDir)
+	if err != nil {
+		return branchPlan{}, err
+	}
+
+	plan := branchPlan{DefaultBase: defaultBase}
+
+	// Group by commit OID first so duplicate tips pick one canonical branch name.
+	byOID := make(map[string][]rawBranch)
+	var keptOIDs []string
+
+	for _, rb := range raws {
+		if len(includePats) > 0 && !matchesAnyBranchGlob(rb.Name, includePats) {
+			plan.Skipped = append(plan.Skipped, skippedBranch{rb.Name, rb.OID, "not matched by -branch-include"})
+			continue
+		}
+		if matchesAnyBranchGlob(rb.Name, excludePats) {
+			plan.Skipped = append(plan.Skipped, skippedBranch{rb.Name, rb.OID, "excluded by -branch-exclude"})
+			continue
+		}
+		if _, seen := byOID[rb.OID]; !seen {
+			keptOIDs = append(keptOIDs, rb.OID)
+		}
+		byOID[rb.OID] = append(byOID[rb.OID], rb)
+	}
+
+	for _, oid := range keptOIDs {
+		group := byOID[oid]
+		sort.Slice(group, func(i, j int) bool { return branchPriorityLess(group[i], group[j]) })
+		primary := group[0]
+		var aliases []string
+		for _, dup := range group[1:] {
+			aliases = append(aliases, dup.Name)
+		}
+
+		// Determine per-branch root base: if any branch in the group tracks a non-personal upstream remote,
+		// use that upstream ref (so tracking branches like kas/pte_size or akpm/mm-everything diff properly).
+		rootBase := defaultBase
+		for _, cand := range group {
+			if cand.Upstream == "" {
+				continue
+			}
+			rem := strings.SplitN(cand.Upstream, "/", 2)[0]
+			if rem != "" && !personalRemotes[rem] {
+				if _, err := gitCmd(cfg.RepoDir, "rev-parse", "--verify", "--quiet", cand.Upstream+"^{commit}"); err == nil {
+					rootBase = cand.Upstream
+					break
+				}
+			}
+		}
+
+		mbOut, err := gitCmd(cfg.RepoDir, "merge-base", rootBase, primary.OID)
+		if err != nil {
+			plan.Skipped = append(plan.Skipped, skippedBranch{primary.Name, primary.OID, "no common ancestor with " + rootBase})
+			continue
+		}
+		mergeBaseFull := strings.TrimSpace(mbOut)
+
+		ahead, err := revListCount(cfg.RepoDir, mergeBaseFull+".."+primary.OID)
+		if err != nil {
+			plan.Skipped = append(plan.Skipped, skippedBranch{primary.Name, primary.OID, "rev-list error"})
+			continue
+		}
+		if ahead == 0 {
+			reason := fmt.Sprintf("0 commits ahead of %s", rootBase)
+			plan.Skipped = append(plan.Skipped, skippedBranch{primary.Name, primary.OID, reason})
+			for _, a := range aliases {
+				plan.Skipped = append(plan.Skipped, skippedBranch{a, primary.OID, reason})
+			}
+			continue
+		}
+		if cfg.MaxDeltaCommits > 0 && ahead > cfg.MaxDeltaCommits {
+			reason := fmt.Sprintf("%d commits ahead of %s (exceeds -max-delta-commits=%d)", ahead, rootBase, cfg.MaxDeltaCommits)
+			plan.Skipped = append(plan.Skipped, skippedBranch{primary.Name, primary.OID, reason})
+			for _, a := range aliases {
+				plan.Skipped = append(plan.Skipped, skippedBranch{a, primary.OID, reason})
+			}
+			continue
+		}
+
+		for _, a := range aliases {
+			plan.Skipped = append(plan.Skipped, skippedBranch{a, primary.OID, "same tip as " + primary.Name})
+		}
+
+		plan.Selected = append(plan.Selected, selectedBranch{
+			Name:          primary.Name,
+			OID:           primary.OID,
+			Aliases:       aliases,
+			IsHead:        primary.IsHead,
+			Subject:       primary.Subject,
+			RootBase:      rootBase,
+			BaseRef:       rootBase,
+			MergeBaseFull: mergeBaseFull,
+			Ahead:         ahead,
+		})
+	}
+
+	// Optional ancestor stacking: diff descendant branches against their nearest selected ancestor
+	// sharing the same RootBase so stacked topic branches never duplicate parent patchsets.
+	if cfg.StackAncestors && len(plan.Selected) > 1 {
+		origAhead := make([]int, len(plan.Selected))
+		for i, b := range plan.Selected {
+			origAhead[i] = b.Ahead
+		}
+		for i := range plan.Selected {
+			bestParent := -1
+			bestParentAhead := -1
+			for j := range plan.Selected {
+				if i == j {
+					continue
+				}
+				if plan.Selected[i].RootBase != plan.Selected[j].RootBase {
+					continue
+				}
+				if origAhead[j] >= origAhead[i] {
+					continue
+				}
+				if isStrictAncestor(cfg.RepoDir, plan.Selected[j].OID, plan.Selected[i].OID) {
+					if origAhead[j] > bestParentAhead {
+						bestParent = j
+						bestParentAhead = origAhead[j]
+					}
+				}
+			}
+			if bestParent >= 0 {
+				parent := plan.Selected[bestParent]
+				if incAhead, err := revListCount(cfg.RepoDir, parent.OID+".."+plan.Selected[i].OID); err == nil && incAhead > 0 {
+					plan.Selected[i].BaseRef = parent.Name
+					plan.Selected[i].MergeBaseFull = parent.OID
+					plan.Selected[i].Ahead = incAhead
+					plan.Selected[i].StackedOn = parent.Name
+				}
+			}
+		}
+	}
+
+	// Sort selected branches: root branches first (HEAD first, then alphabetical), then stacked descendants.
+	sort.Slice(plan.Selected, func(i, j int) bool {
+		a, b := plan.Selected[i], plan.Selected[j]
+		if (a.StackedOn != "") != (b.StackedOn != "") {
+			return a.StackedOn == ""
+		}
+		if a.IsHead != b.IsHead {
+			return a.IsHead
+		}
+		return a.Name < b.Name
+	})
+	sort.Slice(plan.Skipped, func(i, j int) bool { return plan.Skipped[i].Name < plan.Skipped[j].Name })
+
+	return plan, nil
+}
+
+func renderBranchesSummaryMD(repoName string, plan branchPlan) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("# Discovered Branch Delta Summary: `%s`\n\n", repoName))
+	sb.WriteString(fmt.Sprintf("- **Default Base:** `%s`\n", plan.DefaultBase))
+	sb.WriteString(fmt.Sprintf("- **Selected Branches:** %d\n", len(plan.Selected)))
+	sb.WriteString(fmt.Sprintf("- **Skipped Branches:** %d\n\n", len(plan.Skipped)))
+
+	sb.WriteString("## Selected Branches\n\n")
+	sb.WriteString("| Branch | Commit | Ahead | Diff Base | Aliases | Tip Subject |\n")
+	sb.WriteString("| :--- | :--- | ---: | :--- | :--- | :--- |\n")
+	for _, b := range plan.Selected {
+		aliases := "-"
+		if len(b.Aliases) > 0 {
+			aliases = "`" + strings.Join(b.Aliases, "`, `") + "`"
+		}
+		baseCol := "`" + b.BaseRef + "`"
+		if b.StackedOn != "" {
+			baseCol += " *(stacked)*"
+		}
+		subj := strings.ReplaceAll(b.Subject, "|", "\\|")
+		sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %d | %s | %s | %s |\n",
+			b.Name, shortSHA(b.OID), b.Ahead, baseCol, aliases, subj))
+	}
+
+	if len(plan.Skipped) > 0 {
+		sb.WriteString("\n## Skipped Branches\n\n")
+		sb.WriteString("| Branch | Commit | Reason |\n")
+		sb.WriteString("| :--- | :--- | :--- |\n")
+		for _, s := range plan.Skipped {
+			sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", s.Name, shortSHA(s.OID), s.Reason))
+		}
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func loadRollupIgnore(repoDir, ref, extraCSV string) []string {
 	var patterns []string
-	ignorePath := filepath.Join(repoDir, ".rollupignore")
-	if data, err := os.ReadFile(ignorePath); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
+	var rawIgnore []byte
+	var err error
+	if ref != "" {
+		rawIgnore, err = gitCmdBytes(repoDir, "show", ref+":.rollupignore")
+	}
+	if ref == "" || err != nil {
+		rawIgnore, err = os.ReadFile(filepath.Join(repoDir, ".rollupignore"))
+	}
+	if err == nil {
+		for _, line := range strings.Split(string(rawIgnore), "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.HasPrefix(line, "#") {
 				continue
@@ -245,21 +762,14 @@ func loadRollupIgnore(repoDir string, extraCSV string) []string {
 			patterns = append(patterns, line)
 		}
 	}
-	if extraCSV != "" {
-		for _, part := range strings.Split(extraCSV, ",") {
-			p := strings.TrimSpace(part)
-			if p != "" {
-				patterns = append(patterns, p)
-			}
-		}
-	}
+	patterns = append(patterns, splitCSV(extraCSV)...)
 	return patterns
 }
 
 func matchesPattern(path, pat string) bool {
 	if strings.HasSuffix(pat, "/") {
 		prefix := strings.TrimSuffix(pat, "/")
-		if strings.HasPrefix(path, prefix+"/") || path == prefix {
+		if strings.HasPrefix(path, prefix+"/") || path == prefix || strings.Contains(path, "/"+prefix+"/") {
 			return true
 		}
 	}
@@ -274,7 +784,7 @@ func matchesPattern(path, pat string) bool {
 	return false
 }
 
-func shouldExclude(relPath string, ignorePatterns []string) bool {
+func shouldExclude(relPath string, ignorePatterns []string, noDefaultExcludes bool) bool {
 	base := filepath.Base(relPath)
 	if base == "package-lock.json" || base == "Cargo.lock" || base == "flake.lock" {
 		return true
@@ -293,6 +803,25 @@ func shouldExclude(relPath string, ignorePatterns []string) bool {
 	switch ext {
 	case ".patch", ".hi", ".lock", ".o", ".tix", ".mix":
 		return true
+	}
+	if !noDefaultExcludes {
+		if strings.HasSuffix(base, ".min.js") || strings.HasSuffix(base, ".min.css") ||
+			strings.HasSuffix(base, ".run.xml") {
+			return true
+		}
+		switch ext {
+		case ".aux", ".toc", ".fls", ".fdb_latexmk", ".bbl", ".blg", ".bcf":
+			return true
+		}
+		if strings.HasPrefix(clean, "docs/transcripts/") || strings.Contains(clean, "/docs/transcripts/") {
+			return true
+		}
+		if strings.HasPrefix(clean, "corpus/") || strings.Contains(clean, "/corpus/") {
+			return true
+		}
+		if strings.HasPrefix(clean, "CMakeFiles/") || strings.Contains(clean, "/CMakeFiles/") {
+			return true
+		}
 	}
 	for _, pat := range ignorePatterns {
 		if matchesPattern(clean, pat) {
@@ -329,8 +858,6 @@ func isArchCandidate(relPath string) bool {
 	return false
 }
 
-// extractArchSummaryHS extracts module header, export list, docstrings, and
-// top-level data/newtype/type/class/family declarations from Haskell sources.
 func extractArchSummaryHS(content string) string {
 	lines := strings.Split(content, "\n")
 	var result []string
@@ -428,15 +955,25 @@ func fenceLang(relPath string) string {
 		return "coq"
 	case "s":
 		return "asm"
+	case "ltx", "tex":
+		return "latex"
+	case "idr":
+		return "idris"
+	case "kk":
+		return "koka"
+	case "txt":
+		return "text"
 	default:
 		return ext
 	}
 }
 
-func renderFileBlock(path, content string) fileBlock {
-	lang := fenceLang(path)
+func renderFileBlock(path, content, langOverride string) fileBlock {
+	lang := langOverride
+	if lang == "" {
+		lang = fenceLang(path)
+	}
 	body := strings.TrimRight(content, "\n")
-	// Use a 4-backtick fence if the file itself contains triple backticks (e.g. Markdown docs).
 	fence := "```"
 	if strings.Contains(body, "```") {
 		fence = "````"
@@ -446,44 +983,72 @@ func renderFileBlock(path, content string) fileBlock {
 		path:     path,
 		rendered: rendered,
 		runes:    utf8.RuneCountInString(rendered),
+		words:    countWords(rendered),
 	}
 }
 
-func entriesToBlocks(entries []fileEntry, maxChars int, autoShard bool) []fileBlock {
+func entriesToBlocks(entries []fileEntry, maxChars, maxWords int, autoShard bool) []fileBlock {
 	var blocks []fileBlock
-	// Leave headroom for shard header/TOC; only split a single file if it cannot fit alone.
-	singleFileCap := maxChars - 8192
+	singleCharCap := 0
+	if maxChars > 12288 {
+		singleCharCap = maxChars - 8192
+	}
+	singleWordCap := 0
+	if maxWords > 2048 {
+		singleWordCap = maxWords - 1024
+	}
+
 	for _, entry := range entries {
-		blk := renderFileBlock(entry.path, entry.content)
-		if !autoShard || maxChars <= 0 || singleFileCap <= 4096 || blk.runes <= singleFileCap {
+		blk := renderFileBlock(entry.path, entry.content, entry.langOverride)
+		oversizedChars := singleCharCap > 0 && blk.runes > singleCharCap
+		oversizedWords := singleWordCap > 0 && blk.words > singleWordCap
+		if !autoShard || (!oversizedChars && !oversizedWords) {
 			blocks = append(blocks, blk)
 			continue
 		}
-		// Oversized single file: split cleanly on line boundaries.
+
 		lines := strings.Split(entry.content, "\n")
 		var rawChunks []string
 		var cur strings.Builder
 		curRunes := 0
-		chunkBudget := singleFileCap - 256
+		curWords := 0
+		charBudget := 0
+		if singleCharCap > 0 {
+			charBudget = singleCharCap - 256
+		}
+		wordBudget := 0
+		if singleWordCap > 0 {
+			wordBudget = singleWordCap - 64
+		}
+
 		for _, line := range lines {
 			lr := utf8.RuneCountInString(line) + 1
-			if curRunes > 0 && curRunes+lr > chunkBudget {
+			lw := countWords(line)
+			exceedsChars := charBudget > 0 && curRunes+lr > charBudget
+			exceedsWords := wordBudget > 0 && curWords+lw > wordBudget
+			if (curRunes > 0 || curWords > 0) && (exceedsChars || exceedsWords) {
 				rawChunks = append(rawChunks, cur.String())
 				cur.Reset()
 				curRunes = 0
+				curWords = 0
 			}
 			cur.WriteString(line)
 			cur.WriteByte('\n')
 			curRunes += lr
+			curWords += lw
 		}
 		if cur.Len() > 0 {
 			rawChunks = append(rawChunks, cur.String())
 		}
-		fmt.Fprintf(os.Stderr, "[nadiverse-rollup] note: oversized file %s (%d runes) split into %d chunks\n",
-			entry.path, blk.runes, len(rawChunks))
+		fmt.Fprintf(os.Stderr, "[nadiverse-rollup] note: oversized file %s (%d runes, %d words) split into %d chunks\n",
+			entry.path, blk.runes, blk.words, len(rawChunks))
 		for ci, chunk := range rawChunks {
 			label := fmt.Sprintf("%s [chunk %d/%d]", entry.path, ci+1, len(rawChunks))
-			blocks = append(blocks, renderFileBlock(label, chunk))
+			lang := entry.langOverride
+			if lang == "" {
+				lang = fenceLang(entry.path)
+			}
+			blocks = append(blocks, renderFileBlock(label, chunk, lang))
 		}
 	}
 	return blocks
@@ -494,25 +1059,27 @@ func renderCrossShardTOC(baseKey string, groups [][]fileBlock) string {
 	sb.WriteString("## Cross-Shard Table of Contents\n\n")
 	sb.WriteString(fmt.Sprintf("This digest is split across **%d shards** (`part-01` .. `part-%02d`) using whole-file directory-grouped bin-packing.\n\n",
 		len(groups), len(groups)))
-	sb.WriteString("| Shard | Key | Files | Body Runes | First File | Last File |\n")
-	sb.WriteString("| :--- | :--- | ---: | ---: | :--- | :--- |\n")
+	sb.WriteString("| Shard | Key | Files | Body Runes | Body Words | First File | Last File |\n")
+	sb.WriteString("| :--- | :--- | ---: | ---: | ---: | :--- | :--- |\n")
 	for i, g := range groups {
 		sumRunes := 0
+		sumWords := 0
 		for _, b := range g {
 			sumRunes += b.runes
+			sumWords += b.words
 		}
 		first, last := "(index-only)", "(index-only)"
 		if len(g) > 0 {
 			first = "`" + g[0].path + "`"
 			last = "`" + g[len(g)-1].path + "`"
 		}
-		sb.WriteString(fmt.Sprintf("| `part-%02d` | `%s:part-%02d` | %d | %d | %s | %s |\n",
-			i+1, baseKey, i+1, len(g), sumRunes, first, last))
+		sb.WriteString(fmt.Sprintf("| `part-%02d` | `%s:part-%02d` | %d | %d | %d | %s | %s |\n",
+			i+1, baseKey, i+1, len(g), sumRunes, sumWords, first, last))
 	}
 	sb.WriteString("\n### Master File Index (`filepath -> shard`)\n\n```\n")
 	for i, g := range groups {
 		for _, b := range g {
-			sb.WriteString(fmt.Sprintf("part-%02d  %8d runes  %s\n", i+1, b.runes, b.path))
+			sb.WriteString(fmt.Sprintf("part-%02d  %8d runes  %7d words  %s\n", i+1, b.runes, b.words, b.path))
 		}
 	}
 	sb.WriteString("```\n\n")
@@ -521,7 +1088,7 @@ func renderCrossShardTOC(baseKey string, groups [][]fileBlock) string {
 
 func renderShardMarkdown(
 	cfg RollupConfig,
-	repoName, prefix, commitSHA, commitTime string,
+	meta RollupMeta,
 	shardIdx, totalShards int,
 	blocks []fileBlock,
 	crossTOC string,
@@ -532,11 +1099,22 @@ func renderShardMarkdown(
 	} else {
 		sb.WriteString(fmt.Sprintf("# Monorepo Digest: %s\n\n", cfg.Key))
 	}
-	sb.WriteString(fmt.Sprintf("- **Repository:** `%s`\n", repoName))
-	if prefix != "" {
-		sb.WriteString(fmt.Sprintf("- **Prefix:** `%s`\n", prefix))
+	sb.WriteString(fmt.Sprintf("- **Repository:** `%s`\n", meta.RepoName))
+	sb.WriteString(fmt.Sprintf("- **Mode:** `%s`\n", meta.Mode))
+	if meta.Ref != "" {
+		sb.WriteString(fmt.Sprintf("- **Ref:** `%s`\n", meta.Ref))
 	}
-	sb.WriteString(fmt.Sprintf("- **Commit:** `%s` (%s)\n", commitSHA, commitTime))
+	if meta.Base != "" {
+		if meta.MergeBaseSHA != "" {
+			sb.WriteString(fmt.Sprintf("- **Base:** `%s` (merge-base `%s`)\n", meta.Base, meta.MergeBaseSHA))
+		} else {
+			sb.WriteString(fmt.Sprintf("- **Default Base:** `%s`\n", meta.Base))
+		}
+	}
+	if meta.Prefix != "" {
+		sb.WriteString(fmt.Sprintf("- **Prefix:** `%s`\n", meta.Prefix))
+	}
+	sb.WriteString(fmt.Sprintf("- **Commit:** `%s` (%s)\n", meta.CommitSHA, meta.CommitTime))
 	sb.WriteString(fmt.Sprintf("- **Tier:** `%s`\n", cfg.Tier))
 	if totalShards > 1 {
 		sb.WriteString(fmt.Sprintf("- **Shard:** `%02d / %02d` (Master Cross-Shard TOC is in `part-01`)\n", shardIdx, totalShards))
@@ -559,62 +1137,80 @@ func renderShardMarkdown(
 	return sb.String()
 }
 
+func withinCaps(runes, words, maxChars, maxWords int) bool {
+	if maxChars > 0 && runes > maxChars {
+		return false
+	}
+	if maxWords > 0 && words > maxWords {
+		return false
+	}
+	return true
+}
+
 func packBlocksIntoShards(
 	cfg RollupConfig,
-	repoName, prefix, commitSHA, commitTime string,
+	meta RollupMeta,
 	blocks []fileBlock,
 ) []RollupShard {
-	if !cfg.AutoShard || cfg.MaxChars <= 0 {
-		md := renderShardMarkdown(cfg, repoName, prefix, commitSHA, commitTime, 1, 1, blocks, "")
-		return []RollupShard{makeShard(cfg, 1, 1, commitSHA, blocks, md)}
+	if !cfg.AutoShard || (cfg.MaxChars <= 0 && cfg.MaxWords <= 0) {
+		md := renderShardMarkdown(cfg, meta, 1, 1, blocks, "")
+		return []RollupShard{makeShard(cfg, 1, 1, meta.CommitSHA, blocks, md)}
 	}
 
-	// Fast path: try single unsharded document first.
-	singleMD := renderShardMarkdown(cfg, repoName, prefix, commitSHA, commitTime, 1, 1, blocks, "")
-	if utf8.RuneCountInString(singleMD) <= cfg.MaxChars {
-		return []RollupShard{makeShard(cfg, 1, 1, commitSHA, blocks, singleMD)}
+	singleMD := renderShardMarkdown(cfg, meta, 1, 1, blocks, "")
+	if withinCaps(utf8.RuneCountInString(singleMD), countWords(singleMD), cfg.MaxChars, cfg.MaxWords) {
+		return []RollupShard{makeShard(cfg, 1, 1, meta.CommitSHA, blocks, singleMD)}
 	}
 
-	// Multi-shard fixed-point packing: reserve space for Cross-Shard TOC in part-01.
-	const baseHeaderMargin = 1024
-	tocReserve := 0
+	const baseHeaderRuneMargin = 1280
+	const baseHeaderWordMargin = 200
+	tocRuneReserve := 0
+	tocWordReserve := 0
 	var groups [][]fileBlock
 	var crossTOC string
 
-	for pass := 0; pass < 6; pass++ {
+	for pass := 0; pass < 8; pass++ {
 		groups = nil
 		var cur []fileBlock
-		curBodyRunes := 0
-		curTreeRunes := 0
+		curBodyRunes, curTreeRunes := 0, 0
+		curBodyWords, curTreeWords := 0, 0
 
 		flush := func() {
 			if len(cur) > 0 {
 				groups = append(groups, cur)
 				cur = nil
-				curBodyRunes = 0
-				curTreeRunes = 0
+				curBodyRunes, curTreeRunes = 0, 0
+				curBodyWords, curTreeWords = 0, 0
 			}
 		}
 
-		// If the TOC alone nearly fills shard 0, emit shard 0 as a dedicated index-only shard.
-		indexOnlyFirst := tocReserve > 0 && tocReserve+baseHeaderMargin >= cfg.MaxChars-4096
+		indexOnlyFirst := (cfg.MaxChars > 0 && tocRuneReserve > 0 && tocRuneReserve+baseHeaderRuneMargin >= cfg.MaxChars-4096) ||
+			(cfg.MaxWords > 0 && tocWordReserve > 0 && tocWordReserve+baseHeaderWordMargin >= cfg.MaxWords-512)
 		if indexOnlyFirst {
 			groups = append(groups, nil)
 		}
 
 		for _, b := range blocks {
-			extra := 0
+			extraRunes, extraWords := 0, 0
 			if len(groups) == 0 && !indexOnlyFirst {
-				extra = tocReserve
+				extraRunes = tocRuneReserve
+				extraWords = tocWordReserve
 			}
-			treeAdd := utf8.RuneCountInString(b.path) + 1
-			projected := baseHeaderMargin + extra + curTreeRunes + treeAdd + curBodyRunes + b.runes
-			if len(cur) > 0 && projected > cfg.MaxChars {
+			treeAddRunes := utf8.RuneCountInString(b.path) + 1
+			treeAddWords := countWords(b.path)
+			if treeAddWords == 0 {
+				treeAddWords = 1
+			}
+			projRunes := baseHeaderRuneMargin + extraRunes + curTreeRunes + treeAddRunes + curBodyRunes + b.runes
+			projWords := baseHeaderWordMargin + extraWords + curTreeWords + treeAddWords + curBodyWords + b.words
+			if len(cur) > 0 && !withinCaps(projRunes, projWords, cfg.MaxChars, cfg.MaxWords) {
 				flush()
 			}
 			cur = append(cur, b)
 			curBodyRunes += b.runes
-			curTreeRunes += treeAdd
+			curTreeRunes += treeAddRunes
+			curBodyWords += b.words
+			curTreeWords += treeAddWords
 		}
 		flush()
 
@@ -624,11 +1220,27 @@ func packBlocksIntoShards(
 
 		crossTOC = renderCrossShardTOC(cfg.Key, groups)
 		actualTOCRunes := utf8.RuneCountInString(crossTOC)
-		md0 := renderShardMarkdown(cfg, repoName, prefix, commitSHA, commitTime, 1, len(groups), groups[0], crossTOC)
-		if actualTOCRunes <= tocReserve && utf8.RuneCountInString(md0) <= cfg.MaxChars {
+		actualTOCWords := countWords(crossTOC)
+		md0 := renderShardMarkdown(cfg, meta, 1, len(groups), groups[0], crossTOC)
+		md0Runes := utf8.RuneCountInString(md0)
+		md0Words := countWords(md0)
+
+		if actualTOCRunes <= tocRuneReserve && actualTOCWords <= tocWordReserve &&
+			withinCaps(md0Runes, md0Words, cfg.MaxChars, cfg.MaxWords) {
 			break
 		}
-		tocReserve = actualTOCRunes + 512
+		if actualTOCRunes+512 > tocRuneReserve {
+			tocRuneReserve = actualTOCRunes + 512
+		}
+		if cfg.MaxChars > 0 && md0Runes > cfg.MaxChars {
+			tocRuneReserve += (md0Runes - cfg.MaxChars) + 512
+		}
+		if actualTOCWords+128 > tocWordReserve {
+			tocWordReserve = actualTOCWords + 128
+		}
+		if cfg.MaxWords > 0 && md0Words > cfg.MaxWords {
+			tocWordReserve += (md0Words - cfg.MaxWords) + 128
+		}
 	}
 
 	total := len(groups)
@@ -638,8 +1250,8 @@ func packBlocksIntoShards(
 		if i == 0 && total > 1 {
 			toc = crossTOC
 		}
-		md := renderShardMarkdown(cfg, repoName, prefix, commitSHA, commitTime, i+1, total, g, toc)
-		shards = append(shards, makeShard(cfg, i+1, total, commitSHA, g, md))
+		md := renderShardMarkdown(cfg, meta, i+1, total, g, toc)
+		shards = append(shards, makeShard(cfg, i+1, total, meta.CommitSHA, g, md))
 	}
 	return shards
 }
@@ -663,45 +1275,51 @@ func makeShard(cfg RollupConfig, idx, total int, commitSHA string, blocks []file
 			Files:     len(blocks),
 			Bytes:     len(md),
 			Runes:     utf8.RuneCountInString(md),
-			Words:     len(strings.Fields(md)),
+			Words:     countWords(md),
 		},
 	}
 }
 
-func buildRollupShards(cfg RollupConfig, repoName, prefix string) ([]RollupShard, error) {
-	shaOut, err := gitCmd(cfg.RepoDir, "rev-parse", "--short=12", "HEAD")
-	if err != nil {
-		return nil, fmt.Errorf("git rev-parse HEAD: %w", err)
+func filterAndTransformContent(cfg RollupConfig, relPath string, data []byte) (string, bool) {
+	if isBinaryOrInvalidUTF8(data) {
+		return "", false
 	}
-	commitSHA := strings.TrimSpace(shaOut)
+	strContent := string(data)
+	if cfg.Tier == "arch" {
+		if !isArchCandidate(relPath) {
+			return "", false
+		}
+		if strings.HasSuffix(relPath, ".dhall") && len(data) > 50000 {
+			return "", false
+		}
+		if strings.HasSuffix(relPath, ".hs") {
+			strContent = extractArchSummaryHS(strContent)
+		}
+	}
+	return strContent, true
+}
 
-	timeOut, _ := gitCmd(cfg.RepoDir, "log", "-1", "--format=%cI", "HEAD")
-	commitTime := strings.TrimSpace(timeOut)
-
-	lsArgs := []string{"ls-files"}
+func collectWorktreeEntries(cfg RollupConfig, prefix string, ignorePatterns []string) ([]fileEntry, error) {
+	lsArgs := []string{"ls-files", "-z"}
 	if prefix != "" {
 		lsArgs = append(lsArgs, "--", prefix)
 	}
-	lsOut, err := gitCmd(cfg.RepoDir, lsArgs...)
+	lsOut, err := gitCmdBytes(cfg.RepoDir, lsArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files: %w", err)
 	}
 
 	var trackedFiles []string
-	for _, f := range strings.Split(strings.TrimSpace(lsOut), "\n") {
-		f = strings.TrimSpace(f)
-		if f != "" {
-			trackedFiles = append(trackedFiles, f)
+	for _, rec := range bytes.Split(lsOut, []byte{0}) {
+		if len(rec) > 0 {
+			trackedFiles = append(trackedFiles, string(rec))
 		}
 	}
-	// Lexicographic path sort naturally keeps sibling directory modules contiguous.
 	sort.Strings(trackedFiles)
-
-	ignorePatterns := loadRollupIgnore(cfg.RepoDir, cfg.Exclude)
 
 	var entries []fileEntry
 	for _, f := range trackedFiles {
-		if shouldExclude(f, ignorePatterns) {
+		if shouldExclude(f, ignorePatterns, cfg.NoDefaultExcludes) {
 			continue
 		}
 		fullPath := filepath.Join(cfg.RepoDir, f)
@@ -710,27 +1328,300 @@ func buildRollupShards(cfg RollupConfig, repoName, prefix string) ([]RollupShard
 			continue
 		}
 		data, err := os.ReadFile(fullPath)
-		if err != nil || isBinaryOrInvalidUTF8(data) {
+		if err != nil {
+			continue
+		}
+		if content, ok := filterAndTransformContent(cfg, f, data); ok {
+			entries = append(entries, fileEntry{path: f, content: content})
+		}
+	}
+	return entries, nil
+}
+
+func collectRefSnapshotEntries(cfg RollupConfig, ref, prefix string, ignorePatterns []string) ([]fileEntry, error) {
+	lsArgs := []string{"ls-tree", "-r", "-z", ref}
+	if prefix != "" {
+		lsArgs = append(lsArgs, "--", prefix)
+	}
+	lsOut, err := gitCmdBytes(cfg.RepoDir, lsArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("git ls-tree %s: %w", ref, err)
+	}
+
+	type treeBlob struct {
+		path string
+		oid  string
+	}
+	var blobs []treeBlob
+	for _, rec := range bytes.Split(lsOut, []byte{0}) {
+		if len(rec) == 0 {
+			continue
+		}
+		metaBytes, pathBytes, ok := bytes.Cut(rec, []byte{'\t'})
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(string(metaBytes))
+		if len(fields) < 3 || fields[1] != "blob" {
+			continue
+		}
+		blobs = append(blobs, treeBlob{
+			path: string(pathBytes),
+			oid:  fields[2],
+		})
+	}
+	sort.Slice(blobs, func(i, j int) bool { return blobs[i].path < blobs[j].path })
+
+	var entries []fileEntry
+	for _, b := range blobs {
+		if shouldExclude(b.path, ignorePatterns, cfg.NoDefaultExcludes) {
+			continue
+		}
+		data, err := gitCmdBytes(cfg.RepoDir, "cat-file", "blob", b.oid)
+		if err != nil {
+			continue
+		}
+		if content, ok := filterAndTransformContent(cfg, b.path, data); ok {
+			entries = append(entries, fileEntry{path: b.path, content: content})
+		}
+	}
+	return entries, nil
+}
+
+type deltaChange struct {
+	status  string
+	oldPath string
+	newPath string
+}
+
+func parseNameStatusZ(raw []byte) []deltaChange {
+	tokens := bytes.Split(raw, []byte{0})
+	var out []deltaChange
+	for i := 0; i < len(tokens); {
+		st := string(tokens[i])
+		if st == "" {
+			i++
+			continue
+		}
+		if strings.HasPrefix(st, "R") || strings.HasPrefix(st, "C") {
+			if i+2 >= len(tokens) {
+				break
+			}
+			out = append(out, deltaChange{
+				status:  st,
+				oldPath: string(tokens[i+1]),
+				newPath: string(tokens[i+2]),
+			})
+			i += 3
+		} else {
+			if i+1 >= len(tokens) {
+				break
+			}
+			p := string(tokens[i+1])
+			out = append(out, deltaChange{
+				status:  st,
+				oldPath: p,
+				newPath: p,
+			})
+			i += 2
+		}
+	}
+	return out
+}
+
+func collectBranchDeltaEntries(cfg RollupConfig, mergeBaseFull, ref, prefix, labelPrefix string, ignorePatterns []string) ([]fileEntry, error) {
+	var entries []fileEntry
+	prefixLabel := func(s string) string {
+		if labelPrefix == "" {
+			return s
+		}
+		return labelPrefix + " " + s
+	}
+
+	logArgs := []string{"log", "--stat", "--no-color", mergeBaseFull + ".." + ref, "--"}
+	if prefix != "" {
+		logArgs = append(logArgs, prefix)
+	}
+	logOut, err := gitCmd(cfg.RepoDir, logArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("git log %s..%s: %w", mergeBaseFull, ref, err)
+	}
+	if strings.TrimSpace(logOut) == "" {
+		logOut = fmt.Sprintf("(no commits between %s and %s)\n", shortSHA(mergeBaseFull), ref)
+	}
+	entries = append(entries, fileEntry{
+		path:         prefixLabel("(git)/branch-log.txt"),
+		content:      logOut,
+		langOverride: "text",
+	})
+
+	nsArgs := []string{"diff", "--name-status", "-z", "-M", "--no-ext-diff", "--no-textconv", mergeBaseFull, ref, "--"}
+	if prefix != "" {
+		nsArgs = append(nsArgs, prefix)
+	}
+	nsRaw, err := gitCmdBytes(cfg.RepoDir, nsArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("git diff --name-status: %w", err)
+	}
+	changes := parseNameStatusZ(nsRaw)
+	sort.Slice(changes, func(i, j int) bool { return changes[i].newPath < changes[j].newPath })
+
+	ctxArg := fmt.Sprintf("-U%d", max(0, cfg.DiffContext))
+	var deletedPaths []string
+
+	for _, ch := range changes {
+		if ch.status == "D" {
+			if !shouldExclude(ch.oldPath, ignorePatterns, cfg.NoDefaultExcludes) {
+				deletedPaths = append(deletedPaths, ch.oldPath)
+			}
+			continue
+		}
+		if shouldExclude(ch.newPath, ignorePatterns, cfg.NoDefaultExcludes) {
 			continue
 		}
 
-		strContent := string(data)
-		if cfg.Tier == "arch" {
-			if !isArchCandidate(f) {
+		if ch.status == "A" || (cfg.DeltaFullModified && (ch.status == "M" || ch.status == "T")) {
+			data, err := gitCmdBytes(cfg.RepoDir, "show", ref+":"+ch.newPath)
+			if err != nil {
 				continue
 			}
-			if strings.HasSuffix(f, ".dhall") && len(data) > 50000 {
-				continue
+			if content, ok := filterAndTransformContent(cfg, ch.newPath, data); ok {
+				label := ch.newPath
+				if ch.status == "A" {
+					label = ch.newPath + " [added]"
+				}
+				entries = append(entries, fileEntry{
+					path:         prefixLabel(label),
+					content:      content,
+					langOverride: fenceLang(ch.newPath),
+				})
 			}
-			if strings.HasSuffix(f, ".hs") {
-				strContent = extractArchSummaryHS(strContent)
-			}
+			continue
 		}
-		entries = append(entries, fileEntry{path: f, content: strContent})
+
+		if cfg.Tier == "arch" && !isArchCandidate(ch.newPath) {
+			continue
+		}
+		diffArgs := []string{"diff", "--no-color", "--no-ext-diff", "--no-textconv", "-M", ctxArg, mergeBaseFull, ref, "--"}
+		if ch.oldPath != ch.newPath {
+			diffArgs = append(diffArgs, ch.oldPath, ch.newPath)
+		} else {
+			diffArgs = append(diffArgs, ch.newPath)
+		}
+		diffBytes, err := gitCmdBytes(cfg.RepoDir, diffArgs...)
+		if err != nil || len(bytes.TrimSpace(diffBytes)) == 0 {
+			continue
+		}
+		if isBinaryOrInvalidUTF8(diffBytes) {
+			continue
+		}
+		label := ch.newPath + " [diff]"
+		if ch.oldPath != ch.newPath {
+			label = fmt.Sprintf("%s [renamed from %s, %s]", ch.newPath, ch.oldPath, ch.status)
+		}
+		entries = append(entries, fileEntry{
+			path:         prefixLabel(label),
+			content:      string(diffBytes),
+			langOverride: "diff",
+		})
 	}
 
-	blocks := entriesToBlocks(entries, cfg.MaxChars, cfg.AutoShard)
-	return packBlocksIntoShards(cfg, repoName, prefix, commitSHA, commitTime, blocks), nil
+	if len(deletedPaths) > 0 {
+		sort.Strings(deletedPaths)
+		entries = append(entries, fileEntry{
+			path:         prefixLabel("(git)/deleted-files.txt"),
+			content:      strings.Join(deletedPaths, "\n") + "\n",
+			langOverride: "text",
+		})
+	}
+	return entries, nil
+}
+
+func buildRollupShards(cfg RollupConfig, repoName, prefix string) ([]RollupShard, RollupMeta, error) {
+	targetRef := cfg.Ref
+	if targetRef == "" {
+		targetRef = "HEAD"
+	}
+
+	shaOut, err := gitCmd(cfg.RepoDir, "rev-parse", "--short=12", targetRef+"^{commit}")
+	if err != nil {
+		return nil, RollupMeta{}, fmt.Errorf("git rev-parse %s: %w", targetRef, err)
+	}
+	commitSHA := strings.TrimSpace(shaOut)
+
+	timeOut, _ := gitCmd(cfg.RepoDir, "log", "-1", "--format=%cI", targetRef, "--")
+	commitTime := strings.TrimSpace(timeOut)
+
+	meta := RollupMeta{
+		RepoName:   repoName,
+		Prefix:     prefix,
+		Ref:        cfg.Ref,
+		Base:       cfg.Base,
+		CommitSHA:  commitSHA,
+		CommitTime: commitTime,
+	}
+
+	ignorePatterns := loadRollupIgnore(cfg.RepoDir, cfg.Ref, cfg.Exclude)
+
+	var entries []fileEntry
+	switch {
+	case cfg.AllBranches:
+		meta.Mode = "all-branches-delta"
+		plan, err := discoverRelevantBranches(cfg)
+		if err != nil {
+			return nil, RollupMeta{}, err
+		}
+		meta.Base = plan.DefaultBase
+		entries = append(entries, fileEntry{
+			path:         "(git)/branches-summary.md",
+			content:      renderBranchesSummaryMD(repoName, plan),
+			langOverride: "markdown",
+		})
+		for _, br := range plan.Selected {
+			lbl := fmt.Sprintf("[branch:%s vs %s]", br.Name, br.BaseRef)
+			brEntries, err := collectBranchDeltaEntries(cfg, br.MergeBaseFull, br.Name, prefix, lbl, ignorePatterns)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[nadiverse-rollup] warn: skipping branch %s: %v\n", br.Name, err)
+				continue
+			}
+			entries = append(entries, brEntries...)
+		}
+	case cfg.Base != "":
+		meta.Mode = "branch-delta"
+		if meta.Ref == "" {
+			meta.Ref = "HEAD"
+		}
+		resolvedBase, err := resolveDefaultBase(cfg.RepoDir, cfg.Base)
+		if err != nil {
+			return nil, RollupMeta{}, err
+		}
+		meta.Base = resolvedBase
+		mbOut, err := gitCmd(cfg.RepoDir, "merge-base", resolvedBase, targetRef)
+		if err != nil {
+			return nil, RollupMeta{}, fmt.Errorf("git merge-base %s %s: %w", resolvedBase, targetRef, err)
+		}
+		mergeBaseFull := strings.TrimSpace(mbOut)
+		meta.MergeBaseSHA = shortSHA(mergeBaseFull)
+		entries, err = collectBranchDeltaEntries(cfg, mergeBaseFull, targetRef, prefix, "", ignorePatterns)
+		if err != nil {
+			return nil, RollupMeta{}, err
+		}
+	case cfg.Ref != "":
+		meta.Mode = "branch-snapshot"
+		entries, err = collectRefSnapshotEntries(cfg, cfg.Ref, prefix, ignorePatterns)
+		if err != nil {
+			return nil, RollupMeta{}, err
+		}
+	default:
+		meta.Mode = "worktree"
+		entries, err = collectWorktreeEntries(cfg, prefix, ignorePatterns)
+		if err != nil {
+			return nil, RollupMeta{}, err
+		}
+	}
+
+	blocks := entriesToBlocks(entries, cfg.MaxChars, cfg.MaxWords, cfg.AutoShard)
+	return packBlocksIntoShards(cfg, meta, blocks), meta, nil
 }
 
 func resolveAccessToken(client *http.Client, tokenURL string) (string, error) {
